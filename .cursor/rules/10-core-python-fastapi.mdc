@@ -1,0 +1,35 @@
+---
+description: Règles backend Python, FastAPI, services et jobs
+globs:
+  - "core/**/*.py"
+  - "tests/**/*.py"
+  - "pyproject.toml"
+---
+
+# Backend Python
+
+## Stack cible
+
+- Python 3.11+ ou 3.12 selon compatibilité audio.
+- uv.
+- FastAPI.
+- Pydantic.
+- SQLAlchemy ou SQLModel.
+- Alembic si SQLAlchemy.
+- httpx.
+- tenacity ou backoff.
+- pytest.
+
+## Principes
+
+- Séparer routes API, services métier, accès DB et clients externes.
+- Pas d’appel Spotify direct depuis les routes.
+- Pas d’accès SQLite depuis l’UI.
+- Routes sous `/api/v1`.
+- Endpoint `/api/v1/health` obligatoire.
+- Jobs longs persistés, idempotents, relançables.
+- Erreurs structurées.
+
+## Tests
+
+Ajouter des tests pour healthcheck, settings, DB, jobs, snapshots, features, playlist rules et validation segment <= 30 secondes.

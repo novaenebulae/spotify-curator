@@ -1,0 +1,32 @@
+---
+description: Règles projet globales pour Spotify Library Curator
+alwaysApply: true
+---
+
+# Règles projet globales
+
+Lire `AGENTS.md` avant toute modification.
+
+## Produit
+
+Application desktop locale de sauvegarde, exploration, enrichissement, analyse et tri d’une bibliothèque Spotify personnelle.
+
+Ce n’est pas un clone de Spotify, une application web hébergée, une CLI principale, ni un outil de téléchargement musical.
+
+## Architecture validée
+
+- Tauri + Svelte/SvelteKit côté Windows.
+- Core Python dockerisé.
+- API HTTP locale sur `127.0.0.1:8765`.
+- SQLite dans `data/`.
+- Docker Compose pour core et workers.
+- Essentia via Docker/WSL2.
+- Analyse audio par segments temporaires <= 30 secondes.
+
+## Règles de comportement
+
+- Travailler par phase.
+- Ne pas anticiper les phases futures.
+- Préférer simple, testable, extensible.
+- Mettre à jour les docs si API, DB, architecture ou comportement changent.
+- Ne pas modifier une décision validée sans ADR.

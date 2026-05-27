@@ -1,0 +1,43 @@
+---
+description: Règles Docker, WSL2, yt-dlp, FFmpeg et Essentia
+globs:
+  - "docker/**/*"
+  - "docker-compose*.yml"
+  - "profiles/**/*"
+  - "core/**/audio*/**/*.py"
+---
+
+# Docker et audio
+
+## Environnement
+
+- Windows + Docker Desktop + WSL2.
+- Tauri hors Docker.
+- Core Python et workers dans Docker.
+
+## Services cibles
+
+- `core-api`
+- `job-worker`
+- `audio-downloader`
+- `essentia-lowlevel`
+- `essentia-tensorflow`
+- `clustering-worker`
+
+## Contraintes audio
+
+- Pas de téléchargement complet standard.
+- Segments temporaires uniquement.
+- Segment <= 30 secondes.
+- Suppression après analyse.
+- Pas de fichiers audio committés.
+
+## Essentia low-level
+
+Image cible :
+
+```text
+ghcr.io/mtg/essentia:bullseye-v2.1_beta5
+```
+
+Utiliser pour BPM, key, loudness, MFCC, HPCP, spectral centroid/rolloff/contrast.
