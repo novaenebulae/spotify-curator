@@ -4,7 +4,10 @@
 
 <main>
   <h1>Spotify Curator</h1>
-  <p>Phase 0: minimal UI (Tauri + Svelte) outside Docker.</p>
+  <p>Local desktop app for Spotify library backup, snapshots, and curation.</p>
 
-  <button type="button" onclick={() => goto('/settings')}>Settings</button>
+  <div class="row actions">
+    <button type="button" onclick={() => goto('/import')}>Import library</button>
+    <button type="button" class="secondary" onclick={() => goto('/settings')}>Settings</button>
+  </div>
 </main>

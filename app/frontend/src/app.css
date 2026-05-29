@@ -1,0 +1,216 @@
+:root {
+	font-family:
+		system-ui,
+		-apple-system,
+		'Segoe UI',
+		Roboto,
+		sans-serif;
+	line-height: 1.5;
+	color: #e8e8e8;
+	background: #121212;
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+}
+
+a {
+	color: #1db954;
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+main {
+	max-width: 900px;
+	margin: 0 auto;
+	padding: 1.5rem;
+}
+
+nav {
+	display: flex;
+	gap: 1rem;
+	padding: 0.75rem 1.5rem;
+	background: #1a1a1a;
+	border-bottom: 1px solid #333;
+}
+
+nav a.active {
+	font-weight: 600;
+	color: #fff;
+}
+
+.card {
+	background: #1e1e1e;
+	border: 1px solid #333;
+	border-radius: 8px;
+	padding: 1rem 1.25rem;
+	margin-bottom: 1rem;
+}
+
+.card h2,
+.card h3 {
+	margin-top: 0;
+}
+
+.muted {
+	color: #aaa;
+	font-size: 0.9rem;
+}
+
+.muted-section {
+	opacity: 0.85;
+}
+
+.status.ok,
+.ok {
+	color: #1db954;
+	font-size: 0.9rem;
+}
+
+.status.warn,
+.warn {
+	color: #f5a623;
+}
+
+.error {
+	background: #2a1515;
+	color: #ffb4b4;
+	padding: 0.75rem;
+	border-radius: 4px;
+	overflow-x: auto;
+	font-size: 0.85rem;
+}
+
+button {
+	background: #1db954;
+	color: #000;
+	border: none;
+	border-radius: 6px;
+	padding: 0.5rem 1rem;
+	font-weight: 600;
+	cursor: pointer;
+}
+
+button:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+button.secondary {
+	background: #333;
+	color: #eee;
+}
+
+.row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+	align-items: center;
+}
+
+.row.actions {
+	margin-top: 0.75rem;
+}
+
+table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.9rem;
+}
+
+th,
+td {
+	text-align: left;
+	padding: 0.4rem 0.5rem;
+	border-bottom: 1px solid #333;
+}
+
+code {
+	font-size: 0.85em;
+	background: #2a2a2a;
+	padding: 0.1em 0.35em;
+	border-radius: 3px;
+}
+
+.scopes code {
+	display: inline-block;
+	margin: 0.15rem 0.25rem 0.15rem 0;
+}
+
+.highlights {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 1rem;
+	margin: 1rem 0;
+}
+
+.compare label {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	font-size: 0.9rem;
+}
+
+.compare select {
+	min-width: 220px;
+	padding: 0.35rem;
+	background: #2a2a2a;
+	color: #eee;
+	border: 1px solid #444;
+	border-radius: 4px;
+}
+
+.progress-wrap {
+	margin: 0.75rem 0;
+}
+
+.progress-track {
+	width: 100%;
+	height: 12px;
+	background: #2a2a2a;
+	border-radius: 6px;
+	overflow: hidden;
+}
+
+.progress-fill {
+	height: 100%;
+	background: linear-gradient(90deg, #1ed760, #1db954);
+	border-radius: 6px;
+	transition: width 0.35s ease;
+}
+
+.progress-fill.indeterminate {
+	width: 40% !important;
+	animation: progress-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes progress-indeterminate {
+	0% {
+		transform: translateX(-100%);
+	}
+	100% {
+		transform: translateX(350%);
+	}
+}
+
+.progress-label {
+	margin: 0.35rem 0 0;
+	font-size: 0.9rem;
+}
+
+.step {
+	font-size: 1rem;
+	font-weight: 500;
+}
+
+.diff-summary ul {
+	margin: 0.5rem 0;
+	padding-left: 1.25rem;
+}
