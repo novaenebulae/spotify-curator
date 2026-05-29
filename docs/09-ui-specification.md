@@ -21,6 +21,13 @@ Tags: #ui #svelte #tauri #screens
 - toast/alert erreurs ;
 - panneau job progress global optionnel.
 
+## Écran Settings (phase 1.5)
+
+- runtime config (`GET /runtime/config`) ;
+- bouton « Run Docker checks » + liste checks persistés ;
+- diagnostics legacy (`GET /diagnostics`) ;
+- états loading / error / offline.
+
 ## Écran 1 — Accueil
 
 Objectif : afficher état général.

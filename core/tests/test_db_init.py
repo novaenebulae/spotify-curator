@@ -14,7 +14,10 @@ def test_init_db_creates_settings_table(tmp_path: Path, monkeypatch) -> None:
 
     engine = get_engine()
     inspector = inspect(engine)
-    assert "settings" in inspector.get_table_names()
+    tables = inspector.get_table_names()
+    assert "settings" in tables
+    assert "docker_runtime_checks" in tables
+    assert "oauth_pkce_states" in tables
     assert "spotify_auth_tokens" in inspector.get_table_names()
     assert "jobs" in inspector.get_table_names()
     assert "tracks" in inspector.get_table_names()

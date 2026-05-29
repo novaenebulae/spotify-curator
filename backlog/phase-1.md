@@ -19,7 +19,7 @@ Importer et sauvegarder localement la bibliothèque Spotify.
 
 ## 1.1 — Configuration Spotify
 
-Statut : DONE
+Statut : DONE (phase 1.5 — `GET /runtime/config`)
 
 ### Sous-tâches
 
@@ -69,7 +69,7 @@ Statut : DONE
 
 ## 1.4 — Import liked tracks
 
-Statut : DONE
+Statut : DONE (phase 1.5 — `is_current`, `market_status`, normalisation)
 
 ### Sous-tâches
 

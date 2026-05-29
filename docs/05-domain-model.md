@@ -27,6 +27,14 @@ La base SQLite est la source locale de vérité. Elle doit permettre :
 - Upsert : imports relançables sans doublons.
 - Index : tous les champs de recherche/filtre.
 
+## Phase 1.5 — État implémenté (2026-05)
+
+**Implémenté** : migration Alembic `0001_initial` ; `settings` (id/key/value_json) ; `docker_runtime_checks` ; `oauth_pkce_states` ; champs jobs enrichis ; `liked_tracks.is_current` / timestamps ; `playlist_tracks` enrichi ; `normalized_*` sur tracks/artists/albums ; `external_ids.source` / `external_type` / `confidence`.
+
+**Mapping doc** : `tracks.name` = titre canonique (`canonical_title` doc) ; PK `INTEGER` sur tracks/artists/albums (pas UUID).
+
+**Cible future** : PK UUID ; table générique `snapshot_tracks` ; `snapshot_diffs` persisté ; champs album `release_date_precision`, `album_type`.
+
 ## Tables phase 0
 
 ### settings

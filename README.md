@@ -42,6 +42,36 @@ La documentation est structurée pour être utilisée ainsi :
 | `docs/14-configuration.md` | Variables d’environnement, volumes, profils. |
 | `docs/15-cursor-rules.md` | Règles spécifiques à Cursor pour ce projet. |
 | `backlog/phase-0.md` à `backlog/phase-9.md` | Backlogs détaillés. |
+| `backlog/phase-1.5.md` | Consolidation schéma / API / migrations (avant phase 2). |
+
+## Migrations SQLite (Alembic)
+
+Le core applique une migration initiale unique (`0001_initial`) au démarrage (`alembic upgrade head`).
+
+**Nouvelle installation** : la base est créée automatiquement dans `data/`.
+
+**Réinitialiser la base locale** (données de dev uniquement) :
+
+```powershell
+docker compose down
+Remove-Item -Force data\spotify_curator.sqlite, data\spotify_curator.sqlite-wal, data\spotify_curator.sqlite-shm -ErrorAction SilentlyContinue
+docker compose up --build
+```
+
+Si vous conservez une ancienne base (révisions `0001_baseline` / `0003_phase15_backfill`), le core tente un réalignement automatique vers `0001_initial` au démarrage. En cas d'échec, supprimez le fichier SQLite comme ci-dessus.
+
+**Tests** : chaque test utilise un fichier SQLite temporaire via `DATABASE_URL`.
+
+Commandes utiles :
+
+```bash
+cd core
+uv run alembic current
+uv run alembic upgrade head
+uv run pytest -q
+```
+
+**Logs Docker** : `docker compose up` (sans `-d`) ou `docker compose logs -f core-api` pour suivre les requêtes HTTP (`--access-log`) et le démarrage. Sur Windows, `SQLITE_JOURNAL_MODE=DELETE` est défini dans Compose pour éviter les écritures SQLite très lentes sur le volume `data/`.
 
 ## Règles absolues
 

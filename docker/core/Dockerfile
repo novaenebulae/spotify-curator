@@ -11,8 +11,10 @@ RUN pip install --no-cache-dir uv \
     && uv sync --frozen
 
 COPY core/app /app/app
+COPY core/alembic /app/alembic
+COPY core/alembic.ini /app/alembic.ini
 
 EXPOSE 8765
 
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8765"]
+CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8765", "--log-level", "info", "--access-log"]
 

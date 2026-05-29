@@ -24,6 +24,7 @@ class Playlist(Base):
     spotify_snapshot_id: Mapped[str] = mapped_column(String(128), nullable=False, default="")
 
     raw_json: Mapped[str] = mapped_column(String(100000), nullable=False, default="{}")
+    first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
 
 
@@ -39,12 +40,11 @@ class PlaylistTrack(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     spotify_playlist_id: Mapped[str] = mapped_column(
-        ForeignKey("playlists.spotify_playlist_id"), nullable=False
+        ForeignKey("playlists.spotify_playlist_id"), nullable=False, index=True
     )
 
     position: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    # May be null when Spotify returns `track: null` for unavailable items.
     spotify_track_id: Mapped[str | None] = mapped_column(
         ForeignKey("spotify_tracks.spotify_track_id"), nullable=True
     )
@@ -52,5 +52,10 @@ class PlaylistTrack(Base):
     added_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     added_by_spotify_user_id: Mapped[str] = mapped_column(String(128), nullable=False, default="")
 
-    raw_json: Mapped[str] = mapped_column(String(100000), nullable=False, default="{}")
+    is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    is_local: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    null_reason: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    first_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
 
+    raw_json: Mapped[str] = mapped_column(String(100000), nullable=False, default="{}")

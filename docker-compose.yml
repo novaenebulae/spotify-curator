@@ -7,6 +7,8 @@ services:
       - "127.0.0.1:8765:8765"
     environment:
       - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/spotify_curator.sqlite}
+      # DELETE avoids extreme write latency on SQLite bind mounts (Docker Desktop / Windows).
+      - SQLITE_JOURNAL_MODE=${SQLITE_JOURNAL_MODE:-DELETE}
       - CACHE_DIR=${CACHE_DIR:-/app/cache}
       - MODELS_DIR=${MODELS_DIR:-/app/models}
       - LOGS_DIR=${LOGS_DIR:-/app/logs}
@@ -21,4 +23,16 @@ services:
       - ./models:/app/models
       - ./logs:/app/logs
       - ./exports:/app/exports
+    command:
+      - uv
+      - run
+      - uvicorn
+      - app.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8765"
+      - --log-level
+      - info
+      - --access-log
 

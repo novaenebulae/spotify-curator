@@ -109,6 +109,8 @@ Filtres :
 
 ## Phase 0 — Runtime
 
+> **Phase 1.5** : endpoints runtime implémentés. `GET /diagnostics` reste disponible (alias enrichi). Erreurs au format `{ "error": { ... } }`. Auth : `connected` + alias `authenticated` ; `authorize_url` + alias `authorization_url`.
+
 ### `GET /health`
 
 ```json

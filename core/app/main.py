@@ -1,18 +1,45 @@
 from __future__ import annotations
 
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s [%(name)s] %(message)s",
+)
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import router as v1_router
 from app.database.init_db import init_db
+from app.observability.errors import register_exception_handlers
 from app.settings.config import settings
 
 
-def create_app() -> FastAPI:
-    app = FastAPI(title="spotify-curator-core")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    logger = logging.getLogger("spotify-curator-core")
+    logger.info("Starting spotify-curator-core (version %s)", settings.app_version)
+    try:
+        init_db()
+        logger.info("Database migrations applied")
+    except Exception:
+        logger.exception("Database migration failed during startup")
+        raise
+    logger.info(
+        "Application startup complete — API ready at http://%s:%s%s",
+        settings.core_host,
+        settings.core_port,
+        settings.api_v1_prefix,
+    )
+    yield
+    logger.info("Shutting down spotify-curator-core")
 
-    # Enable CORS for local UI dev server (SvelteKit) and future Tauri webview origins.
-    # The API is still bound to 127.0.0.1 via docker-compose publish rules.
+
+def create_app() -> FastAPI:
+    app = FastAPI(title="spotify-curator-core", lifespan=lifespan)
+
     allowed_origins = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
@@ -26,14 +53,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    register_exception_handlers(app)
     app.include_router(v1_router, prefix=settings.api_v1_prefix)
-
-    @app.on_event("startup")
-    def _startup() -> None:
-        init_db()
 
     return app
 
 
 app = create_app()
-

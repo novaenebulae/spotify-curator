@@ -5,10 +5,12 @@ import urllib.parse
 from datetime import UTC, datetime
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 
+from app.observability.errors import ApiError
 from app.settings.config import settings
+from app.spotify.client import SpotifyClient
 from app.spotify.oauth_state import OAuthStateStore
 from app.spotify.pkce import code_challenge_s256, generate_code_verifier
 from app.spotify.schemas import AuthStartResponse, AuthStatusResponse, LogoutResponse
@@ -27,9 +29,10 @@ def _scopes_list() -> list[str]:
 @router.get("/start", response_model=AuthStartResponse)
 def auth_start() -> AuthStartResponse:
     if not settings.spotify_client_id:
-        raise HTTPException(
+        raise ApiError(
+            code="VALIDATION_ERROR",
+            message="Spotify client is not configured (SPOTIFY_CLIENT_ID).",
             status_code=400,
-            detail="Spotify client is not configured (SPOTIFY_CLIENT_ID).",
         )
 
     state = secrets.token_urlsafe(24)
@@ -47,7 +50,12 @@ def auth_start() -> AuthStartResponse:
         "scope": " ".join(_scopes_list()),
     }
     authorize_url = "https://accounts.spotify.com/authorize?" + urllib.parse.urlencode(params)
-    return AuthStartResponse(authorize_url=authorize_url, state=state, expires_in_seconds=600)
+    return AuthStartResponse(
+        authorize_url=authorize_url,
+        authorization_url=authorize_url,
+        state=state,
+        expires_in_seconds=600,
+    )
 
 
 @router.get("/callback", response_class=HTMLResponse)
@@ -55,11 +63,19 @@ async def auth_callback(
     request: Request, code: str | None = None, state: str | None = None
 ) -> HTMLResponse:
     if not code or not state:
-        raise HTTPException(status_code=400, detail="Missing code/state.")
+        raise ApiError(
+            code="VALIDATION_ERROR",
+            message="Missing code/state.",
+            status_code=400,
+        )
 
     stored = _state_store.pop(state)
     if stored is None:
-        raise HTTPException(status_code=400, detail="Invalid or expired state.")
+        raise ApiError(
+            code="VALIDATION_ERROR",
+            message="Invalid or expired state.",
+            status_code=400,
+        )
 
     data = {
         "client_id": settings.spotify_client_id,
@@ -76,11 +92,21 @@ async def auth_callback(
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
         if resp.status_code >= 400:
-            raise HTTPException(status_code=resp.status_code, detail="Token exchange failed.")
+            raise ApiError(
+                code="EXTERNAL_SERVICE_ERROR",
+                message="Token exchange failed.",
+                status_code=resp.status_code,
+            )
         token_json = resp.json()
 
-    # Phase 1: we store tokens for local dev only; user_id is resolved lazily.
-    user_id = "me"
+    user_id = "unknown"
+    try:
+        _token_store.save_from_token_response(user_id="__oauth_pending__", token_response=token_json)
+        me = SpotifyClient(token_store=_token_store).get_current_user()
+        user_id = me.get("id") or me.get("display_name") or "unknown"
+    except Exception:  # noqa: BLE001
+        pass
+    _token_store.clear()
     _token_store.save_from_token_response(user_id=user_id, token_response=token_json)
 
     now = datetime.now(tz=UTC)
@@ -115,4 +141,3 @@ def auth_status() -> AuthStatusResponse:
 def auth_logout() -> LogoutResponse:
     _token_store.clear()
     return LogoutResponse(ok=True)
-

@@ -73,7 +73,7 @@ Statut : DONE
 
 ## 0.4 — Initialiser SQLite
 
-Statut : DONE
+Statut : DONE (consolidé phase 1.5 — Alembic + `docker_runtime_checks`)
 
 ### Sous-tâches
 
@@ -110,7 +110,7 @@ Statut : DONE
 
 ## 0.7 — Diagnostics Docker
 
-Statut : DONE
+Statut : DONE (phase 1.5 — `/runtime/docker/checks` + persistance)
 
 ### Sous-tâches
 

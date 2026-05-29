@@ -3,14 +3,16 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.database.engine import get_engine
 from app.database.models_playlists import Playlist, PlaylistTrack
 from app.jobs.service import JobService
 from app.library.job_progress import PROGRESS_UPDATE_EVERY, report_job_progress
+from app.library.track_upsert import upsert_track_from_spotify_json
 from app.spotify.client import SpotifyClient
+from app.spotify.market_status import derive_playlist_item_null_reason
 
 
 def _dt_parse(value: str | None) -> datetime | None:
@@ -89,18 +91,20 @@ def import_playlists(*, job_id: str, jobs: JobService, client: SpotifyClient) ->
             ).scalar_one_or_none()
 
             owner = (pl.get("owner") or {}).get("id") or ""
+            playlist_name = pl.get("name") or ""
 
             if playlist_row is None:
                 playlist_row = Playlist(
                     spotify_playlist_id=spotify_playlist_id,
                     spotify_uri=pl.get("uri") or "",
-                    name=pl.get("name") or "",
+                    name=playlist_name,
                     description=pl.get("description") or "",
                     owner_spotify_user_id=owner,
                     is_public=pl.get("public"),
                     collaborative=pl.get("collaborative"),
                     spotify_snapshot_id=pl.get("snapshot_id") or "",
                     raw_json=json.dumps(pl),
+                    first_seen_at=now,
                     last_seen_at=now,
                 )
                 session.add(playlist_row)
@@ -108,43 +112,76 @@ def import_playlists(*, job_id: str, jobs: JobService, client: SpotifyClient) ->
                 playlist_count += 1
             else:
                 playlist_row.spotify_uri = pl.get("uri") or playlist_row.spotify_uri
-                playlist_row.name = pl.get("name") or playlist_row.name
+                playlist_row.name = playlist_name or playlist_row.name
                 playlist_row.description = pl.get("description") or ""
                 playlist_row.owner_spotify_user_id = owner
                 playlist_row.is_public = pl.get("public")
                 playlist_row.collaborative = pl.get("collaborative")
                 playlist_row.spotify_snapshot_id = pl.get("snapshot_id") or ""
                 playlist_row.raw_json = json.dumps(pl)
+                if playlist_row.first_seen_at is None:
+                    playlist_row.first_seen_at = now
                 playlist_row.last_seen_at = now
 
             session.execute(
-                delete(PlaylistTrack).where(
-                    PlaylistTrack.spotify_playlist_id == spotify_playlist_id
-                )
+                update(PlaylistTrack)
+                .where(PlaylistTrack.spotify_playlist_id == spotify_playlist_id)
+                .values(is_current=False)
             )
 
             items = client.iter_playlist_items(playlist_id=spotify_playlist_id, limit=100)
             for pos, it in enumerate(items):
                 track = it.get("track")
                 spotify_track_id = None
+                is_local = False
+                null_reason = derive_playlist_item_null_reason(it)
+
                 if isinstance(track, dict):
-                    spotify_track_id = track.get("id")
+                    is_local = bool(track.get("is_local"))
+                    spotify_track_id = upsert_track_from_spotify_json(
+                        session, track_json=track, now=now
+                    )
                 else:
                     unavailable_items += 1
 
                 added_by = (it.get("added_by") or {}).get("id") or ""
                 added_at = _dt_parse(it.get("added_at"))
 
-                session.add(
-                    PlaylistTrack(
-                        spotify_playlist_id=spotify_playlist_id,
-                        position=pos,
-                        spotify_track_id=spotify_track_id,
-                        added_at=added_at,
-                        added_by_spotify_user_id=added_by,
-                        raw_json=json.dumps(it),
+                existing_item = session.execute(
+                    select(PlaylistTrack).where(
+                        PlaylistTrack.spotify_playlist_id == spotify_playlist_id,
+                        PlaylistTrack.position == pos,
                     )
-                )
+                ).scalar_one_or_none()
+
+                if existing_item is None:
+                    session.add(
+                        PlaylistTrack(
+                            spotify_playlist_id=spotify_playlist_id,
+                            position=pos,
+                            spotify_track_id=spotify_track_id,
+                            added_at=added_at,
+                            added_by_spotify_user_id=added_by,
+                            is_current=True,
+                            is_local=is_local,
+                            null_reason=null_reason,
+                            first_seen_at=now,
+                            last_seen_at=now,
+                            raw_json=json.dumps(it),
+                        )
+                    )
+                else:
+                    existing_item.spotify_track_id = spotify_track_id
+                    existing_item.added_at = added_at
+                    existing_item.added_by_spotify_user_id = added_by
+                    existing_item.is_current = True
+                    existing_item.is_local = is_local
+                    existing_item.null_reason = null_reason
+                    existing_item.last_seen_at = now
+                    if existing_item.first_seen_at is None:
+                        existing_item.first_seen_at = added_at or now
+                    existing_item.raw_json = json.dumps(it)
+
                 item_count += 1
 
         session.commit()

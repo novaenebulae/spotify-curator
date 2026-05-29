@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.database.engine import get_engine
@@ -90,8 +90,6 @@ class SpotifyTokenStore:
     def clear(self) -> None:
         engine = get_engine()
         with Session(engine) as session:
-            row = session.execute(select(SpotifyAuthToken).limit(1)).scalar_one_or_none()
-            if row is not None:
-                session.delete(row)
-                session.commit()
+            session.execute(delete(SpotifyAuthToken))
+            session.commit()
 

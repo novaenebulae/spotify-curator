@@ -8,6 +8,8 @@ from sqlalchemy.engine import Engine
 
 _engine: Engine | None = None
 
+_ALLOWED_JOURNAL_MODES = frozenset({"WAL", "DELETE", "TRUNCATE", "PERSIST", "MEMORY"})
+
 
 def reset_engine() -> None:
     """Dispose cached engine (tests / DATABASE_URL changes)."""
@@ -17,6 +19,13 @@ def reset_engine() -> None:
         _engine = None
 
 
+def _sqlite_journal_mode() -> str:
+    mode = os.getenv("SQLITE_JOURNAL_MODE", "WAL").strip().upper()
+    if mode not in _ALLOWED_JOURNAL_MODES:
+        return "WAL"
+    return mode
+
+
 def _sqlite_connect_args(database_url: str) -> dict[str, Any]:
     if not database_url.startswith("sqlite"):
         return {}
@@ -24,8 +33,9 @@ def _sqlite_connect_args(database_url: str) -> dict[str, Any]:
 
 
 def _configure_sqlite_connection(dbapi_connection: Any) -> None:
+    journal_mode = _sqlite_journal_mode()
     cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute(f"PRAGMA journal_mode={journal_mode}")
     cursor.execute("PRAGMA busy_timeout=30000")
     cursor.execute("PRAGMA synchronous=NORMAL")
     cursor.close()

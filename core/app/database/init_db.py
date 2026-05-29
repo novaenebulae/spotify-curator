@@ -3,7 +3,8 @@ from __future__ import annotations
 from sqlalchemy import text
 
 from app.database.engine import get_engine
-from app.database.models import Base
+from app.database.migrate import run_migrations
+from app.database.models import Base  # noqa: F401
 from app.database.models_jobs import Job  # noqa: F401
 from app.database.models_library import (  # noqa: F401
     Album,
@@ -16,7 +17,9 @@ from app.database.models_library import (  # noqa: F401
     Track,
     TrackArtist,
 )
+from app.database.models_oauth import OAuthPkceState  # noqa: F401
 from app.database.models_playlists import Playlist, PlaylistTrack  # noqa: F401
+from app.database.models_runtime import DockerRuntimeCheck  # noqa: F401
 from app.database.models_snapshots import (  # noqa: F401
     LikedTrackSnapshot,
     PlaylistSnapshot,
@@ -27,10 +30,8 @@ from app.database.models_spotify_auth import SpotifyAuthToken  # noqa: F401
 
 
 def init_db() -> None:
-    engine = get_engine()
-    Base.metadata.create_all(bind=engine)
+    run_migrations()
 
-    # Lightweight sanity check that the DB is writable/readable.
+    engine = get_engine()
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))
-

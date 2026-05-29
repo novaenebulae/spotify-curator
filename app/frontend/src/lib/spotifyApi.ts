@@ -63,6 +63,19 @@ export type DiffResult = {
 	summary: DiffSummary;
 };
 
+function parseApiError(body: unknown, fallback: string): string {
+	if (body && typeof body === 'object') {
+		const record = body as Record<string, unknown>;
+		const err = record.error;
+		if (err && typeof err === 'object') {
+			const msg = (err as { message?: string }).message;
+			if (msg) return msg;
+		}
+		if (typeof record.detail === 'string') return record.detail;
+	}
+	return fallback;
+}
+
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 	const res = await fetch(`${BASE_URL}${path}`, {
 		...init,
@@ -74,8 +87,8 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 	if (!res.ok) {
 		let detail = res.statusText;
 		try {
-			const body = (await res.json()) as { detail?: string; error?: { message?: string } };
-			detail = body.detail ?? body.error?.message ?? JSON.stringify(body);
+			const body = await res.json();
+			detail = parseApiError(body, detail);
 		} catch {
 			/* ignore parse errors */
 		}

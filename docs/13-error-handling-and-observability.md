@@ -8,6 +8,8 @@ Rendre les erreurs compréhensibles côté UI et exploitables côté développem
 
 ## Format erreur API
 
+**Implémenté (phase 1.5)** via handlers FastAPI dans `core/app/observability/errors.py` : `ApiError`, `HTTPException`, validation Pydantic, `SpotifyAuthError`, `SpotifyRateLimited`, erreurs 500.
+
 ```json
 {
   "error": {

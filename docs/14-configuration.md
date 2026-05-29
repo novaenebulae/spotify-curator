@@ -76,6 +76,21 @@ Services supplémentaires :
 
 Aucune variable sensible ne doit être commitée. `SPOTIFY_CLIENT_ID` n’est pas aussi critique qu’un secret, mais il doit rester dans `.env` local si l’utilisateur le souhaite.
 
+## Migrations Alembic
+
+Révision unique : `0001_initial` (schéma phase 1.5 consolidé).
+
+```bash
+cd core
+uv run alembic upgrade head
+```
+
+Au démarrage du core, `init_db()` exécute `upgrade head` automatiquement sur une base vide dans `data/`.
+
+Variable optionnelle pour tests locaux : `DATABASE_URL=sqlite:///./data/test.sqlite`
+
+`SQLITE_JOURNAL_MODE` : `DELETE` (défaut Docker Compose) réduit la latence d’écriture SQLite sur volumes montés Windows ; `WAL` reste le défaut hors Docker.
+
 ## Chemins Windows
 
 L’application Tauri tourne côté Windows. Docker utilise les volumes montés.

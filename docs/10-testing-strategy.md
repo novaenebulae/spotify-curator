@@ -25,6 +25,15 @@ Garantir que chaque phase reste fonctionnelle sans casser les phases précédent
 - runtime config ;
 - diagnostics Docker parsing.
 
+### Phase 1.5 (consolidation)
+
+- migration Alembic `0001_initial` sur base vide ;
+- `GET /runtime/config` ;
+- persistance `docker_runtime_checks` ;
+- enveloppe d’erreur API ;
+- import liked `is_current` / `market_status` ;
+- OAuth PKCE state SQLite.
+
 ### Phase 1
 
 - PKCE generation ;
