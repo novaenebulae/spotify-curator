@@ -1,0 +1,144 @@
+# 13 — Erreurs, observabilité et diagnostics
+
+Tags: #errors #logs #jobs #diagnostics
+
+## Objectif
+
+Rendre les erreurs compréhensibles côté UI et exploitables côté développement.
+
+## Format erreur API
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid page_size",
+    "details": { "page_size": "must be <= 200" },
+    "retryable": false
+  }
+}
+```
+
+## Niveaux de logs
+
+- `DEBUG` : détails techniques, jamais tokens.
+- `INFO` : étapes normales.
+- `WARNING` : fallback, retry, data partielle.
+- `ERROR` : échec action/job.
+- `CRITICAL` : corruption DB, Docker impossible.
+
+## Logs jobs
+
+Chaque job doit fournir :
+
+- `job_type` ;
+- `status` ;
+- progression ;
+- étape courante ;
+- tentative ;
+- erreur ;
+- timestamps.
+
+## Statuts jobs
+
+```text
+pending
+running
+success
+failed
+cancelled
+rate_limited
+partial_success
+```
+
+## Retry
+
+Stratégie recommandée :
+
+- erreurs réseau : retry ;
+- 429 : respecter `Retry-After` ;
+- validation : pas de retry ;
+- fichier audio introuvable : retry limité ;
+- erreur parsing JSON : pas de retry sans correction.
+
+## Diagnostics runtime
+
+Diagnostics phase 0+ :
+
+- Docker version ;
+- Docker Compose version ;
+- core health ;
+- SQLite writable ;
+- chemins volumes ;
+- ffmpeg available phase 4 ;
+- yt-dlp available phase 4 ;
+- Essentia image available phase 4 ;
+- TensorFlow image available phase 7 ;
+- models present phase 7.
+
+## Endpoint rapport système
+
+Phase 9 : `/maintenance/system-report`
+
+Inclure :
+
+- version app ;
+- version core ;
+- versions Docker ;
+- DB path redacted ;
+- counts tracks/playlists/features/jobs ;
+- cache size ;
+- last failed jobs ;
+- models status.
+
+Exclure :
+
+- tokens ;
+- secrets ;
+- raw payloads complets ;
+- fichiers audio.
+
+## UI erreurs
+
+Chaque erreur doit afficher :
+
+- message lisible ;
+- action possible ;
+- bouton retry si retryable ;
+- détails techniques repliables.
+
+## Erreurs spécifiques par domaine
+
+### Spotify
+
+- non connecté ;
+- token expiré ;
+- scope manquant ;
+- rate limit ;
+- playlist inaccessible ;
+- import partiel.
+
+### Audio
+
+- source introuvable ;
+- mauvaise correspondance ;
+- segment trop long ;
+- yt-dlp failed ;
+- ffmpeg failed ;
+- Essentia failed ;
+- cleanup failed.
+
+### Features
+
+- source indisponible ;
+- feature manquante ;
+- confidence faible ;
+- merge conflict.
+
+### Playlist engine
+
+- règle invalide ;
+- aucun candidat ;
+- features insuffisantes ;
+- dry-run requis ;
+- write scope absent.

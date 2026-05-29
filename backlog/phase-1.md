@@ -4,7 +4,8 @@ Tags: #backlog #phase-1 #spotify-curator
 
 ## But
 
-Importer et sauvegarder la bibliothèque Spotify.
+Importer et sauvegarder localement la bibliothèque Spotify.
+
 
 ## Definition of Done phase
 
@@ -13,188 +14,137 @@ Importer et sauvegarder la bibliothèque Spotify.
 - Les commandes de validation sont documentées.
 - La documentation est à jour.
 - Aucun secret, cache, modèle lourd ou fichier audio n’est commité.
+- Aucune régression sur les phases précédentes.
 
----
 
 ## 1.1 — Configuration Spotify
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- .env.example
-- settings non sensibles
-- redirect URI
+- `.env.example` avec `SPOTIFY_CLIENT_ID`, `SPOTIFY_REDIRECT_URI`, `SPOTIFY_SCOPES`.
+- Documentation Spotify Developer Dashboard.
+- Settings non sensibles exposés via `/runtime/config`.
+- Validation config absente.
 
 ### Critères d’acceptation
 
-- pas de secret
-- config lisible
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Aucun secret commité.
+- Redirect URI documenté.
+- Scopes read-only en phase 1.
 
 ## 1.2 — OAuth PKCE
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- start/callback/status/logout
-- scopes
-- token dev
+- `/spotify/auth/start`.
+- `/spotify/auth/callback`.
+- `/spotify/auth/status`.
+- `/spotify/auth/logout`.
+- Génération verifier/challenge/state.
+- Token storage local dev.
 
 ### Critères d’acceptation
 
-- login local
-- status OK
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Login local fonctionne.
+- Status retourne connecté.
+- Logout supprime token local.
+- Pas de client secret.
 
 ## 1.3 — SpotifyClient
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- pagination
-- retry
-- erreurs
-
-### Critères d’acceptation
-
-- tests mocks
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Pagination.
+- Retry/backoff.
+- Rate limit `Retry-After`.
+- Refresh token.
+- Erreurs normalisées.
+- Tests mocks.
 
 ## 1.4 — Import liked tracks
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- fetch
-- normalisation
-- raw_json
+- Fetch tous les saved tracks.
+- Normaliser tracks/artists/albums.
+- Stocker raw_json.
+- Upserts idempotents.
+- Job avec progression.
 
 ### Critères d’acceptation
 
-- DB remplie
-- relançable
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- DB remplie.
+- Import relançable.
+- `is_current`/`last_seen_at` corrects.
 
 ## 1.5 — Import playlists
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- playlists
-- items
-- pagination
-
-### Critères d’acceptation
-
-- items stockés
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Fetch playlists.
+- Fetch items paginés.
+- Stocker position.
+- Gérer tracks nulles/locales.
+- Job avec progression.
 
 ## 1.6 — Snapshots
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- liked
-- playlists
-- metadata
-
-### Critères d’acceptation
-
-- snapshot daté
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Snapshot liked.
+- Snapshot playlists.
+- Snapshot full.
+- Metadata JSON.
 
 ## 1.7 — Diff snapshots
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- ajouts
-- suppressions
-- disparus
-
-### Critères d’acceptation
-
-- diff API
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Ajouts.
+- Suppressions.
+- Disparus.
+- Possibly relinked.
+- API diff.
 
 ## 1.8 — Écran import
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- boutons
-- jobs
-- erreurs
-
-### Critères d’acceptation
-
-- UI import
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Connexion.
+- Boutons import.
+- Jobs.
+- Snapshots.
+- Diff.
+- Erreurs.
 
 ## 1.9 — Exports
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- CSV
-- JSON
-- snapshot
+- CSV liked.
+- JSON liked.
+- Playlists.
+- Snapshot.
+- Diff.
 
-### Critères d’acceptation
+## Commandes de validation
 
-- export OK
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+À conserver dans la revue phase 1 réelle.

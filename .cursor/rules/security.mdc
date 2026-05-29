@@ -1,0 +1,6 @@
+---
+description: Security and privacy rules
+alwaysApply: true
+---
+
+Never commit .env, tokens, SQLite data, exports, cache, logs, models or audio files. Spotify write actions require dry-run, explicit confirmation and scope verification. Audio analysis must use temporary segments of 30 seconds maximum.

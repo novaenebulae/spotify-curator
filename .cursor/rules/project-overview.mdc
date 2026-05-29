@@ -1,0 +1,6 @@
+---
+description: Spotify Curator project overview
+alwaysApply: true
+---
+
+Respect AGENTS.md and docs/*.md. This is a local desktop Spotify curation app using Tauri/Svelte outside Docker and a FastAPI Python core inside Docker. API must stay on 127.0.0.1:8765. SQLite is the local database. Do not introduce Django, PostgreSQL, Celery or RabbitMQ.

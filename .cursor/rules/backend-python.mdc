@@ -1,0 +1,6 @@
+---
+description: Backend Python rules
+alwaysApply: true
+---
+
+FastAPI routes must be thin. Put business logic in services and DB queries in repositories. Long operations must use persisted jobs. Use Pydantic request/response schemas. Add pytest tests for every feature. Preserve prior phases.

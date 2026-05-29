@@ -1,10 +1,11 @@
 # Phase 3 — ReccoBeats enrichment
 
-Tags: #backlog #phase-3 #spotify-curator
+Tags: #backlog #phase-3 #features #reccobeats
 
 ## But
 
-Ajouter les features simples.
+Ajouter les features audio simples via ReccoBeats et préparer le modèle multi-source.
+
 
 ## Definition of Done phase
 
@@ -13,8 +14,8 @@ Ajouter les features simples.
 - Les commandes de validation sont documentées.
 - La documentation est à jour.
 - Aucun secret, cache, modèle lourd ou fichier audio n’est commité.
+- Aucune régression sur les phases précédentes.
 
----
 
 ## 3.1 — Tables features
 
@@ -22,19 +23,16 @@ Statut : TODO
 
 ### Sous-tâches
 
-- feature_sources
-- audio_features
-- raw payloads
+- Créer `feature_sources`.
+- Créer `audio_features`.
+- Créer `audio_feature_raw_payloads`.
+- Ajouter index track/source/is_active.
+- Ajouter source `reccobeats`.
 
 ### Critères d’acceptation
 
-- DB prête
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- DB prête pour features multi-source.
+- Migration non destructive.
 
 ## 3.2 — Client ReccoBeats
 
@@ -42,19 +40,17 @@ Statut : TODO
 
 ### Sous-tâches
 
-- timeouts
-- rate limit
-- retry
+- Client HTTP isolé.
+- Timeouts.
+- Retry.
+- Rate limit.
+- Erreurs normalisées.
+- Tests mocks.
 
 ### Critères d’acceptation
 
-- mocks OK
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Aucun appel réseau réel dans tests.
+- Rate limit géré.
 
 ## 3.3 — Normalisation
 
@@ -62,19 +58,15 @@ Statut : TODO
 
 ### Sous-tâches
 
-- mapping
-- confidence
-- raw
+- Mapper les champs ReccoBeats.
+- Stocker raw payload.
+- Calculer confidence.
+- Upsert idempotent.
+- Marquer `source_version`.
 
 ### Critères d’acceptation
 
-- features stockées
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Features stockées et relançables.
 
 ## 3.4 — Jobs enrichissement
 
@@ -82,19 +74,17 @@ Statut : TODO
 
 ### Sous-tâches
 
-- batch
-- progression
-- retry
+- Endpoint `/features/reccobeats/enrich`.
+- Batch configurable.
+- Progression.
+- Retry failed.
+- Only missing.
+- Force refresh.
 
 ### Critères d’acceptation
 
-- relançable
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Job relançable.
+- UI peut poller statut.
 
 ## 3.5 — Coverage
 
@@ -102,18 +92,14 @@ Statut : TODO
 
 ### Sous-tâches
 
-- compteurs
-- features
+- Endpoint `/features/coverage`.
+- Coverage globale.
+- Coverage par field.
+- Tracks failed/missing.
 
 ### Critères d’acceptation
 
-- endpoint OK
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Endpoint exploitable UI.
 
 ## 3.6 — UI enrichment
 
@@ -121,16 +107,13 @@ Statut : TODO
 
 ### Sous-tâches
 
-- lancer
-- progression
-- failed
+- Écran Enrichissement.
+- Bouton lancer ReccoBeats.
+- Progression job.
+- Coverage cards.
+- Liste failed.
+- Relance failed.
 
 ### Critères d’acceptation
 
-- UI OK
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- UI claire et non bloquante.

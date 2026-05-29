@@ -1,10 +1,11 @@
-# Phase 0 — Cadrage technique
+# Phase 0 — Cadrage technique et socle exécutable
 
-Tags: #backlog #phase-0 #spotify-curator
+Tags: #backlog #phase-0 #bootstrap
 
 ## But
 
-Créer un socle projet exécutable, reproductible et observable.
+Créer un socle projet local, reproductible, testable et observable.
+
 
 ## Definition of Done phase
 
@@ -13,216 +14,138 @@ Créer un socle projet exécutable, reproductible et observable.
 - Les commandes de validation sont documentées.
 - La documentation est à jour.
 - Aucun secret, cache, modèle lourd ou fichier audio n’est commité.
+- Aucune régression sur les phases précédentes.
 
----
 
 ## 0.1 — Initialiser le dépôt monorepo
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- Structure dossiers
-- README/AGENTS/docs/backlog
-- .gitignore
+- Créer structure `app/`, `core/`, `docker/`, `docs/`, `backlog/`.
+- Ajouter `.gitignore` complet.
+- Ajouter `.env.example` sans secret.
+- Ajouter README minimal.
+- Ajouter AGENTS.md.
 
 ### Critères d’acceptation
 
-- Structure conforme
-- Aucun secret/cache/audio
+- Structure conforme à `docs/02-repository-structure.md`.
+- Dossiers data/cache/models/logs/exports ignorés par Git.
 
 ### Tests minimum
 
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Vérifier `git status` sans fichiers sensibles.
 
-## 0.2 — Créer le core Python minimal
+## 0.2 — Créer core Python minimal
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- pyproject uv
-- FastAPI
-- /api/v1/health
-- settings
+- `pyproject.toml` avec uv.
+- FastAPI.
+- Route `/api/v1/health`.
+- Settings non sensibles.
+- Tests health.
 
 ### Critères d’acceptation
 
-- Health 200
-- pytest OK
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Health retourne 200.
+- Tests pytest OK.
 
 ## 0.3 — Dockeriser core-api
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- Dockerfile
-- compose
-- port 127.0.0.1:8765
-- volumes
+- Dockerfile core.
+- Compose dev.
+- Port bind `127.0.0.1:8765`.
+- Volumes data/cache/logs.
 
 ### Critères d’acceptation
 
-- compose up OK
-- pas 0.0.0.0
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- `docker compose up` démarre.
+- Jamais `0.0.0.0`.
 
 ## 0.4 — Initialiser SQLite
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- database layer
-- settings table
-- docker_runtime_checks
+- Database layer.
+- Table `settings`.
+- Table `docker_runtime_checks`.
+- DB dans `data/`.
 
 ### Critères d’acceptation
 
-- DB dans data
-- tests DB
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- DB créée dans volume.
+- Tests DB OK.
 
 ## 0.5 — Créer Tauri/Svelte vide
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- frontend
-- src-tauri
-- layout
-- settings placeholder
-
-### Critères d’acceptation
-
-- app démarre
-- écran visible
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Frontend Svelte.
+- Tauri config.
+- Layout minimal.
+- Écran paramètres placeholder.
 
 ## 0.6 — Connecter UI au core
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- client API
-- appel health
-- online/offline
-
-### Critères d’acceptation
-
-- statut visible
-- erreur lisible
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Client API frontend.
+- Appel `/health`.
+- Affichage online/offline.
 
 ## 0.7 — Diagnostics Docker
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- docker version
-- compose version
-- persist checks
-
-### Critères d’acceptation
-
-- API diagnostics
-- UI diagnostics
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Vérifier Docker version.
+- Vérifier Compose version.
+- API diagnostics.
+- UI diagnostics.
 
 ## 0.8 — Smoke Essentia low-level
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- pull image
-- WAV test
-- streaming_extractor_music
-
-### Critères d’acceptation
-
-- smoke exécutable
-- résultat loggé
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Pull image Essentia.
+- Générer WAV court de test.
+- Exécuter streaming extractor.
+- Logger résultat.
 
 ## 0.9 — Tests et qualité
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
-- pytest
-- ruff
-- commandes
-
-### Critères d’acceptation
-
-- tests/lint documentés
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- pytest.
+- ruff.
+- commandes documentées.
 
 ## 0.10 — Revue phase 0
 
-Statut : TODO
+Statut : DONE
 
-### Sous-tâches
+### Livrables
 
-- phase review
-- limites
-- docs
-
-### Critères d’acceptation
-
-- livrables validés
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Socle exécutable.
+- Documentation initiale.
+- Backlog phase 1 prêt.

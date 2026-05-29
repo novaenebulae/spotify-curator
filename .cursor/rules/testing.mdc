@@ -1,0 +1,6 @@
+---
+description: Testing rules
+alwaysApply: true
+---
+
+A task is not DONE without tests, documentation updates and non-regression checks. External APIs must be mocked in tests. Use temporary SQLite databases for integration tests.

@@ -4,7 +4,8 @@ Tags: #backlog #phase-2 #spotify-curator
 
 ## But
 
-Explorer et gérer les titres.
+Explorer, filtrer, auditer et préparer des actions sur les titres importés.
+
 
 ## Definition of Done phase
 
@@ -13,8 +14,8 @@ Explorer et gérer les titres.
 - Les commandes de validation sont documentées.
 - La documentation est à jour.
 - Aucun secret, cache, modèle lourd ou fichier audio n’est commité.
+- Aucune régression sur les phases précédentes.
 
----
 
 ## 2.1 — API recherche tracks
 
@@ -22,38 +23,47 @@ Statut : TODO
 
 ### Sous-tâches
 
-- filtres
-- pagination
+- Implémenter `GET /api/v1/tracks`.
+- Ajouter filtres cumulables : q, artist, album, isrc, liked, playlist_id, disponibilité, snapshot status, durée, date.
+- Ajouter pagination.
+- Ajouter tri stable.
+- Ajouter index DB.
+- Éviter doublons dus aux jointures.
 
 ### Critères d’acceptation
 
-- filtres OK
+- Recherche sur 5000+ titres acceptable.
+- Résultats paginés.
+- Tests filtres OK.
 
 ### Tests minimum
 
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- q titre/artiste.
+- filtre playlist.
+- filtre ISRC.
+- tri asc/desc.
+- pagination.
 
-## 2.2 — Table UI
+## 2.2 — Table UI bibliothèque
 
 Statut : TODO
 
 ### Sous-tâches
 
-- colonnes
-- tri
-- sélection
+- Créer écran Gestion bibliothèque.
+- Table tracks.
+- Colonnes principales.
+- Filtres visibles.
+- Tri.
+- Pagination.
+- Sélection multiple.
+- États loading/empty/error/offline.
 
 ### Critères d’acceptation
 
-- table utilisable
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Table utilisable avec les données importées.
+- Sélection fiable.
+- Erreurs lisibles.
 
 ## 2.3 — Doublons
 
@@ -61,19 +71,17 @@ Statut : TODO
 
 ### Sous-tâches
 
-- ISRC
-- titre/artiste
-- durée
+- Détection ISRC.
+- Détection spotify_track_id contextuel.
+- Détection titre/artiste normalisés.
+- Détection durée proche ±3s.
+- Endpoint `/library/duplicates`.
+- Vue groupes doublons.
 
 ### Critères d’acceptation
 
-- doublons listés
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Doublons listés sans suppression automatique.
+- Confiance et raison affichées.
 
 ## 2.4 — Absents/disparus
 
@@ -81,18 +89,14 @@ Statut : TODO
 
 ### Sous-tâches
 
-- snapshots
-- status
+- Exploiter diffs snapshots.
+- Endpoint `/library/missing-tracks`.
+- Résumé par statut.
+- Vue UI dédiée ou filtre.
 
 ### Critères d’acceptation
 
-- absents listés
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Statuts distincts : removed, missing, unavailable, null, relinked.
 
 ## 2.5 — Actions dry-run
 
@@ -100,19 +104,16 @@ Statut : TODO
 
 ### Sous-tâches
 
-- unlike
-- restore
-- backup playlist
+- Endpoint `/library/actions/dry-run`.
+- Actions unlike, restore, create_backup_playlist.
+- Vérifier scopes write mais ne pas appliquer.
+- Modale UI confirmation dry-run.
+- Warnings.
 
 ### Critères d’acceptation
 
-- dry-run obligatoire
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Aucune écriture Spotify réelle par défaut.
+- Dry-run historisé.
 
 ## 2.6 — Historique actions
 
@@ -120,15 +121,18 @@ Statut : TODO
 
 ### Sous-tâches
 
-- library_actions
-- result_json
+- Table `library_actions`.
+- Endpoints list/detail.
+- UI historique.
+- Détail résultats.
 
 ### Critères d’acceptation
 
-- historique visible
+- Chaque dry-run est traçable.
 
-### Tests minimum
+## Documentation à mettre à jour
 
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- `docs/05-domain-model.md`.
+- `docs/06-api-contract.md`.
+- `docs/09-ui-specification.md`.
+- `docs/10-testing-strategy.md`.

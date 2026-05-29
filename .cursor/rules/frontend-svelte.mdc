@@ -1,0 +1,6 @@
+---
+description: Frontend Svelte/Tauri rules
+alwaysApply: true
+---
+
+The frontend must call the local API only. Do not store Spotify tokens in frontend state/localStorage. Every screen must support loading, empty, error and offline core states. Dangerous actions require confirmation and dry-run previews.

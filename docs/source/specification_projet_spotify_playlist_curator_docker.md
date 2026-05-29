@@ -2801,3 +2801,4 @@ L’architecture finale doit permettre de développer sur Windows sans dépendre
 
 
 Le projet doit rester suffisamment généraliste pour fonctionner sur une bibliothèque variée. Les usages électroniques, EBM, industrial ou IDM restent importants, mais ils ne doivent pas déterminer toute la logique de scoring, de clustering ou de génération. Les profils doivent pouvoir s’adapter aussi bien à des morceaux vocaux, acoustiques, ambient, pop, rock, rap, expérimentaux ou instrumentaux.
+

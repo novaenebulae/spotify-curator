@@ -8,6 +8,8 @@ cache/*
 !cache/.gitkeep
 logs/*
 !logs/.gitkeep
+exports/*
+!exports/.gitkeep
 models/*
 !models/.gitkeep
 

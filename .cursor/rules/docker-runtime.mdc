@@ -1,0 +1,6 @@
+---
+description: Docker runtime rules
+alwaysApply: true
+---
+
+The Python core runs in Docker. Tauri/Svelte runs on the host. Volumes data/cache/models/logs/exports are local and ignored by Git. Services for audio and advanced analysis should be profile-gated and not required for early phases.

@@ -1,95 +1,115 @@
-# AGENTS.md — Instructions permanentes pour Cursor
+# AGENTS — Contexte permanent Cursor
 
-Tags: #cursor #agents #spotify-curator #instructions
+Tags: #cursor #agents #instructions #spotify-curator
 
-## Rôle
+## Rôle de Cursor dans ce projet
 
-Tu développes `Spotify Library Curator & Playlist Engine`, une application desktop locale de sauvegarde, exploration, analyse et génération de playlists Spotify.
+Cursor doit agir comme un développeur assistant incrémental. Il ne doit pas réinterpréter l’architecture à chaque phase. Il doit respecter les décisions déjà validées et travailler par petites tâches testables.
 
-Tu dois travailler comme un assistant de développement senior : incrémental, prudent, explicite, testable.
+## Produit
 
-## Documents à lire en priorité
+Application desktop locale permettant de sauvegarder, explorer, enrichir, analyser et trier automatiquement une bibliothèque Spotify personnelle.
 
-1. `docs/00-project-brief.md`
-2. `docs/01-architecture.md`
-3. `docs/02-repository-structure.md`
-4. `docs/03-development-workflow.md`
-5. `docs/12-decisions.md`
-6. Le backlog de la phase en cours dans `backlog/`
-7. Les règles applicables dans `.cursor/rules/`
+Objectifs principaux :
 
-La spécification complète d’origine est conservée dans :
+- sauvegarder localement les titres likés et playlists Spotify ;
+- créer des snapshots historiques ;
+- détecter les titres supprimés, disparus, indisponibles ou remplacés ;
+- gérer les titres en masse avec dry-run obligatoire ;
+- enrichir les tracks avec ReccoBeats et analyses audio locales ;
+- générer des playlists configurables ;
+- synchroniser vers Spotify uniquement après preview/dry-run ;
+- conserver une architecture locale, reproductible, non hébergée.
 
-```text
-docs/source/specification_projet_spotify_playlist_curator_docker.md
-```
-
-## Décisions non négociables
-
-- Application desktop standalone.
-- UI Tauri + Svelte/SvelteKit côté Windows.
-- Core Python dans Docker.
-- API locale exposée uniquement sur `127.0.0.1`.
-- SQLite comme base locale persistante.
-- Docker Desktop + WSL2 comme cible Windows.
-- Docker Compose pour orchestrer core et workers.
-- Essentia via Docker, pas en installation native Windows.
-- Analyse audio par segments temporaires.
-- Segment audio <= 30 secondes.
-- Pas de téléchargement complet standard des morceaux.
-- Pas de stockage audio permanent par défaut.
-- Toute écriture Spotify sensible exige dry-run + confirmation.
-- Les usages DJ/mix sont optionnels, pas centraux.
-- Le projet doit rester généraliste pour tous styles musicaux.
-
-## Interdits
-
-Ne pas :
-
-- remplacer Tauri/Svelte par Electron, React ou Angular ;
-- remplacer SQLite par PostgreSQL pour le MVP ;
-- introduire Django, Celery, RabbitMQ ou backend hébergé ;
-- exposer l’API sur `0.0.0.0` ;
-- coder des chemins Windows absolus dans le core ;
-- stocker des secrets dans le repo ;
-- télécharger ou conserver des morceaux complets par défaut ;
-- implémenter plusieurs phases en une seule passe ;
-- ajouter des dépendances lourdes sans justification ;
-- modifier une décision structurante sans mettre à jour `docs/12-decisions.md`.
-
-## Méthode obligatoire
-
-Pour chaque tâche :
-
-1. Identifier la phase.
-2. Lire le backlog de la phase.
-3. Proposer un plan court.
-4. Lister les fichiers à modifier.
-5. Implémenter uniquement le périmètre demandé.
-6. Ajouter ou adapter les tests.
-7. Donner les commandes de vérification.
-8. Signaler limites et risques restants.
-9. Mettre à jour la documentation si nécessaire.
-
-## Statuts backlog
+## Architecture validée
 
 ```text
-TODO
-IN_PROGRESS
-BLOCKED
-REVIEW
-DONE
-DEFERRED
+Windows
+  └── Tauri / Svelte / TypeScript
+          ↓ HTTP localhost
+Docker Desktop + WSL2
+  └── Docker Compose
+          ├── core-api FastAPI / Python
+          ├── job-worker
+          ├── audio-downloader yt-dlp + FFmpeg
+          ├── essentia-lowlevel
+          ├── essentia-tensorflow
+          └── clustering-worker
 ```
 
-## Definition of Done globale
+## Contraintes fortes
 
-Une tâche est terminée seulement si :
+- Tauri/Svelte reste hors Docker.
+- Le core Python tourne dans Docker.
+- API locale uniquement sur `127.0.0.1:8765`.
+- SQLite comme base locale.
+- Pas de PostgreSQL.
+- Pas de Django.
+- Pas de Celery/RabbitMQ.
+- Pas de backend hébergé.
+- Pas de multi-utilisateur.
+- Pas de stockage permanent d’audio par défaut.
+- Pas de morceau complet en analyse standard.
+- Segments audio temporaires de 30 secondes maximum.
+- Dry-run obligatoire avant toute modification Spotify.
 
-- le code est implémenté ;
-- les tests pertinents passent ;
-- les erreurs principales sont gérées ;
-- les commandes de validation sont documentées ;
-- la documentation est mise à jour si nécessaire ;
-- aucun secret, cache, modèle lourd ou fichier audio n’est commité ;
-- les critères d’acceptation sont remplis.
+## Stack validée
+
+- Tauri ;
+- Svelte/SvelteKit en SPA/static ;
+- TypeScript ;
+- Python ;
+- FastAPI ;
+- SQLAlchemy ou SQLModel ;
+- Alembic si migrations SQLAlchemy ;
+- SQLite ;
+- Docker Compose ;
+- uv ;
+- httpx ;
+- Pydantic ;
+- yt-dlp ;
+- FFmpeg ;
+- Essentia ;
+- librosa ;
+- scikit-learn ;
+- UMAP ;
+- HDBSCAN.
+
+## Méthode de travail obligatoire
+
+Pour chaque phase :
+
+1. lire la documentation projet ;
+2. lire le backlog de phase ;
+3. auditer l’existant ;
+4. proposer un plan ;
+5. attendre validation ;
+6. implémenter une tâche courte ;
+7. tester ;
+8. corriger ;
+9. documenter ;
+10. mettre à jour le backlog.
+
+## Interdictions
+
+Cursor ne doit pas :
+
+- ajouter une nouvelle technologie majeure sans justification ;
+- déplacer l’architecture vers une application web hébergée ;
+- remplacer SQLite par PostgreSQL ;
+- remplacer FastAPI par Django ;
+- télécharger des morceaux complets par défaut ;
+- commiter `data/`, `cache/`, `models/`, `logs/`, `exports/` sauf `.gitkeep` ;
+- stocker des tokens ou secrets dans le repo ;
+- appliquer une action Spotify sans dry-run et confirmation.
+
+## Qualité attendue
+
+- Code typé autant que possible.
+- Fonctions courtes.
+- Services métier séparés des routes API.
+- Tests unitaires et intégration pour chaque logique importante.
+- Erreurs API uniformes.
+- Jobs longs non bloquants.
+- Logs suffisants pour diagnostiquer.
+- Documentation mise à jour dans la même PR/tâche.

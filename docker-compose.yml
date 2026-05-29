@@ -1,0 +1,24 @@
+services:
+  core-api:
+    build:
+      context: .
+      dockerfile: docker/core/Dockerfile
+    ports:
+      - "127.0.0.1:8765:8765"
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/spotify_curator.sqlite}
+      - CACHE_DIR=${CACHE_DIR:-/app/cache}
+      - MODELS_DIR=${MODELS_DIR:-/app/models}
+      - LOGS_DIR=${LOGS_DIR:-/app/logs}
+      - SPOTIFY_CLIENT_ID=${SPOTIFY_CLIENT_ID}
+      - SPOTIFY_REDIRECT_URI=${SPOTIFY_REDIRECT_URI}
+      - SPOTIFY_SCOPES=${SPOTIFY_SCOPES}
+      - SPOTIFY_AUTH_STORAGE=${SPOTIFY_AUTH_STORAGE}
+      - EXPORT_DIR=${EXPORT_DIR:-/app/exports}
+    volumes:
+      - ./data:/app/data
+      - ./cache:/app/cache
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./exports:/app/exports
+

@@ -1,10 +1,11 @@
 # Phase 8 — Playlist engine avancé
 
-Tags: #backlog #phase-8 #spotify-curator
+Tags: #backlog #phase-8 #advanced-playlists
 
 ## But
 
-Améliorer musicalité et explications.
+Améliorer musicalité, ordre et explications du moteur de playlists.
+
 
 ## Definition of Done phase
 
@@ -13,8 +14,8 @@ Améliorer musicalité et explications.
 - Les commandes de validation sont documentées.
 - La documentation est à jour.
 - Aucun secret, cache, modèle lourd ou fichier audio n’est commité.
+- Aucune régression sur les phases précédentes.
 
----
 
 ## 8.1 — Seed tracks
 
@@ -22,18 +23,10 @@ Statut : TODO
 
 ### Sous-tâches
 
-- similarity
-- embeddings
-
-### Critères d’acceptation
-
-- seed OK
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Similarité embeddings.
+- Similarité features.
+- Même cluster.
+- Seed weights.
 
 ## 8.2 — Energy curves
 
@@ -41,18 +34,11 @@ Statut : TODO
 
 ### Sous-tâches
 
-- progressive
-- warmup_peak
-
-### Critères d’acceptation
-
-- ordering OK
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Progressive.
+- Warmup peak cooldown.
+- Calm to intense.
+- High energy start.
+- Tests ordering.
 
 ## 8.3 — Harmonic optionnel
 
@@ -60,18 +46,10 @@ Statut : TODO
 
 ### Sous-tâches
 
-- Camelot
-- compatibilité
-
-### Critères d’acceptation
-
-- option OK
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Camelot.
+- Compatibilité.
+- Pénalité incompatibilité.
+- Option désactivable.
 
 ## 8.4 — Discovery mode
 
@@ -79,18 +57,10 @@ Statut : TODO
 
 ### Sous-tâches
 
-- forgotten likes
-- recent
-
-### Critères d’acceptation
-
-- preset OK
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Forgotten likes.
+- Recently added.
+- Rarely playlisted.
+- Balance familiarity/discovery.
 
 ## 8.5 — Explications
 
@@ -98,15 +68,14 @@ Statut : TODO
 
 ### Sous-tâches
 
-- why selected
-- why excluded
+- Why selected.
+- Why excluded.
+- Score details UI.
+- Filter reasons.
+- Constraint reasons.
 
-### Critères d’acceptation
+## Critères phase
 
-- UI OK
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Les playlists sont plus musicales.
+- Chaque sélection est explicable.
+- Les presets avancés fonctionnent.

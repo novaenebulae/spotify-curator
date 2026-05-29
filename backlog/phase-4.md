@@ -1,10 +1,11 @@
-# Phase 4 — yt-dlp + analyse locale
+# Phase 4 — yt-dlp + analyse locale low-level
 
-Tags: #backlog #phase-4 #spotify-curator
+Tags: #backlog #phase-4 #audio #yt-dlp #essentia
 
 ## But
 
-Analyser des segments temporaires.
+Analyser des segments audio temporaires pour compléter les features locales low-level.
+
 
 ## Definition of Done phase
 
@@ -13,8 +14,8 @@ Analyser des segments temporaires.
 - Les commandes de validation sont documentées.
 - La documentation est à jour.
 - Aucun secret, cache, modèle lourd ou fichier audio n’est commité.
+- Aucune régression sur les phases précédentes.
 
----
 
 ## 4.1 — AudioProvider
 
@@ -22,19 +23,15 @@ Statut : TODO
 
 ### Sous-tâches
 
-- resolve
-- get_segments
-- cleanup
+- Interface `AudioProvider`.
+- `resolve(track)`.
+- `get_segments(track, strategy)`.
+- `cleanup(job)`.
+- `TestAudioProvider`.
 
 ### Critères d’acceptation
 
-- interface testée
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Interface testée sans yt-dlp réel.
 
 ## 4.2 — Stratégie segments
 
@@ -42,19 +39,16 @@ Statut : TODO
 
 ### Sous-tâches
 
-- A/B/C
-- <=30s
-- titres courts
+- A 10–25 %.
+- B 45–60 %.
+- C 70–85 %.
+- Limite 30s.
+- Gestion titres courts.
+- Tests limites.
 
 ### Critères d’acceptation
 
-- tests limites
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Aucun segment > 30s.
 
 ## 4.3 — YtDlpSegmentProvider
 
@@ -62,19 +56,17 @@ Statut : TODO
 
 ### Sous-tâches
 
-- download_ranges
-- noplaylist
-- FFmpeg
+- Résolution source.
+- Matching titre/artiste/durée.
+- `download_ranges`.
+- `noplaylist`.
+- FFmpeg WAV.
+- Logs.
 
 ### Critères d’acceptation
 
-- segments uniquement
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Segments uniquement.
+- Pas de playlist entière.
 
 ## 4.4 — audio_download_jobs
 
@@ -82,19 +74,11 @@ Statut : TODO
 
 ### Sous-tâches
 
-- statuts
-- attempts
-- errors
-
-### Critères d’acceptation
-
-- persisté
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Persister jobs download.
+- Statuts.
+- Attempts.
+- Errors.
+- Rate limits.
 
 ## 4.5 — track_segments
 
@@ -102,19 +86,11 @@ Statut : TODO
 
 ### Sous-tâches
 
-- start/end
-- hash
-- deleted_at
-
-### Critères d’acceptation
-
-- contrainte <=30
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Stocker start/end/duration.
+- Hash fichier.
+- Source hash.
+- deleted_at.
+- Contrainte DB <=30.
 
 ## 4.6 — Essentia low-level
 
@@ -122,19 +98,15 @@ Statut : TODO
 
 ### Sous-tâches
 
-- service Docker
-- profiles
-- JSON
+- Service Docker/profile.
+- Command wrapper.
+- Profiles YAML.
+- Smoke test.
+- JSON output.
 
 ### Critères d’acceptation
 
-- smoke OK
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Essentia traite WAV court.
 
 ## 4.7 — Parser JSON
 
@@ -142,20 +114,11 @@ Statut : TODO
 
 ### Sous-tâches
 
-- BPM
-- key
-- loudness
-- MFCC
-
-### Critères d’acceptation
-
-- features extraites
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Parser BPM.
+- Parser key.
+- Parser loudness.
+- Parser MFCC/HPCP/spectral.
+- Tests fixtures JSON.
 
 ## 4.8 — Merge features
 
@@ -163,18 +126,10 @@ Statut : TODO
 
 ### Sous-tâches
 
-- priorités
-- confidence
-
-### Critères d’acceptation
-
-- merge testé
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Priorités sources.
+- Confidence.
+- Multi-segments aggregation.
+- Recompute active features.
 
 ## 4.9 — Cleanup
 
@@ -182,16 +137,11 @@ Statut : TODO
 
 ### Sous-tâches
 
-- delete
-- deleted_at
-- logs
+- Delete audio.
+- deleted_at.
+- Logs cleanup.
+- UI nettoyage.
 
 ### Critères d’acceptation
 
-- pas d’audio résiduel
-
-### Tests minimum
-
-- Tests adaptés à la tâche.
-- Commande de validation documentée.
-- Pas de régression sur les tâches précédentes.
+- Pas d’audio résiduel après job normal.
