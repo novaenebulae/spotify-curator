@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import AuthStatusCard from '$lib/components/import/AuthStatusCard.svelte';
-	import ExportLinks from '$lib/components/import/ExportLinks.svelte';
+	import ExportPanel from '$lib/components/import/ExportPanel.svelte';
 	import JobProgress from '$lib/components/import/JobProgress.svelte';
 	import LastRunSummary from '$lib/components/import/LastRunSummary.svelte';
 	import SnapshotPanel from '$lib/components/import/SnapshotPanel.svelte';
@@ -218,7 +218,7 @@
 		onCompare={compareSnapshots}
 	/>
 
-	<ExportLinks
+	<ExportPanel
 		busy={busy}
 		{fromSnapshotId}
 		{toSnapshotId}

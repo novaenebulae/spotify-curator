@@ -67,6 +67,32 @@ Garantir que chaque phase reste fonctionnelle sans casser les phases précédent
 - `TRACKS_PERF_LOG=1` : logs segments + en-têtes `X-Tracks-Perf-*` ;
 - migration `0003_perf_tracks` (index tri liked / artists).
 
+### Phase 2 UI polish
+
+- `tests/test_album_cover_extract.py` : sélection image 64–300 px ;
+- `tests/test_backfill_album_covers.py` : script backfill sur SQLite temporaire ;
+- `tests/test_library_duplicates.py` : dédup affichage, `is_repeated_occurrence`, covers ;
+- `tests/test_library_summary.py` : `GET /library/summary` ;
+- `tests/test_tracks_search.py` : `album.cover_image_url` ;
+- migration head `0004_album_covers` dans `tests/test_migrations.py` ;
+- import : cover appliquée dans `track_upsert` (régression `test_import_liked*.py`).
+
+Checklist UI manuelle :
+
+- `/` : cartes statut + liens rapides ;
+- `/library` : covers lazy-load, pagination fluide ;
+- `/library` onglet Doublons : groupes dédupliqués, bandeau repeated occurrence ;
+- `/import` : ExportPanel ;
+- `/settings` : sections cartes, diagnostics repliés.
+
+Backfill après deploy :
+
+```bash
+uv run --project core python core/scripts/backfill_album_covers.py --dry-run
+# DB Docker volume:
+docker compose exec core-api uv run python scripts/backfill_album_covers.py --dry-run
+```
+
 Validation :
 
 ```bash

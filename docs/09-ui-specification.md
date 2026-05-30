@@ -11,37 +11,39 @@ Tags: #ui #svelte #tauri #screens
 - Toute écriture Spotify nécessite dry-run préalable.
 - Les vues complexes doivent fonctionner avec 5000+ tracks.
 
-## Layout global
+## Layout global (phase 2 UI polish)
 
-Éléments :
+- barre de navigation top (`.app-shell`) : Accueil, Import, Library, Settings ;
+- zone contenu `.layout-main` (max-width ~1200px sur Library) ;
+- tokens CSS dans `app.css` (`--color-*`, `--space-*`, `.card`, `.badge`, `.btn`, `.table-sticky`) ;
+- pas de sidebar lourde en phase 2.
 
-- sidebar navigation ;
-- header statut core/Spotify ;
-- zone contenu ;
-- toast/alert erreurs ;
-- panneau job progress global optionnel.
+Composants communs :
 
-## Écran Settings (phase 1.5)
+- `AlbumCover` : lazy-load, fallback, lien Spotify optionnel ;
+- `StatusBadge` : liked, unavailable, duplicate, missing, neutral.
 
-- runtime config (`GET /runtime/config`) ;
-- bouton « Run Docker checks » + liste checks persistés ;
-- diagnostics legacy (`GET /diagnostics`) ;
-- états loading / error / offline.
+## Écran Settings (phase 2 UI)
 
-## Écran 1 — Accueil
+Sections en cartes :
 
-Objectif : afficher état général.
+1. Core API — badge statut, URL, version, Refresh ;
+2. Spotify — auth, scopes, expiry ;
+3. Storage — `data_dir`, `export_dir`, `cache_dir` ;
+4. Docker runtime — Run checks + tableau nom / OK / message ;
+5. Developer diagnostics — `<details>` replié avec JSON `diagnostics` + `runtime/config`.
 
-Contenu :
+États : loading, error, offline core.
 
-- statut core API ;
-- statut Docker ;
-- statut Spotify ;
-- nombre tracks importées ;
-- dernier snapshot ;
-- coverage features ;
-- derniers jobs ;
-- raccourcis vers Import, Bibliothèque, Enrichissement.
+## Écran 1 — Accueil (`/`)
+
+Objectif : tableau de bord local.
+
+Contenu implémenté :
+
+- cartes statut (Core health, Spotify auth, tracks total, playlists total, dernier snapshot via `GET /library/summary`) ;
+- actions rapides : Open Library, Import Library, Settings ;
+- message « next steps » si `tracks_total === 0`.
 
 ## Écran 2 — Connexion Spotify
 
@@ -76,12 +78,13 @@ Fonctions :
 - exporter liked/playlists/snapshot/diff ;
 - afficher progression jobs.
 
-UI minimale :
+UI :
 
 - cartes de résumé ;
 - boutons d’action ;
 - table snapshots ;
 - panneau diff ;
+- **`ExportPanel`** : sélecteur cible (liked, playlists, snapshot, diff) + format (csv/json) + un bouton Export ;
 - état erreurs.
 
 ## Écran 4 — Gestion bibliothèque (phase 2)
@@ -106,21 +109,20 @@ Limites phase 2 :
 
 Explorer les titres importés, détecter doublons/absents et préparer des actions dry-run.
 
-### Table tracks
+### Table tracks (`LibraryTable`)
 
-Colonnes minimales :
+Colonnes :
 
 - sélection ;
-- titre ;
-- artistes ;
-- album ;
+- cover album (thumbnail) ;
+- track (titre lien `external_url`, artistes, album en muted) ;
 - durée ;
-- date ajout likes ;
-- playlists ;
+- liked date ;
+- playlist count ;
 - ISRC ;
-- disponibilité ;
-- doublon ;
-- actions.
+- badges disponibilité / liked / duplicate (`StatusBadge`).
+
+`thead` sticky ; stale-while-revalidate et `AbortController` conservés (phase 2.5).
 
 ### Filtres
 
@@ -146,15 +148,12 @@ Colonnes minimales :
 - compteur sélection ;
 - actions sur sélection.
 
-### Doublons
+### Doublons (`DuplicateGroupCard`)
 
-Vue :
-
-- groupes de doublons ;
-- raison ;
-- confiance ;
-- tracks du groupe ;
-- bouton filtrer ces tracks dans table.
+- en-tête : `reason_label`, ISRC, `occurrence_count · unique_track_count · confidence` ;
+- bandeau si `is_repeated_occurrence` ;
+- une carte par track unique (cover, métadonnées, lien Spotify) ;
+- `contexts[]` playlists si présents.
 
 ### Absents/disparus
 

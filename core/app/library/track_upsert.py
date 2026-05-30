@@ -16,6 +16,7 @@ from app.database.models_library import (
     Track,
     TrackArtist,
 )
+from app.library.album_cover import apply_cover_to_album, extract_cover_from_images
 from app.library.normalize import normalize_text
 from app.spotify.market_status import derive_market_status
 
@@ -53,6 +54,7 @@ def upsert_track_from_spotify_json(
     spotify_album_id = album_json.get("id")
     if spotify_album_id:
         album_name = album_json.get("name") or ""
+        cover = extract_cover_from_images(album_json.get("images"))
         existing_sp_album = session.get(SpotifyAlbum, spotify_album_id)
         if existing_sp_album is None:
             album = Album(
@@ -63,6 +65,7 @@ def upsert_track_from_spotify_json(
                 created_at=now,
                 updated_at=now,
             )
+            apply_cover_to_album(album, cover)
             session.add(album)
             session.flush()
             session.add(
@@ -82,6 +85,7 @@ def upsert_track_from_spotify_json(
                 album_row.release_date = album_json.get("release_date")
                 album_row.raw_json = json.dumps(album_json)
                 album_row.updated_at = now
+                apply_cover_to_album(album_row, cover)
             album_id_fk = existing_sp_album.album_id
 
     existing_sp_track = session.get(SpotifyTrack, spotify_track_id)

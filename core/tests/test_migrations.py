@@ -42,7 +42,7 @@ def test_migrations_upgrade_head_on_empty_db(tmp_path, monkeypatch) -> None:
     with engine.connect() as conn:
         row = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
     assert row is not None
-    assert row[0] == "0003_perf_tracks"
+    assert row[0] == "0004_album_covers"
 
     assert "library_actions" in tables
     sp_cols = {c["name"] for c in inspector.get_columns("spotify_tracks")}
@@ -51,3 +51,5 @@ def test_migrations_upgrade_head_on_empty_db(tmp_path, monkeypatch) -> None:
     assert "ix_external_ids_type_value" in indexes
     liked_indexes = {idx["name"] for idx in inspector.get_indexes("liked_tracks")}
     assert "ix_liked_tracks_added_at" in liked_indexes
+    album_cols = {c["name"] for c in inspector.get_columns("albums")}
+    assert "cover_image_url" in album_cols

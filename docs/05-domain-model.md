@@ -81,13 +81,17 @@ La base SQLite est la source locale de vérité. Elle doit permettre :
 | Champ | Type | Notes |
 |---|---|---|
 | id | PK | |
-| canonical_name | text | |
+| name | text | titre canonique (`canonical_name` doc historique) |
 | normalized_name | text indexed | |
 | release_date | text nullable | Spotify peut fournir année ou date complète |
-| release_date_precision | text nullable | year/month/day |
-| album_type | text nullable | album/single/compilation |
+| raw_json | text nullable | payload album Spotify (import) |
+| cover_image_url | varchar(512) nullable | URL HTTPS Spotify (thumbnail UI), migration `0004_album_covers` |
+| cover_image_width | int nullable | largeur image choisie (64–300 px préféré) |
+| cover_image_height | int nullable | |
 | created_at | datetime | |
 | updated_at | datetime | |
+
+**Covers** : extraites à l’import depuis `album.images` (`app/library/album_cover.py`) ; backfill albums existants via `core/scripts/backfill_album_covers.py`. Aucun binaire stocké localement.
 
 ### tracks
 
@@ -133,10 +137,9 @@ Contrainte unique : `(track_id, artist_id, position)`.
 | album_id | FK albums | |
 | spotify_album_id | text unique indexed | |
 | spotify_uri | text | |
-| href | text nullable | |
-| external_url | text nullable | |
-| images_json | text nullable | |
 | raw_json | text | |
+
+**Note** : `images_json` n’est pas implémenté ; les URLs cover sont sur `albums.cover_*`.
 | created_at | datetime | |
 | updated_at | datetime | |
 

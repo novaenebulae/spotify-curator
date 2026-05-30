@@ -17,6 +17,9 @@ class TrackAlbumOut(BaseModel):
     spotify_album_id: str
     name: str
     release_date: str | None = None
+    cover_image_url: str | None = None
+    cover_image_width: int | None = None
+    cover_image_height: int | None = None
 
 
 class TrackPlaylistOut(BaseModel):

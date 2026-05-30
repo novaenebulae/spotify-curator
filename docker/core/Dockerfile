@@ -11,6 +11,7 @@ RUN pip install --no-cache-dir uv \
     && uv sync --frozen
 
 COPY core/app /app/app
+COPY core/scripts /app/scripts
 COPY core/alembic /app/alembic
 COPY core/alembic.ini /app/alembic.ini
 

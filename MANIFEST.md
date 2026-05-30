@@ -14,6 +14,7 @@
 - `backlog/phase-1.md`
 - `backlog/phase-1.5.md`
 - `backlog/phase-2.md`
+- `backlog/phase-2-ui-polish.md`
 - `backlog/phase-3.md`
 - `backlog/phase-4.md`
 - `backlog/phase-5.md`

@@ -381,7 +381,16 @@ Réponse :
       "title": "Track title",
       "artists": [{ "artist_id": 1, "spotify_artist_id": "...", "name": "Artist" }],
       "artist_names": ["Artist"],
-      "album": { "album_id": 1, "spotify_album_id": "...", "name": "Album" },
+      "album": {
+        "album_id": 1,
+        "spotify_album_id": "...",
+        "name": "Album",
+        "cover_image_url": "https://i.scdn.co/image/...",
+        "cover_image_width": 64,
+        "cover_image_height": 64
+      },
+      "external_url": "https://open.spotify.com/track/...",
+      "spotify_uri": "spotify:track:...",
       "duration_ms": 240000,
       "isrc": "...",
       "liked": true,
@@ -413,13 +422,33 @@ Query params :
 
 Réponse : `groups[]`, `pagination` (`total_groups`), `summary`.
 
+Chaque groupe inclut : `reason`, `reason_label` (libellé humain), `occurrence_count`, `unique_track_count`, `is_repeated_occurrence`, `confidence`, `isrc` (si stratégie ISRC). Les `tracks[]` sont dédupliqués pour l’affichage (par `spotify_track_id`, puis empreinte titre/artiste/album/durée) avec `cover_image_url`, `external_url`, `spotify_uri`, `occurrence_count`, `contexts[]` (playlists, optionnel).
+
+## Phase 2 UI — Résumé bibliothèque
+
+### `GET /library/summary`
+
+Réponse :
+
+```json
+{
+  "tracks_total": 5000,
+  "playlists_total": 120,
+  "albums_total": 4800,
+  "latest_snapshot": { "id": "...", "created_at": "..." },
+  "spotify_connected": true
+}
+```
+
+Utilisé par l’écran Accueil (`/`) pour les cartes statut sans multiplier les appels.
+
 ## Phase 2 — Absents/disparus
 
 ### `GET /library/missing-tracks`
 
 Query params : `snapshot_id`, `from_snapshot_id`, `to_snapshot_id`, `status`, `page`, `page_size`.
 
-Réponse : `items[]`, `summary` par statut, `pagination`.
+Réponse : `items[]` avec `album_name`, `cover_image_url` (si album lié), `summary` par statut, `pagination`.
 
 ## Phase 2 — Actions bibliothèque
 

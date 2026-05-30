@@ -25,6 +25,7 @@ def test_search_q_by_title(tmp_path, monkeypatch) -> None:
     data = res.json()
     assert data["pagination"]["total"] == 1
     assert data["items"][0]["title"] == "Track One"
+    assert data["items"][0]["album"]["cover_image_url"] == "https://i.scdn.co/image/alpha"
 
 
 def test_search_q_by_artist(tmp_path, monkeypatch) -> None:

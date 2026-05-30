@@ -10,7 +10,8 @@ from sqlalchemy import inspect, text
 from app.database.engine import get_engine, reset_engine
 
 _PHASE1_HEAD_REVISION = "0001_initial"
-_HEAD_REVISION = "0003_perf_tracks"
+_HEAD_REVISION = "0004_album_covers"
+_PHASE3_REVISION = "0003_perf_tracks"
 _PHASE2_REVISION = "0002_phase2_library"
 _LEGACY_REVISIONS = frozenset(
     {
@@ -98,11 +99,19 @@ def _has_phase3_schema(engine) -> bool:
     return "ix_liked_tracks_added_at" in liked_indexes
 
 
+def _has_phase4_schema(engine) -> bool:
+    inspector = inspect(engine)
+    album_cols = {c["name"] for c in inspector.get_columns("albums")}
+    return "cover_image_url" in album_cols
+
+
 def _stamp_target_for_existing_schema(engine) -> str | None:
     if not _has_initial_schema(engine):
         return None
-    if _has_phase3_schema(engine):
+    if _has_phase4_schema(engine):
         return _HEAD_REVISION
+    if _has_phase3_schema(engine):
+        return _PHASE3_REVISION
     if _has_phase2_schema(engine):
         return _PHASE2_REVISION
     return _PHASE1_HEAD_REVISION
@@ -111,7 +120,7 @@ def _stamp_target_for_existing_schema(engine) -> str | None:
 def _reconcile_legacy_revision(cfg: Config, engine) -> str | None:
     """Stamp head when DB schema matches but alembic revision is obsolete."""
     revision = _current_revision(engine)
-    if revision in (_PHASE1_HEAD_REVISION, _PHASE2_REVISION, _HEAD_REVISION):
+    if revision in (_PHASE1_HEAD_REVISION, _PHASE2_REVISION, _PHASE3_REVISION, _HEAD_REVISION):
         return revision
     if revision not in _LEGACY_REVISIONS:
         return revision

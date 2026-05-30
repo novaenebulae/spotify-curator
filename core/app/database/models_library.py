@@ -48,6 +48,9 @@ class Album(Base):
         String(500), nullable=False, default="", index=True
     )
     release_date: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    cover_image_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    cover_image_width: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cover_image_height: Mapped[int | None] = mapped_column(Integer, nullable=True)
     raw_json: Mapped[str] = mapped_column(String(100000), nullable=False, default="{}")
     created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)

@@ -10,11 +10,15 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<nav>
-	<a href="/" class:active={$page.url.pathname === '/'}>Home</a>
-	<a href="/import" class:active={$page.url.pathname.startsWith('/import')}>Import</a>
-	<a href="/library" class:active={$page.url.pathname.startsWith('/library')}>Library</a>
-	<a href="/settings" class:active={$page.url.pathname.startsWith('/settings')}>Settings</a>
-</nav>
-
-{@render children()}
+<div class="app-shell">
+	<nav class="app-nav">
+		<a href="/" class="app-nav-brand">Spotify Curator</a>
+		<a href="/" class:active={$page.url.pathname === '/'}>Home</a>
+		<a href="/import" class:active={$page.url.pathname.startsWith('/import')}>Import</a>
+		<a href="/library" class:active={$page.url.pathname.startsWith('/library')}>Library</a>
+		<a href="/settings" class:active={$page.url.pathname.startsWith('/settings')}>Settings</a>
+	</nav>
+	<div class="layout-main">
+		{@render children()}
+	</div>
+</div>

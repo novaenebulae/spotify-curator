@@ -7,11 +7,18 @@ from fastapi import APIRouter, Query
 from app.library.actions import LibraryActionsService
 from app.library.duplicates import DuplicateDetectionService
 from app.library.missing import MissingTracksService
+from app.library.summary import LibrarySummaryService
 
 router = APIRouter(prefix="/library", tags=["library"])
 _duplicates = DuplicateDetectionService()
 _missing = MissingTracksService()
 _actions = LibraryActionsService()
+_summary = LibrarySummaryService()
+
+
+@router.get("/summary")
+def library_summary() -> dict:
+    return _summary.get_summary()
 
 
 @router.get("/duplicates")

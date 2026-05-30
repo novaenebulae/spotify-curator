@@ -42,7 +42,16 @@ export type TrackItem = {
 	title: string;
 	normalized_title: string;
 	artist_names: string[];
-	album: { album_id: number; name: string; release_date?: string } | null;
+	album: {
+		album_id: number;
+		spotify_album_id?: string;
+		name: string;
+		release_date?: string;
+		cover_image_url?: string | null;
+		cover_image_width?: number | null;
+		cover_image_height?: number | null;
+	} | null;
+	external_url?: string | null;
 	duration_ms: number;
 	isrc: string | null;
 	liked: boolean;
@@ -101,18 +110,45 @@ export async function fetchTracks(
 	);
 }
 
+export type DuplicateTrack = {
+	track_id: number;
+	spotify_track_id?: string;
+	spotify_uri?: string;
+	title: string;
+	artist_names: string[];
+	album_name?: string | null;
+	duration_ms?: number;
+	isrc: string | null;
+	external_url?: string | null;
+	cover_image_url?: string | null;
+	occurrence_count?: number;
+	contexts?: { type: string; name: string; spotify_playlist_id?: string }[];
+};
+
 export type DuplicateGroup = {
 	group_id: string;
 	strategy: string;
 	confidence: number;
 	reason: string;
-	tracks: {
-		track_id: number;
-		title: string;
-		artist_names: string[];
-		isrc: string | null;
-	}[];
+	reason_label: string;
+	occurrence_count: number;
+	unique_track_count: number;
+	is_repeated_occurrence: boolean;
+	isrc: string | null;
+	tracks: DuplicateTrack[];
 };
+
+export type LibrarySummary = {
+	tracks_total: number;
+	playlists_total: number;
+	albums_total: number;
+	latest_snapshot: { id: string; created_at?: string } | null;
+	spotify_connected: boolean;
+};
+
+export async function fetchLibrarySummary(signal?: AbortSignal): Promise<LibrarySummary> {
+	return apiFetch<LibrarySummary>('/api/v1/library/summary', { signal });
+}
 
 export async function fetchDuplicates(
 	params: { strategy?: string; page?: number; page_size?: number },
@@ -131,6 +167,7 @@ export type MissingItem = {
 	title: string | null;
 	artist_names: string[];
 	album_name: string | null;
+	cover_image_url?: string | null;
 	status: string;
 	detected_at: string | null;
 };

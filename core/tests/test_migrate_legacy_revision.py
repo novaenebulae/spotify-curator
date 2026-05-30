@@ -40,4 +40,4 @@ def test_run_migrations_reconciles_obsolete_alembic_revision(tmp_path, monkeypat
     with engine.connect() as conn:
         row = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
     assert row is not None
-    assert row[0] == "0003_perf_tracks"
+    assert row[0] == "0004_album_covers"

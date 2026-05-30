@@ -459,6 +459,9 @@ class TracksRepository:
                 SpotifyAlbum.spotify_album_id,
                 Album.name,
                 Album.release_date,
+                Album.cover_image_url,
+                Album.cover_image_width,
+                Album.cover_image_height,
             )
             .join(SpotifyAlbum, SpotifyAlbum.album_id == Album.id)
             .where(Album.id.in_(album_ids))
@@ -469,6 +472,9 @@ class TracksRepository:
                 "spotify_album_id": row[1],
                 "name": row[2],
                 "release_date": row[3],
+                "cover_image_url": row[4],
+                "cover_image_width": row[5],
+                "cover_image_height": row[6],
             }
             for row in session.execute(stmt).all()
         }

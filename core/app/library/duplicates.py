@@ -16,6 +16,8 @@ from app.database.models_library import (
     Track,
     TrackArtist,
 )
+from app.database.models_playlists import Playlist, PlaylistTrack
+from app.library.duplicates_present import present_duplicate_group
 from app.observability.errors import ApiError
 
 DURATION_TOLERANCE_MS = 3000
@@ -73,6 +75,13 @@ class DuplicateDetectionService:
             total_groups = len(groups)
             offset = (page - 1) * page_size
             page_groups = groups[offset : offset + page_size]
+            all_sp_ids = {
+                t["spotify_track_id"]
+                for g in page_groups
+                for t in g.tracks
+                if t.get("spotify_track_id")
+            }
+            contexts_map = self._playlist_contexts(session, list(all_sp_ids))
 
             by_strategy: dict[str, int] = {}
             track_count = 0
@@ -80,18 +89,21 @@ class DuplicateDetectionService:
                 by_strategy[g.strategy] = by_strategy.get(g.strategy, 0) + 1
                 track_count += len(g.tracks)
 
+            presented = [
+                present_duplicate_group(
+                    group_id=g.group_id,
+                    strategy=g.strategy,
+                    confidence=g.confidence,
+                    reason=g.reason,
+                    raw_tracks=g.tracks,
+                    contexts_by_spotify_id=contexts_map,
+                )
+                for g in page_groups
+            ]
+
         total_pages = math.ceil(total_groups / page_size) if total_groups else 0
         return {
-            "groups": [
-                {
-                    "group_id": g.group_id,
-                    "strategy": g.strategy,
-                    "confidence": g.confidence,
-                    "reason": g.reason,
-                    "tracks": g.tracks,
-                }
-                for g in page_groups
-            ],
+            "groups": presented,
             "pagination": {
                 "page": page,
                 "page_size": page_size,
@@ -112,10 +124,15 @@ class DuplicateDetectionService:
             select(
                 Track.id,
                 SpotifyTrack.spotify_track_id,
+                SpotifyTrack.spotify_uri,
                 Track.name,
                 Track.duration_ms,
+                Track.external_url,
                 ExternalId.id_value,
                 Album.name,
+                Album.cover_image_url,
+                Album.cover_image_width,
+                Album.cover_image_height,
             )
             .join(SpotifyTrack, SpotifyTrack.track_id == Track.id)
             .outerjoin(
@@ -128,17 +145,47 @@ class DuplicateDetectionService:
         rows = session.execute(stmt).all()
         artist_map = self._primary_artists(session, track_ids)
         out = []
-        for tid, sp_id, title, dur, isrc, album_name in rows:
+        for tid, sp_id, sp_uri, title, dur, ext_url, isrc, album_name, cover_url, cw, ch in rows:
             out.append(
                 {
                     "track_id": tid,
                     "spotify_track_id": sp_id,
+                    "spotify_uri": sp_uri,
                     "title": title,
                     "artist_names": artist_map.get(tid, []),
                     "album_name": album_name,
                     "duration_ms": dur,
                     "isrc": isrc,
+                    "external_url": ext_url,
+                    "cover_image_url": cover_url,
+                    "cover_image_width": cw,
+                    "cover_image_height": ch,
                 }
+            )
+        return out
+
+    def _playlist_contexts(
+        self, session: Session, spotify_track_ids: list[str]
+    ) -> dict[str, list[dict[str, str]]]:
+        if not spotify_track_ids:
+            return {}
+        stmt = (
+            select(
+                PlaylistTrack.spotify_track_id,
+                Playlist.name,
+                Playlist.spotify_playlist_id,
+            )
+            .join(Playlist, Playlist.spotify_playlist_id == PlaylistTrack.spotify_playlist_id)
+            .where(
+                PlaylistTrack.spotify_track_id.in_(spotify_track_ids),
+                PlaylistTrack.is_current.is_(True),
+            )
+            .order_by(Playlist.name)
+        )
+        out: dict[str, list[dict[str, str]]] = {}
+        for sp_tid, name, sp_pl_id in session.execute(stmt).all():
+            out.setdefault(sp_tid, []).append(
+                {"type": "playlist", "name": name, "spotify_playlist_id": sp_pl_id}
             )
         return out
 

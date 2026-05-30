@@ -90,6 +90,15 @@ class MissingTracksService:
                         "title": track_meta["title"] if track_meta else None,
                         "artist_names": track_meta["artist_names"] if track_meta else [],
                         "album_name": track_meta["album_name"] if track_meta else None,
+                        "cover_image_url": track_meta.get("cover_image_url")
+                        if track_meta
+                        else None,
+                        "cover_image_width": track_meta.get("cover_image_width")
+                        if track_meta
+                        else None,
+                        "cover_image_height": track_meta.get("cover_image_height")
+                        if track_meta
+                        else None,
                         "status": entry.get("status"),
                         "source_snapshot_id": from_id,
                         "target_snapshot_id": to_id,
@@ -157,7 +166,14 @@ class MissingTracksService:
 
     def _track_meta(self, session: Session, spotify_track_id: str) -> dict[str, Any] | None:
         stmt = (
-            select(Track.id, Track.name, Album.name)
+            select(
+                Track.id,
+                Track.name,
+                Album.name,
+                Album.cover_image_url,
+                Album.cover_image_width,
+                Album.cover_image_height,
+            )
             .join(SpotifyTrack, SpotifyTrack.track_id == Track.id)
             .outerjoin(Album, Album.id == SpotifyTrack.album_id)
             .where(SpotifyTrack.spotify_track_id == spotify_track_id)
@@ -165,7 +181,7 @@ class MissingTracksService:
         row = session.execute(stmt).one_or_none()
         if row is None:
             return None
-        track_id, title, album_name = row
+        track_id, title, album_name, cover_url, cw, ch = row
         artist_stmt = (
             select(Artist.name)
             .join(TrackArtist, TrackArtist.artist_id == Artist.id)
@@ -178,4 +194,7 @@ class MissingTracksService:
             "title": title,
             "artist_names": artist_names,
             "album_name": album_name,
+            "cover_image_url": cover_url,
+            "cover_image_width": cw,
+            "cover_image_height": ch,
         }

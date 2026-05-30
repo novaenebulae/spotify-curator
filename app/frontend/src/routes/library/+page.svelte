@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import AlbumCover from '$lib/components/common/AlbumCover.svelte';
 	import DryRunModal from '$lib/components/library/DryRunModal.svelte';
+	import DuplicateGroupCard from '$lib/components/library/DuplicateGroupCard.svelte';
 	import LibraryTable from '$lib/components/library/LibraryTable.svelte';
 	import {
 		dryRunAction,
@@ -231,9 +233,10 @@
 	});
 </script>
 
-<main>
+<div class="page-header">
 	<h1>Library management</h1>
 	<p class="muted">Browse, filter, and prepare dry-run actions on your imported tracks.</p>
+</div>
 
 	<div class="row tabs">
 		<button type="button" class:secondary={tab !== 'tracks'} onclick={() => switchTab('tracks')}
@@ -382,14 +385,7 @@
 					{duplicateSummary.group_count} group(s), {duplicateSummary.track_count} track(s)
 				</p>
 				{#each duplicateGroups as group (group.group_id)}
-					<div class="dup-group">
-						<h3>{group.strategy} — {group.reason} ({group.confidence})</h3>
-						<ul>
-							{#each group.tracks as t}
-								<li>{t.title} — {t.artist_names.join(', ')} {t.isrc ? `(${t.isrc})` : ''}</li>
-							{/each}
-						</ul>
-					</div>
+					<DuplicateGroupCard {group} />
 				{/each}
 			{/if}
 		</section>
@@ -408,11 +404,20 @@
 				{:else}
 					<table>
 						<thead>
-							<tr><th>Title</th><th>Artists</th><th>Status</th><th>Detected</th></tr>
+							<tr
+								><th></th><th>Title</th><th>Artists</th><th>Status</th><th>Detected</th></tr
+							>
 						</thead>
 						<tbody>
-							{#each missingItems as item}
+							{#each missingItems as item (item.spotify_track_id ?? item.track_id)}
 								<tr>
+									<td>
+										<AlbumCover
+											src={item.cover_image_url}
+											alt={item.album_name ?? item.title ?? 'Track'}
+											size="sm"
+										/>
+									</td>
 									<td>{item.title ?? '—'}</td>
 									<td>{item.artist_names.join(', ')}</td>
 									<td>{item.status}</td>
@@ -458,7 +463,6 @@
 			{/if}
 		</section>
 	{/if}
-</main>
 
 <DryRunModal
 	open={dryRunOpen}
@@ -468,9 +472,6 @@
 />
 
 <style>
-	main {
-		max-width: 1100px;
-	}
 	.tabs {
 		margin-bottom: 1.25rem;
 	}
@@ -499,11 +500,6 @@
 		border: 1px solid #444;
 		border-radius: 4px;
 		min-width: 180px;
-	}
-	.dup-group {
-		border-top: 1px solid #333;
-		padding-top: 0.75rem;
-		margin-top: 0.75rem;
 	}
 	.badge {
 		background: #2a2a2a;
