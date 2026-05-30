@@ -89,11 +89,31 @@ Au démarrage du core, `init_db()` exécute `upgrade head` automatiquement sur u
 
 Variable optionnelle pour tests locaux : `DATABASE_URL=sqlite:///./data/test.sqlite`
 
-`SQLITE_JOURNAL_MODE` : `DELETE` (défaut Docker Compose) réduit la latence d’écriture SQLite sur volumes montés Windows ; `WAL` reste le défaut hors Docker.
+`SQLITE_JOURNAL_MODE` : `WAL` (défaut Docker Compose) avec le volume nommé `spotify_curator_data`. Utiliser `DELETE` seulement si vous remontez `./data:/app/data` (bind mount Windows, plus lent).
+
+### Volume SQLite (recommandé)
+
+```yaml
+# docker-compose.yml
+volumes:
+  - spotify_curator_data:/app/data
+```
+
+Migration one-shot depuis `data/spotify_curator.sqlite` :
+
+```powershell
+.\scripts\migrate-sqlite-to-docker-volume.ps1
+```
+
+Sauvegarde manuelle depuis le volume :
+
+```powershell
+docker run --rm -v spotify_curator_data:/from -v ${PWD}/data:/to alpine cp /from/spotify_curator.sqlite /to/backup.sqlite
+```
 
 ## Chemins Windows
 
-L’application Tauri tourne côté Windows. Docker utilise les volumes montés.
+L’application Tauri tourne côté Windows. Le core Docker utilise le volume `spotify_curator_data` (fichiers dans la VM Linux, pas le dossier `data/` du repo).
 
 Éviter les chemins absolus Windows dans la DB. Stocker des chemins relatifs au volume quand possible.
 

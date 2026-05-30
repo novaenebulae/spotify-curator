@@ -13,6 +13,7 @@
 <nav>
 	<a href="/" class:active={$page.url.pathname === '/'}>Home</a>
 	<a href="/import" class:active={$page.url.pathname.startsWith('/import')}>Import</a>
+	<a href="/library" class:active={$page.url.pathname.startsWith('/library')}>Library</a>
 	<a href="/settings" class:active={$page.url.pathname.startsWith('/settings')}>Settings</a>
 </nav>
 

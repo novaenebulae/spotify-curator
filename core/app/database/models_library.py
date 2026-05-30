@@ -66,6 +66,9 @@ class SpotifyTrack(Base):
 
     spotify_track_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     track_id: Mapped[int] = mapped_column(ForeignKey("tracks.id"), nullable=False, unique=True)
+    album_id: Mapped[int | None] = mapped_column(
+        ForeignKey("albums.id"), nullable=True, index=True
+    )
     spotify_uri: Mapped[str] = mapped_column(String(128), nullable=False, default="")
 
     is_playable: Mapped[bool | None] = mapped_column(Boolean, nullable=True)

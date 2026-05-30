@@ -84,9 +84,23 @@ UI minimale :
 - panneau diff ;
 - état erreurs.
 
-## Écran 4 — Gestion bibliothèque
+## Écran 4 — Gestion bibliothèque (phase 2)
 
-Phase 2.
+Route : `/library`.
+
+Onglets : Titres, Doublons, Absents/disparus, Historique actions.
+
+États obligatoires : loading, empty, error, offline core.
+
+Limites phase 2 :
+
+- UI in English (`/library`) ;
+- sélection multi-page non conservée (page courante uniquement) ;
+- pas de bouton « appliquer » Spotify ;
+- dry-run obligatoire avec warnings scopes write ;
+- pas de tests Vitest automatisés (validation manuelle + build).
+
+## Écran 4 — Gestion bibliothèque (spec détaillée)
 
 ### Objectif
 

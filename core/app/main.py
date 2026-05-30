@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.router import router as v1_router
 from app.database.init_db import init_db
 from app.observability.errors import register_exception_handlers
+from app.observability.tracks_perf_middleware import TracksPerfMiddleware
 from app.settings.config import settings
 
 
@@ -54,6 +55,7 @@ def create_app() -> FastAPI:
     )
 
     register_exception_handlers(app)
+    app.add_middleware(TracksPerfMiddleware)
     app.include_router(v1_router, prefix=settings.api_v1_prefix)
 
     return app

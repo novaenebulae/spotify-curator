@@ -48,6 +48,42 @@ def upsert_track_from_spotify_json(
     restrictions = track_json.get("restrictions") or {}
     linked_from = (track_json.get("linked_from") or {}).get("id")
 
+    album_id_fk: int | None = None
+    album_json = track_json.get("album") or {}
+    spotify_album_id = album_json.get("id")
+    if spotify_album_id:
+        album_name = album_json.get("name") or ""
+        existing_sp_album = session.get(SpotifyAlbum, spotify_album_id)
+        if existing_sp_album is None:
+            album = Album(
+                name=album_name,
+                normalized_name=normalize_text(album_name),
+                release_date=album_json.get("release_date"),
+                raw_json=json.dumps(album_json),
+                created_at=now,
+                updated_at=now,
+            )
+            session.add(album)
+            session.flush()
+            session.add(
+                SpotifyAlbum(
+                    spotify_album_id=spotify_album_id,
+                    album_id=album.id,
+                    spotify_uri=album_json.get("uri") or "",
+                    raw_json=json.dumps(album_json),
+                )
+            )
+            album_id_fk = album.id
+        else:
+            album_row = session.get(Album, existing_sp_album.album_id)
+            if album_row is not None:
+                album_row.name = album_name or album_row.name
+                album_row.normalized_name = normalize_text(album_name)
+                album_row.release_date = album_json.get("release_date")
+                album_row.raw_json = json.dumps(album_json)
+                album_row.updated_at = now
+            album_id_fk = existing_sp_album.album_id
+
     existing_sp_track = session.get(SpotifyTrack, spotify_track_id)
     if existing_sp_track is None:
         session.add(track_obj)
@@ -56,6 +92,7 @@ def upsert_track_from_spotify_json(
             SpotifyTrack(
                 spotify_track_id=spotify_track_id,
                 track_id=track_obj.id,
+                album_id=album_id_fk,
                 spotify_uri=track_json.get("uri") or "",
                 is_playable=track_json.get("is_playable"),
                 available_markets_json=json.dumps(track_json.get("available_markets") or []),
@@ -89,39 +126,8 @@ def upsert_track_from_spotify_json(
         existing_sp_track.market_status = market_status
         existing_sp_track.last_seen_at = now
         existing_sp_track.raw_json = json.dumps(track_json)
-
-    album_json = track_json.get("album") or {}
-    spotify_album_id = album_json.get("id")
-    if spotify_album_id:
-        album_name = album_json.get("name") or ""
-        existing_sp_album = session.get(SpotifyAlbum, spotify_album_id)
-        if existing_sp_album is None:
-            album = Album(
-                name=album_name,
-                normalized_name=normalize_text(album_name),
-                release_date=album_json.get("release_date"),
-                raw_json=json.dumps(album_json),
-                created_at=now,
-                updated_at=now,
-            )
-            session.add(album)
-            session.flush()
-            session.add(
-                SpotifyAlbum(
-                    spotify_album_id=spotify_album_id,
-                    album_id=album.id,
-                    spotify_uri=album_json.get("uri") or "",
-                    raw_json=json.dumps(album_json),
-                )
-            )
-        else:
-            album_row = session.get(Album, existing_sp_album.album_id)
-            if album_row is not None:
-                album_row.name = album_name or album_row.name
-                album_row.normalized_name = normalize_text(album_name)
-                album_row.release_date = album_json.get("release_date")
-                album_row.raw_json = json.dumps(album_json)
-                album_row.updated_at = now
+        if album_id_fk is not None:
+            existing_sp_track.album_id = album_id_fk
 
     sp_track_row = session.get(SpotifyTrack, spotify_track_id)
     track_id = sp_track_row.track_id if sp_track_row is not None else None

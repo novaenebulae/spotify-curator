@@ -29,4 +29,5 @@ def test_init_db_creates_settings_table(tmp_path: Path, monkeypatch) -> None:
     assert "liked_track_snapshots" in inspector.get_table_names()
     assert "playlist_snapshots" in inspector.get_table_names()
     assert "playlist_track_snapshots" in inspector.get_table_names()
+    assert "library_actions" in inspector.get_table_names()
 

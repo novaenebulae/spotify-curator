@@ -7,8 +7,8 @@ services:
       - "127.0.0.1:8765:8765"
     environment:
       - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/spotify_curator.sqlite}
-      # DELETE avoids extreme write latency on SQLite bind mounts (Docker Desktop / Windows).
-      - SQLITE_JOURNAL_MODE=${SQLITE_JOURNAL_MODE:-DELETE}
+      # WAL on named volume (Linux FS inside Docker VM). Use DELETE only if you remount ./data.
+      - SQLITE_JOURNAL_MODE=${SQLITE_JOURNAL_MODE:-WAL}
       - CACHE_DIR=${CACHE_DIR:-/app/cache}
       - MODELS_DIR=${MODELS_DIR:-/app/models}
       - LOGS_DIR=${LOGS_DIR:-/app/logs}
@@ -18,7 +18,7 @@ services:
       - SPOTIFY_AUTH_STORAGE=${SPOTIFY_AUTH_STORAGE}
       - EXPORT_DIR=${EXPORT_DIR:-/app/exports}
     volumes:
-      - ./data:/app/data
+      - spotify_curator_data:/app/data
       - ./cache:/app/cache
       - ./models:/app/models
       - ./logs:/app/logs
@@ -35,4 +35,10 @@ services:
       - --log-level
       - info
       - --access-log
+
+volumes:
+  # Created by Compose on first up, or pre-filled via scripts/migrate-sqlite-to-docker-volume.ps1
+  spotify_curator_data:
+    name: spotify_curator_data
+    external: false
 

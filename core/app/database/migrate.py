@@ -9,7 +9,9 @@ from sqlalchemy import inspect, text
 
 from app.database.engine import get_engine, reset_engine
 
-_HEAD_REVISION = "0001_initial"
+_PHASE1_HEAD_REVISION = "0001_initial"
+_HEAD_REVISION = "0003_perf_tracks"
+_PHASE2_REVISION = "0002_phase2_library"
 _LEGACY_REVISIONS = frozenset(
     {
         "0001_baseline",
@@ -81,17 +83,43 @@ def _has_initial_schema(engine) -> bool:
     return "value_json" in settings_cols and "attempt_count" in jobs_cols
 
 
+def _has_phase2_schema(engine) -> bool:
+    inspector = inspect(engine)
+    tables = set(inspector.get_table_names())
+    if "library_actions" not in tables:
+        return False
+    sp_cols = {c["name"] for c in inspector.get_columns("spotify_tracks")}
+    return "album_id" in sp_cols
+
+
+def _has_phase3_schema(engine) -> bool:
+    inspector = inspect(engine)
+    liked_indexes = {idx["name"] for idx in inspector.get_indexes("liked_tracks")}
+    return "ix_liked_tracks_added_at" in liked_indexes
+
+
+def _stamp_target_for_existing_schema(engine) -> str | None:
+    if not _has_initial_schema(engine):
+        return None
+    if _has_phase3_schema(engine):
+        return _HEAD_REVISION
+    if _has_phase2_schema(engine):
+        return _PHASE2_REVISION
+    return _PHASE1_HEAD_REVISION
+
+
 def _reconcile_legacy_revision(cfg: Config, engine) -> str | None:
-    """Stamp head when DB already matches 0001_initial but revision is obsolete."""
+    """Stamp head when DB schema matches but alembic revision is obsolete."""
     revision = _current_revision(engine)
-    if revision == _HEAD_REVISION:
+    if revision in (_PHASE1_HEAD_REVISION, _PHASE2_REVISION, _HEAD_REVISION):
         return revision
     if revision not in _LEGACY_REVISIONS:
         return revision
-    if not _has_initial_schema(engine):
+    target = _stamp_target_for_existing_schema(engine)
+    if target is None:
         return revision
-    command.stamp(cfg, _HEAD_REVISION, purge=True)
-    return _HEAD_REVISION
+    command.stamp(cfg, target, purge=True)
+    return target
 
 
 def run_migrations() -> None:
@@ -113,7 +141,9 @@ def run_migrations() -> None:
             or "duplicate column" in err
         )
         if recoverable and _has_initial_schema(engine):
-            command.stamp(cfg, _HEAD_REVISION, purge=True)
-            command.upgrade(cfg, "head")
+            target = _stamp_target_for_existing_schema(engine) or _PHASE1_HEAD_REVISION
+            command.stamp(cfg, target, purge=True)
+            if target != _HEAD_REVISION:
+                command.upgrade(cfg, "head")
         else:
             raise

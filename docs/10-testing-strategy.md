@@ -50,21 +50,37 @@ Garantir que chaque phase reste fonctionnelle sans casser les phases précédent
 
 ### Phase 2
 
-- recherche texte titre ;
-- recherche artiste ;
-- filtre album ;
-- filtre ISRC ;
-- filtre liked ;
-- filtre playlist ;
-- pagination ;
-- tri ;
-- doublons ISRC ;
-- doublons titre/artiste/durée ;
-- missing tracks ;
-- dry-run unlike ;
-- dry-run restore ;
-- dry-run backup playlist ;
-- library_actions.
+- recherche texte titre / artiste / album ;
+- filtre ISRC, liked, playlist, durée, dates ;
+- pagination et tri ;
+- absence de doublons de résultats (jointures) ;
+- doublons ISRC et titre/artiste/durée ;
+- missing tracks (5 statuts) ;
+- dry-run unlike / restore / backup playlist ;
+- historique `library_actions` ;
+- migration `0002_phase2_library` + backfill `album_id`.
+
+### Phase 2.5 — Performance tracks
+
+- `tests/test_tracks_perf.py` : seed 5k, latence page 1/2, `playlist_count` sans `playlists[]`, borne requêtes SQL ;
+- `core/scripts/benchmark_tracks.py` : benchmark local / HTTP ;
+- `TRACKS_PERF_LOG=1` : logs segments + en-têtes `X-Tracks-Perf-*` ;
+- migration `0003_perf_tracks` (index tri liked / artists).
+
+Validation :
+
+```bash
+cd core && uv run pytest tests/test_tracks_perf.py tests/test_tracks_search.py -q
+uv run python core/scripts/benchmark_tracks.py --database-url sqlite:///./data/spotify_curator.sqlite
+cd core && uv run pytest -q
+cd core && uv run ruff check app/library app/api/v1/tracks.py app/api/v1/library.py
+cd app/frontend && npm run check && npm run build
+curl http://127.0.0.1:8765/api/v1/tracks?page_size=5
+curl http://127.0.0.1:8765/api/v1/library/duplicates?strategy=isrc
+curl http://127.0.0.1:8765/api/v1/library/missing-tracks
+```
+
+UI manuelle : `/library` (table, filtres, dry-run modal, historique).
 
 ### Phase 3
 

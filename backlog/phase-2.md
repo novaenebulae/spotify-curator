@@ -6,7 +6,6 @@ Tags: #backlog #phase-2 #spotify-curator
 
 Explorer, filtrer, auditer et préparer des actions sur les titres importés.
 
-
 ## Definition of Done phase
 
 - Les livrables de phase sont présents.
@@ -16,123 +15,95 @@ Explorer, filtrer, auditer et préparer des actions sur les titres importés.
 - Aucun secret, cache, modèle lourd ou fichier audio n’est commité.
 - Aucune régression sur les phases précédentes.
 
-
 ## 2.1 — API recherche tracks
 
-Statut : TODO
+Statut : DONE
 
-### Sous-tâches
+### Livré
 
-- Implémenter `GET /api/v1/tracks`.
-- Ajouter filtres cumulables : q, artist, album, isrc, liked, playlist_id, disponibilité, snapshot status, durée, date.
-- Ajouter pagination.
-- Ajouter tri stable.
-- Ajouter index DB.
-- Éviter doublons dus aux jointures.
-
-### Critères d’acceptation
-
-- Recherche sur 5000+ titres acceptable.
-- Résultats paginés.
-- Tests filtres OK.
-
-### Tests minimum
-
-- q titre/artiste.
-- filtre playlist.
-- filtre ISRC.
-- tri asc/desc.
-- pagination.
+- Migration `0002_phase2_library` (library_actions, album_id, index).
+- `GET /api/v1/tracks` avec filtres cumulables, pagination, tri stable.
+- Repository + `TrackSearchService` + tests `test_tracks_search.py`.
 
 ## 2.2 — Table UI bibliothèque
 
-Statut : TODO
+Statut : DONE
 
-### Sous-tâches
+### Livré
 
-- Créer écran Gestion bibliothèque.
-- Table tracks.
-- Colonnes principales.
-- Filtres visibles.
-- Tri.
-- Pagination.
-- Sélection multiple.
-- États loading/empty/error/offline.
-
-### Critères d’acceptation
-
-- Table utilisable avec les données importées.
-- Sélection fiable.
-- Erreurs lisibles.
+- Route `/library` avec onglets Titres / Doublons / Absents / Historique.
+- `libraryApi.ts`, `LibraryTable`, `DryRunModal`.
+- Nav « Bibliothèque » dans le layout.
 
 ## 2.3 — Doublons
 
-Statut : TODO
+Statut : DONE
 
-### Sous-tâches
+### Livré
 
-- Détection ISRC.
-- Détection spotify_track_id contextuel.
-- Détection titre/artiste normalisés.
-- Détection durée proche ±3s.
-- Endpoint `/library/duplicates`.
-- Vue groupes doublons.
-
-### Critères d’acceptation
-
-- Doublons listés sans suppression automatique.
-- Confiance et raison affichées.
+- `GET /api/v1/library/duplicates` (strategies isrc, title_artist, title_artist_duration, all).
+- Tests `test_library_duplicates.py`.
 
 ## 2.4 — Absents/disparus
 
-Statut : TODO
+Statut : DONE
 
-### Sous-tâches
+### Livré
 
-- Exploiter diffs snapshots.
-- Endpoint `/library/missing-tracks`.
-- Résumé par statut.
-- Vue UI dédiée ou filtre.
-
-### Critères d’acceptation
-
-- Statuts distincts : removed, missing, unavailable, null, relinked.
+- `GET /api/v1/library/missing-tracks` (réutilise diff snapshots).
+- Tests `test_library_missing.py`.
 
 ## 2.5 — Actions dry-run
 
-Statut : TODO
+Statut : DONE
 
-### Sous-tâches
+### Livré
 
-- Endpoint `/library/actions/dry-run`.
-- Actions unlike, restore, create_backup_playlist.
-- Vérifier scopes write mais ne pas appliquer.
-- Modale UI confirmation dry-run.
-- Warnings.
-
-### Critères d’acceptation
-
-- Aucune écriture Spotify réelle par défaut.
-- Dry-run historisé.
+- `POST /api/v1/library/actions/dry-run` (unlike, restore, backup).
+- Warnings `WRITE_SCOPE_MISSING`, limite 500 titres.
+- Aucune écriture Spotify.
 
 ## 2.6 — Historique actions
 
-Statut : TODO
+Statut : DONE
 
-### Sous-tâches
+### Livré
 
-- Table `library_actions`.
-- Endpoints list/detail.
-- UI historique.
-- Détail résultats.
+- Table `library_actions`, `GET /library/actions`, `GET /library/actions/{id}`.
+- Tests historique + dry-run.
 
-### Critères d’acceptation
+## Commandes de validation
 
-- Chaque dry-run est traçable.
+```bash
+cd core
+uv run pytest -q
+uv run ruff check app/library app/api/v1/tracks.py app/api/v1/library.py app/database/repositories
 
-## Documentation à mettre à jour
+cd app/frontend
+npm run check
+npm run build
 
-- `docs/05-domain-model.md`.
-- `docs/06-api-contract.md`.
-- `docs/09-ui-specification.md`.
-- `docs/10-testing-strategy.md`.
+docker compose -f docker-compose.dev.yml up -d core-api
+curl http://127.0.0.1:8765/api/v1/health
+curl "http://127.0.0.1:8765/api/v1/tracks?page_size=5"
+curl "http://127.0.0.1:8765/api/v1/library/duplicates?strategy=isrc"
+curl "http://127.0.0.1:8765/api/v1/library/missing-tracks"
+```
+
+UI : `npm run dev` → http://localhost:5173/library
+
+## Limites restantes (hors phase 2)
+
+- Pas d’application réelle des actions Spotify.
+- Pas de replay automatique depuis l’historique.
+- Doublons calculés à la demande (non persistés).
+- Sélection UI limitée à la page courante.
+- Pas de tests Vitest frontend (infra absente).
+- Pas de features audio / ReccoBeats / playlist engine.
+
+## Documentation à jour
+
+- `docs/05-domain-model.md`
+- `docs/06-api-contract.md`
+- `docs/09-ui-specification.md`
+- `docs/10-testing-strategy.md`

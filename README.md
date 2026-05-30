@@ -48,13 +48,20 @@ La documentation est structurée pour être utilisée ainsi :
 
 Le core applique une migration initiale unique (`0001_initial`) au démarrage (`alembic upgrade head`).
 
-**Nouvelle installation** : la base est créée automatiquement dans `data/`.
+**Nouvelle installation** : la base est créée automatiquement dans le volume Docker `spotify_curator_data` (monté sur `/app/data` dans le conteneur).
+
+**Migrer une base existante depuis `data/` (bind mount Windows)** :
+
+```powershell
+.\scripts\migrate-sqlite-to-docker-volume.ps1
+docker compose up -d --build
+```
 
 **Réinitialiser la base locale** (données de dev uniquement) :
 
 ```powershell
 docker compose down
-Remove-Item -Force data\spotify_curator.sqlite, data\spotify_curator.sqlite-wal, data\spotify_curator.sqlite-shm -ErrorAction SilentlyContinue
+docker volume rm spotify_curator_data
 docker compose up --build
 ```
 
@@ -71,7 +78,7 @@ uv run alembic upgrade head
 uv run pytest -q
 ```
 
-**Logs Docker** : `docker compose up` (sans `-d`) ou `docker compose logs -f core-api` pour suivre les requêtes HTTP (`--access-log`) et le démarrage. Sur Windows, `SQLITE_JOURNAL_MODE=DELETE` est défini dans Compose pour éviter les écritures SQLite très lentes sur le volume `data/`.
+**Logs Docker** : `docker compose up` (sans `-d`) ou `docker compose logs -f core-api` pour suivre les requêtes HTTP (`--access-log`) et le démarrage. La SQLite vit dans le volume nommé `spotify_curator_data` (pas de bind mount `./data` par défaut) avec `SQLITE_JOURNAL_MODE=WAL` pour de meilleures perfs I/O sur Docker Desktop / Windows.
 
 ## Règles absolues
 

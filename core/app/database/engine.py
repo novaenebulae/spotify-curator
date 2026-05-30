@@ -50,6 +50,10 @@ def get_engine() -> Engine:
     connect_args = _sqlite_connect_args(database_url)
     _engine = create_engine(database_url, future=True, connect_args=connect_args)
 
+    from app.observability.sql_perf import register_sql_perf_listeners
+
+    register_sql_perf_listeners(_engine)
+
     if database_url.startswith("sqlite"):
 
         @event.listens_for(_engine, "connect")

@@ -144,11 +144,10 @@ Contrainte unique : `(track_id, artist_id, position)`.
 
 | Champ | Type | Notes |
 |---|---|---|
-| id | PK | |
-| track_id | FK tracks indexed | |
-| album_id | FK albums nullable | |
-| spotify_track_id | text unique indexed | |
-| spotify_uri | text indexed | |
+| spotify_track_id | text PK | |
+| track_id | FK tracks | unique |
+| album_id | FK albums nullable indexed | phase 2 — lien album pour recherche/tri |
+| spotify_uri | text | |
 | href | text nullable | |
 | external_url | text nullable | |
 | popularity | int nullable | |

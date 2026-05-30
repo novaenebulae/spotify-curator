@@ -368,27 +368,7 @@ Les réponses retournent :
 
 ### `GET /tracks`
 
-Query params :
-
-- `q`
-- `artist`
-- `album`
-- `isrc`
-- `liked`
-- `playlist_id`
-- `in_any_playlist`
-- `missing_from_playlists`
-- `duplicate_group_id`
-- `availability_status`
-- `snapshot_status`
-- `min_duration_ms`
-- `max_duration_ms`
-- `added_after`
-- `added_before`
-- `sort`
-- `order`
-- `page`
-- `page_size`
+Query params cumulables : `q`, `title`, `artist`, `album`, `isrc`, `liked`, `playlist_id`, `spotify_playlist_id`, `in_any_playlist`, `missing_from_playlists`, `availability_status`, `market_status`, `snapshot_status`, `duplicate_status`, `min_duration_ms`, `max_duration_ms`, `added_after`, `added_before`, `sort`, `order`, `page`, `page_size`.
 
 Réponse :
 
@@ -396,39 +376,30 @@ Réponse :
 {
   "items": [
     {
-      "track_id": "trk_1",
+      "track_id": 1,
       "spotify_track_id": "...",
-      "spotify_uri": "spotify:track:...",
       "title": "Track title",
-      "artists": ["Artist"],
-      "album": "Album",
+      "artists": [{ "artist_id": 1, "spotify_artist_id": "...", "name": "Artist" }],
+      "artist_names": ["Artist"],
+      "album": { "album_id": 1, "spotify_album_id": "...", "name": "Album" },
       "duration_ms": 240000,
-      "explicit": false,
-      "popularity": 50,
       "isrc": "...",
       "liked": true,
-      "liked_added_at": "2026-05-29T10:00:00Z",
+      "is_current_liked": true,
       "playlist_count": 2,
-      "playlists": [
-        {
-          "playlist_id": "pl_1",
-          "spotify_playlist_id": "...",
-          "name": "Playlist"
-        }
-      ],
+      "playlists": [],
       "availability_status": "available",
-      "duplicate_status": "none",
-      "last_seen_at": "2026-05-29T10:00:00Z",
-      "raw_available": true
+      "market_status": "available",
+      "duplicate_status": "none"
     }
   ],
-  "page": 1,
-  "page_size": 50,
-  "total": 1,
-  "sort": "liked_added_at",
-  "order": "desc"
+  "pagination": { "page": 1, "page_size": 50, "total": 1, "total_pages": 1 },
+  "sort": { "field": "liked_added_at", "order": "desc" },
+  "filters": {}
 }
 ```
+
+**Performance (phase 2.5)** : en liste paginée, `playlists` est toujours un tableau vide ; utiliser `playlist_count` pour l’affichage table. Les détails playlist par titre ne sont pas chargés sur cet endpoint (réduction payload). Diagnostic : `TRACKS_PERF_LOG=1`, en-têtes `X-Tracks-Perf-*`, script `core/scripts/benchmark_tracks.py`.
 
 ## Phase 2 — Doublons
 
@@ -436,111 +407,35 @@ Réponse :
 
 Query params :
 
-- `strategy`: `isrc`, `title_artist`, `duration`, `all`
+- `strategy`: `isrc`, `spotify_track_id`, `title_artist`, `title_artist_duration`, `all`
 - `min_confidence`
-- `page`
-- `page_size`
+- `page`, `page_size`
 
-Réponse :
-
-```json
-{
-  "groups": [
-    {
-      "group_id": "dup_1",
-      "strategy": "isrc",
-      "confidence": 1.0,
-      "reason": "same_isrc",
-      "tracks": []
-    }
-  ],
-  "page": 1,
-  "page_size": 20,
-  "total_groups": 1
-}
-```
+Réponse : `groups[]`, `pagination` (`total_groups`), `summary`.
 
 ## Phase 2 — Absents/disparus
 
 ### `GET /library/missing-tracks`
 
-Query params :
+Query params : `snapshot_id`, `from_snapshot_id`, `to_snapshot_id`, `status`, `page`, `page_size`.
 
-- `snapshot_id`
-- `status`
-- `page`
-- `page_size`
-
-Réponse :
-
-```json
-{
-  "items": [],
-  "summary": {
-    "removed_from_liked": 0,
-    "missing_from_current_import": 0,
-    "unavailable_on_spotify": 0,
-    "null_playlist_track": 0,
-    "possibly_relinked": 0
-  },
-  "page": 1,
-  "page_size": 50,
-  "total": 0
-}
-```
+Réponse : `items[]`, `summary` par statut, `pagination`.
 
 ## Phase 2 — Actions bibliothèque
 
 ### `POST /library/actions/dry-run`
 
-Body :
+Body : `action_type` (`unlike_tracks`, `restore_liked_tracks`, `create_backup_playlist`), `track_ids`, `filter`, `options`.
 
-```json
-{
-  "action_type": "unlike_tracks",
-  "track_ids": ["trk_1"],
-  "filter": {},
-  "options": {
-    "backup_playlist_name": "Backup",
-    "reason": "cleanup"
-  }
-}
-```
-
-Actions :
-
-- `unlike_tracks`
-- `restore_liked_tracks`
-- `create_backup_playlist`
-- `tag_tracks` plus tard
-- `delete_local_cache` plus tard
-
-Réponse :
-
-```json
-{
-  "action_id": "act_1",
-  "dry_run": true,
-  "action_type": "unlike_tracks",
-  "affected_count": 1,
-  "affected_tracks": [
-    {
-      "track_id": "trk_1",
-      "spotify_track_id": "...",
-      "title": "Track",
-      "artists": ["Artist"],
-      "reason": "selected"
-    }
-  ],
-  "warnings": [],
-  "blocked": false,
-  "requires_write_scope": true
-}
-```
+Réponse : `action_id`, `dry_run`, `affected_count`, `affected_tracks`, `warnings`, `requires_write_scope`, `spotify_applied` (toujours `false` en phase 2).
 
 ### `GET /library/actions`
 
+Filtres : `action_type`, `dry_run`, `status`, pagination.
+
 ### `GET /library/actions/{action_id}`
+
+Détail avec `filter`, `selected_track_ids`, `result`, `warnings`.
 
 ## Phase 3 — Features / ReccoBeats
 

@@ -17,6 +17,7 @@ from app.database.models_library import (  # noqa: F401
     Track,
     TrackArtist,
 )
+from app.database.models_library_actions import LibraryAction  # noqa: F401
 from app.database.models_oauth import OAuthPkceState  # noqa: F401
 from app.database.models_playlists import Playlist, PlaylistTrack  # noqa: F401
 from app.database.models_runtime import DockerRuntimeCheck  # noqa: F401
