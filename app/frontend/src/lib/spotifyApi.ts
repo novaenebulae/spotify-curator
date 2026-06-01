@@ -120,8 +120,27 @@ export function importPlaylists(signal?: AbortSignal): Promise<{ job_id: string 
 	return apiFetch<{ job_id: string }>('/spotify/import/playlists', { method: 'POST', signal });
 }
 
+type JobApiResponse = Omit<Job, 'result_json'> & {
+	result_json?: Record<string, unknown>;
+	result?: Record<string, unknown>;
+};
+
+function normalizeJob(raw: JobApiResponse): Job {
+	return {
+		...raw,
+		result_json: raw.result_json ?? raw.result ?? {}
+	};
+}
+
 export function fetchJob(jobId: string, signal?: AbortSignal): Promise<Job> {
-	return apiFetch<Job>(`/jobs/${jobId}`, { signal });
+	return apiFetch<JobApiResponse>(`/jobs/${jobId}`, { signal }).then(normalizeJob);
+}
+
+export function cancelJob(jobId: string, signal?: AbortSignal): Promise<{ job_id: string; status: string }> {
+	return apiFetch<{ job_id: string; status: string }>(`/jobs/${jobId}/cancel`, {
+		method: 'POST',
+		signal
+	});
 }
 
 export function listSnapshots(signal?: AbortSignal): Promise<SnapshotMeta[]> {

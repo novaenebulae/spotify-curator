@@ -1,5 +1,14 @@
 import { fetchJob, type Job } from '$lib/spotifyApi';
 
+const TERMINAL_JOB_STATUSES = new Set([
+	'succeeded',
+	'success',
+	'failed',
+	'cancelled',
+	'rate_limited',
+	'error'
+]);
+
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 	return new Promise((resolve, reject) => {
 		if (signal?.aborted) {
@@ -27,7 +36,7 @@ export async function pollJobUntilDone(
 	for (;;) {
 		const job = await fetchJob(jobId, options?.signal);
 		onUpdate(job);
-		if (job.status === 'succeeded' || job.status === 'failed') {
+		if (TERMINAL_JOB_STATUSES.has(job.status)) {
 			return job;
 		}
 		await sleep(intervalMs, options?.signal);

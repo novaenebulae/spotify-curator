@@ -2,10 +2,9 @@
 	import { onDestroy } from 'svelte';
 	import AuthStatusCard from '$lib/components/import/AuthStatusCard.svelte';
 	import ExportPanel from '$lib/components/import/ExportPanel.svelte';
-	import JobProgress from '$lib/components/import/JobProgress.svelte';
-	import LastRunSummary from '$lib/components/import/LastRunSummary.svelte';
+	import JobRunSummary from '$lib/components/import/JobRunSummary.svelte';
+	import { jobTracker, trackJob } from '$lib/jobTracker';
 	import SnapshotPanel from '$lib/components/import/SnapshotPanel.svelte';
-	import { pollJobUntilDone } from '$lib/jobPoller';
 	import {
 		createSnapshot,
 		diffSnapshots,
@@ -17,7 +16,6 @@
 		startAuth,
 		type AuthStatus,
 		type DiffResult,
-		type Job,
 		type SnapshotMeta
 	} from '$lib/spotifyApi';
 
@@ -25,10 +23,17 @@
 	let authLoading = $state(true);
 	let authError: string | null = $state(null);
 
-	let busy = $state(false);
-	let activeJob: Job | null = $state(null);
-	let lastJob: Job | null = $state(null);
 	let actionError: string | null = $state(null);
+	let uiBusy = $state(false);
+
+	const busy = $derived($jobTracker.busy || uiBusy);
+	const lastImportJob = $derived(
+		$jobTracker.lastJob &&
+			($jobTracker.lastJob.job_type === 'spotify_import_liked_tracks' ||
+				$jobTracker.lastJob.job_type === 'spotify_import_playlists')
+			? $jobTracker.lastJob
+			: null
+	);
 
 	let snapshots: SnapshotMeta[] = $state([]);
 	let snapshotsLoading = $state(false);
@@ -72,7 +77,7 @@
 	}
 
 	async function connect(): Promise<void> {
-		busy = true;
+		uiBusy = true;
 		actionError = null;
 		try {
 			const start = await startAuth(controller.signal);
@@ -80,12 +85,12 @@
 		} catch (e) {
 			actionError = e instanceof Error ? e.message : String(e);
 		} finally {
-			busy = false;
+			uiBusy = false;
 		}
 	}
 
 	async function disconnect(): Promise<void> {
-		busy = true;
+		uiBusy = true;
 		actionError = null;
 		try {
 			await logout(controller.signal);
@@ -93,32 +98,20 @@
 		} catch (e) {
 			actionError = e instanceof Error ? e.message : String(e);
 		} finally {
-			busy = false;
+			uiBusy = false;
 		}
 	}
 
 	async function runJob(startFn: () => Promise<{ job_id: string }>, label: string): Promise<void> {
-		busy = true;
 		actionError = null;
-		activeJob = null;
 		try {
 			const { job_id } = await startFn();
-			const final = await pollJobUntilDone(
-				job_id,
-				(job) => {
-					activeJob = job;
-				},
-				{ signal: controller.signal }
-			);
-			lastJob = final;
-			activeJob = null;
-			if (final.status === 'failed') {
+			const final = await trackJob(job_id, label);
+			if (final && (final.status === 'failed' || final.status === 'error')) {
 				actionError = `${label} failed: ${final.last_error || 'Unknown error'}`;
 			}
 		} catch (e) {
 			actionError = e instanceof Error ? e.message : String(e);
-		} finally {
-			busy = false;
 		}
 	}
 
@@ -131,7 +124,7 @@
 	}
 
 	async function createSnap(type: 'full' | 'liked' | 'playlists'): Promise<void> {
-		busy = true;
+		uiBusy = true;
 		snapshotError = null;
 		try {
 			await createSnapshot(type, controller.signal);
@@ -139,7 +132,7 @@
 		} catch (e) {
 			snapshotError = e instanceof Error ? e.message : String(e);
 		} finally {
-			busy = false;
+			uiBusy = false;
 		}
 	}
 
@@ -198,8 +191,7 @@
 		{/if}
 	</section>
 
-	<JobProgress job={activeJob} label="Running job" />
-	<LastRunSummary job={lastJob} />
+	<JobRunSummary job={lastImportJob} />
 
 	<SnapshotPanel
 		{snapshots}

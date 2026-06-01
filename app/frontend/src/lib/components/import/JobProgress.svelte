@@ -4,9 +4,11 @@
 	type Props = {
 		job: Job | null;
 		label?: string;
+		onCancel?: () => void;
+		cancelBusy?: boolean;
 	};
 
-	let { job, label = 'Current job' }: Props = $props();
+	let { job, label = 'Current job', onCancel, cancelBusy = false }: Props = $props();
 
 	const pct = $derived(
 		job && job.progress_total > 0
@@ -15,13 +17,23 @@
 	);
 
 	const isActive = $derived(
-		job != null && (job.status === 'running' || job.status === 'queued')
+		job != null &&
+			(job.status === 'running' ||
+				job.status === 'queued' ||
+				job.status === 'pending')
 	);
 </script>
 
 {#if job}
 	<section class="card job">
-		<h3>{label}</h3>
+		<div class="job-header">
+			<h3>{label}</h3>
+			{#if isActive && onCancel}
+				<button type="button" class="secondary" disabled={cancelBusy} onclick={() => onCancel?.()}>
+					Cancel job
+				</button>
+			{/if}
+		</div>
 		<p>
 			Status: <strong>{job.status}</strong>
 			{#if job.job_type}
@@ -53,7 +65,7 @@
 		{#if job.status === 'failed' && job.last_error}
 			<pre class="error">{job.last_error}</pre>
 		{/if}
-		{#if job.status === 'succeeded' && Object.keys(job.result_json).length > 0}
+		{#if (job.status === 'succeeded' || job.status === 'success') && Object.keys(job.result_json).length > 0}
 			<details>
 				<summary>Result</summary>
 				<pre>{JSON.stringify(job.result_json, null, 2)}</pre>
@@ -61,3 +73,15 @@
 		{/if}
 	</section>
 {/if}
+
+<style>
+	.job-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 1rem;
+	}
+	.job-header h3 {
+		margin: 0;
+	}
+</style>
