@@ -108,6 +108,30 @@ curl http://127.0.0.1:8765/api/v1/library/missing-tracks
 
 UI manuelle : `/library` (table, filtres, dry-run modal, historique).
 
+### Phase 3 (implémenté)
+
+- migration `0005_phase3_features` ;
+- client ReccoBeats mock (httpx MockTransport) ;
+- timeout, retry, 429 ;
+- mapper + confidence ;
+- upsert idempotent + raw payload ;
+- job `reccobeats_enrichment` ;
+- coverage API ;
+- UI `/features`.
+
+```bash
+cd core && uv run pytest tests/test_reccobeats_client.py tests/test_reccobeats_mapper.py \
+  tests/test_feature_upsert.py tests/test_reccobeats_enrich_job.py tests/test_features_coverage.py -q
+curl http://127.0.0.1:8765/api/v1/features/coverage
+```
+
+### Phase 3.5 (implémenté)
+
+- batch `GET /v1/audio-features?ids=` — `tests/test_reccobeats_client.py`, `tests/test_reccobeats_batch_parsing.py`
+- enrichissement par chunks — `tests/test_reccobeats_enrich_job.py` (assert `http_batches`)
+
+Jobs / workers (cible) : [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §20.
+
 ### Phase 3
 
 - ReccoBeats client mock ;

@@ -66,7 +66,26 @@ audio_features source=reccobeats
 coverage
 ```
 
-### Statuts d’enrichissement
+**ReccoBeats API — implémenté (phase 3.5)** : batch `GET /v1/audio-features?ids={id1},{id2},...` (jusqu'à 40 ids par requête : Spotify track ID, ISRC ou ReccoBeats ID), chunks séquentiels dans le job `reccobeats_enrichment` ([`core/app/reccobeats/client.py`](../core/app/reccobeats/client.py), [`core/app/features/enrichment.py`](../core/app/features/enrichment.py)). Fallback per-track via `/v1/track` + `/v1/track/{id}/audio-features` si une entrée manque dans le batch.
+
+Un seul job enrichissement `queued`/`running` à la fois. Détail : [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §7.
+
+Alias DB : `tempo` → `bpm`.
+
+### Confidence (phase 3)
+
+| Cas | Confidence |
+|---|---|
+| Feature directe ReccoBeats valide | 1.0 |
+| ISRC local == ISRC ReccoBeats | 1.0 |
+| Résolution via Spotify track ID | 0.9 |
+| Champ absent ou invalide | NULL |
+
+### Statuts par enregistrement
+
+- `success`, `partial`, `not_found`, `failed`, `skipped`
+
+### Statuts pipeline (historique)
 
 - `not_started`
 - `pending`

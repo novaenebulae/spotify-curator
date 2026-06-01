@@ -36,6 +36,14 @@ Décision : jobs persistés SQLite et runner local.
 
 Raison : réduire complexité. Architecture compatible avec worker séparé si besoin.
 
+### ADR-005b — Modèle jobs hybride (parallélisme)
+
+Décision : jobs persistés SQLite ; work items (`job_items`) pour les lots ; workers API async pour ReccoBeats/Spotify ; workers Docker **persistants** pour Essentia ; concurrence configurable par type de traitement.
+
+Raison : milliers de titres, UI non bloquante, batch HTTP ReccoBeats, coût d'initialisation Essentia/TensorFlow.
+
+Référence : [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md). **MVP phase 3** : threads in-process dans `core-api` uniquement.
+
 ### ADR-006 — OAuth PKCE
 
 Décision : Spotify OAuth Authorization Code with PKCE.

@@ -42,7 +42,7 @@ def test_migrations_upgrade_head_on_empty_db(tmp_path, monkeypatch) -> None:
     with engine.connect() as conn:
         row = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
     assert row is not None
-    assert row[0] == "0004_album_covers"
+    assert row[0] == "0005_phase3_features"
 
     assert "library_actions" in tables
     sp_cols = {c["name"] for c in inspector.get_columns("spotify_tracks")}
@@ -53,3 +53,24 @@ def test_migrations_upgrade_head_on_empty_db(tmp_path, monkeypatch) -> None:
     assert "ix_liked_tracks_added_at" in liked_indexes
     album_cols = {c["name"] for c in inspector.get_columns("albums")}
     assert "cover_image_url" in album_cols
+
+    assert "feature_sources" in tables
+    assert "audio_features" in tables
+    assert "audio_feature_raw_payloads" in tables
+
+    af_cols = {c["name"] for c in inspector.get_columns("audio_features")}
+    assert "bpm" in af_cols
+    assert "feature_source_id" in af_cols
+    assert "status" in af_cols
+
+    with engine.connect() as conn:
+        count = conn.execute(text("SELECT COUNT(*) FROM feature_sources")).scalar()
+    assert count == 5
+
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT name, is_active FROM feature_sources WHERE name = 'reccobeats'")
+        ).fetchone()
+    assert row is not None
+    assert row[0] == "reccobeats"
+    assert row[1] == 1

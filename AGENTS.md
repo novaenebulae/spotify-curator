@@ -37,6 +37,10 @@ Docker Desktop + WSL2
           └── clustering-worker
 ```
 
+## Exécution des tâches longues
+
+Jobs persistés SQLite, progression observable, pas de blocage HTTP. **État actuel** : threads in-process dans `core-api` ; **cible** : workers parallèles (API async, Docker Essentia persistants). Référence : [`docs/16-job-execution-model-and-worker-parallelism.md`](docs/16-job-execution-model-and-worker-parallelism.md).
+
 ## Contraintes fortes
 
 - Tauri/Svelte reste hors Docker.

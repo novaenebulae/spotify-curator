@@ -283,7 +283,7 @@ Table générique recommandée pour liked/playlists/full.
 |---|---|---|
 | id | PK | |
 | job_type | text indexed | import, enrichment, analysis, clustering... |
-| status | text indexed | pending/running/success/failed/cancelled/rate_limited |
+| status | text indexed | DB : `queued`, `running`, `succeeded`, `failed`, `rate_limited`, `cancelled` — API : `pending`, `running`, `success`, `failed`, `rate_limited`, `cancelled` (voir [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §3) |
 | progress_current | int | |
 | progress_total | int nullable | |
 | current_step | text nullable | |
@@ -295,6 +295,8 @@ Table générique recommandée pour liked/playlists/full.
 | created_at | datetime | |
 | started_at | datetime nullable | |
 | finished_at | datetime nullable | |
+
+Tables **cibles** (non migrées) pour le parallélisme batch : `job_items`, `worker_heartbeats`, `job_events` — schémas dans [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §4.2–4.4.
 
 ## Tables phase 2 — Gestion bibliothèque
 
@@ -329,21 +331,25 @@ Peut être calculée à la demande ou persistée.
 | track_ids_json | text | |
 | created_at | datetime | |
 
-## Tables phase 3 — Features ReccoBeats
+## Tables phase 3 — Features multi-source (implémenté 2026-05)
 
 ### feature_sources
 
 | Champ | Type | Notes |
 |---|---|---|
 | id | PK | |
-| name | text unique | reccobeats/local_essentia/manual |
-| type | text | api/local/manual/inferred |
-| priority | int | |
-| enabled | bool | |
-| requires_audio | bool | |
+| name | text unique | reccobeats, essentia_lowlevel, essentia_tensorflow, manual, metadata |
+| display_name | text | libellé UI |
+| source_type | text | api/local/manual/inferred |
+| version | text nullable | ex. 1.0.0 pour ReccoBeats |
+| priority | int | ordre de fusion future |
+| is_active | bool | source utilisable |
+| requires_audio | bool | true pour Essentia (phase 4+) |
 | requires_api_key | bool | |
-| source_version | text nullable | |
 | created_at | datetime | |
+| updated_at | datetime | |
+
+Seed idempotent migration `0005_phase3_features`.
 
 ### audio_features
 
@@ -351,53 +357,27 @@ Peut être calculée à la demande ou persistée.
 |---|---|---|
 | id | PK | |
 | track_id | FK tracks indexed | |
-| source | text indexed | reccobeats/local_essentia/... |
-| source_version | text | |
-| pipeline_version | text nullable | |
-| confidence | float indexed | |
-| acousticness | float nullable | 0..1 |
-| danceability | float nullable | 0..1 |
-| energy | float nullable | 0..1 |
-| instrumentalness | float nullable | 0..1 |
-| key | int nullable | 0..11 |
-| key_confidence | float nullable | |
-| camelot_key | text nullable | |
-| liveness | float nullable | |
+| feature_source_id | FK feature_sources indexed | modèle multi-source |
+| external_track_id | text nullable | ID ReccoBeats, etc. |
+| bpm | float nullable | mappé depuis ReccoBeats `tempo` |
+| bpm_confidence | float nullable | |
+| energy … liveness | float nullable | features 0..1 |
+| *_confidence | float nullable | par champ |
 | loudness | float nullable | dB |
+| key | int nullable | 0..11 |
 | mode | int nullable | 0/1 |
-| speechiness | float nullable | |
-| tempo | float nullable | BPM |
-| tempo_confidence | float nullable | |
-| valence | float nullable | |
-| spectral_centroid | float nullable | |
-| spectral_rolloff | float nullable | |
-| spectral_contrast | float nullable | |
-| mfcc_summary_json | text nullable | |
-| chroma_summary_json | text nullable | |
-| hpcp_summary_json | text nullable | |
-| onset_rate | float nullable | |
-| dynamic_range | float nullable | |
-| integrated_loudness | float nullable | |
-| vocal_presence | float nullable | |
-| electronic_acoustic_score | float nullable | |
-| arousal | float nullable | |
-| mood_happy | float nullable | |
-| mood_sad | float nullable | |
-| mood_aggressive | float nullable | |
-| mood_relaxed | float nullable | |
-| mood_party | float nullable | |
-| energy_profile_score | float nullable | |
-| calm_score | float nullable | |
-| intensity_score | float nullable | |
-| focus_score | float nullable | |
-| background_score | float nullable | |
-| playlist_fit_score | float nullable | |
-| discovery_score | float nullable | |
-| is_active | bool indexed | valeur active fusionnée |
+| time_signature | int nullable | |
+| duration_ms | int nullable | |
+| feature_confidence | float nullable | moyenne champs présents |
+| is_active | bool indexed | une seule ligne active par track/source |
+| status | text indexed | success/partial/not_found/failed/skipped |
+| error_code | text nullable | |
+| error_message | text nullable | |
+| fetched_at | datetime | |
 | created_at | datetime | |
 | updated_at | datetime | |
 
-Contrainte unique recommandée : `(track_id, source, source_version, pipeline_version)`.
+Index partiel : `UNIQUE(track_id, feature_source_id) WHERE is_active = 1`.
 
 ### audio_feature_raw_payloads
 
@@ -405,12 +385,14 @@ Contrainte unique recommandée : `(track_id, source, source_version, pipeline_ve
 |---|---|---|
 | id | PK | |
 | track_id | FK tracks indexed | |
-| source | text indexed | |
-| source_version | text | |
-| request_json | text nullable | |
-| response_json | text | |
-| status_code | int nullable | |
+| feature_source_id | FK feature_sources indexed | |
+| request_key | text nullable | clé de requête (Spotify ID, ReccoBeats ID) |
+| payload_json | text | track + features bruts JSON |
+| status_code | int nullable | HTTP |
 | fetched_at | datetime | |
+| created_at | datetime | |
+
+**Phase 4+** : colonnes spectral/mood/embeddings ajoutées en migration future (pas en 0005).
 
 ## Tables phase 4 — Audio local
 

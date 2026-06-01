@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1.diagnostics import router as diagnostics_router
 from app.api.v1.exports import router as exports_router
+from app.api.v1.features import router as features_router
 from app.api.v1.health import router as health_router
 from app.api.v1.jobs import router as jobs_router
 from app.api.v1.library import router as library_router
@@ -21,4 +22,5 @@ router.include_router(library_router, tags=["library"])
 router.include_router(spotify_auth_router, tags=["spotify_auth"])
 router.include_router(spotify_import_router, tags=["spotify_import"])
 router.include_router(exports_router, tags=["exports"])
+router.include_router(features_router, tags=["features"])
 router.include_router(tracks_router, tags=["tracks"])
