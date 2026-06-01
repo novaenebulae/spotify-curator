@@ -82,6 +82,10 @@ Responsabilités :
 
 Pour le MVP, `job-worker` peut être un module/processus du core. L’architecture doit toutefois rester compatible avec une séparation future.
 
+**État actuel (phase 3)** : seul le service `core-api` est déclaré dans `docker-compose.yml`. Les jobs longs tournent en **threads daemon in-process** (`JobService.start_background`), pas en conteneurs `job-worker` séparés. Le schéma Compose ci-dessus (workers audio, Essentia, clustering) est la **cible** des phases 4+.
+
+Référence détaillée : [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) (état actuel vs cible, parallélisme ReccoBeats batch, workers Essentia persistants).
+
 ### audio-downloader
 
 Responsabilités :

@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +25,15 @@ class Settings(BaseSettings):
 
     export_dir: str = "/app/exports"
     job_default_max_attempts: int = 3
+
+    reccobeats_base_url: str = "https://api.reccobeats.com"
+    reccobeats_timeout_seconds: float = 15.0
+    reccobeats_max_retries: int = 3
+    reccobeats_batch_delay_ms: int = 100
+    reccobeats_http_batch_size: int = Field(default=40, ge=1, le=40)
+    reccobeats_db_upsert_batch_size: int = 50
+    reccobeats_enrich_default_limit: int = 5000
+    reccobeats_enrich_max_limit: int = 10000
 
 
 settings = Settings()

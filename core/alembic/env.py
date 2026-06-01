@@ -7,6 +7,11 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 from app.database.models import Base
+from app.database.models_features import (  # noqa: F401
+    AudioFeature,
+    AudioFeatureRawPayload,
+    FeatureSource,
+)
 from app.database.models_jobs import Job  # noqa: F401
 from app.database.models_library import (  # noqa: F401
     Album,

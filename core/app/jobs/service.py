@@ -7,10 +7,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database.engine import get_engine
 from app.database.models_jobs import Job
+from app.observability.debug_session_log import debug_session_log
+from app.jobs.errors import JobCancelledError
 from app.jobs.status_mapping import map_job_status
 from app.settings.config import settings
 from app.spotify.client import SpotifyRateLimited
@@ -53,6 +56,65 @@ class JobStatus:
 
 
 class JobService:
+    _active_lock = threading.Lock()
+    _active_ids: set[str] = set()
+    _cancel_lock = threading.Lock()
+    _cancel_requested: set[str] = set()
+
+    def request_cancel(self, job_id: str) -> bool:
+        """Signal a running background job to stop. Returns False if not active."""
+        with self._active_lock:
+            active = job_id in self._active_ids
+        if not active:
+            return False
+        with self._cancel_lock:
+            self._cancel_requested.add(job_id)
+        return True
+
+    def is_cancel_requested(self, job_id: str) -> bool:
+        with self._cancel_lock:
+            return job_id in self._cancel_requested
+
+    def clear_cancel_request(self, job_id: str) -> None:
+        with self._cancel_lock:
+            self._cancel_requested.discard(job_id)
+
+    def is_active(self, job_id: str) -> bool:
+        with self._active_lock:
+            return job_id in self._active_ids
+
+    def reconcile_orphaned_jobs(self, *, job_type: str | None = None) -> list[str]:
+        """Mark DB jobs as failed when no worker thread is running them (e.g. after crash)."""
+        engine = get_engine()
+        reconciled: list[str] = []
+        now = datetime.now(tz=UTC).replace(tzinfo=None)
+        with Session(engine) as session:
+            stmt = select(Job).where(Job.status.in_(("queued", "running")))
+            if job_type is not None:
+                stmt = stmt.where(Job.job_type == job_type)
+            rows = list(session.scalars(stmt))
+            for row in rows:
+                if self.is_active(row.id):
+                    continue
+                row.status = "failed"
+                row.finished_at = now
+                row.current_step = "orphaned"
+                row.last_error = (
+                    "Job interrupted: no active worker (container stopped or process exited)."
+                )
+                reconciled.append(row.id)
+            if reconciled:
+                session.commit()
+        # #region agent log
+        debug_session_log(
+            location="jobs/service.py:reconcile_orphaned_jobs",
+            message="orphan job reconciliation",
+            data={"job_type": job_type, "reconciled": reconciled},
+            hypothesis_id="H1",
+        )
+        # #endregion
+        return reconciled
+
     def create(self, job_type: str) -> str:
         job_id = uuid.uuid4().hex
         now = datetime.now(tz=UTC).replace(tzinfo=None)
@@ -88,8 +150,18 @@ class JobService:
             return self._row_to_status(row)
 
     def start_background(self, job_id: str, fn: Callable[[], dict]) -> None:
-        t = threading.Thread(target=self._run, args=(job_id, fn), daemon=True)
+        with self._active_lock:
+            self._active_ids.add(job_id)
+        t = threading.Thread(target=self._run_wrapper, args=(job_id, fn), daemon=True)
         t.start()
+
+    def _run_wrapper(self, job_id: str, fn: Callable[[], dict]) -> None:
+        try:
+            self._run(job_id, fn)
+        finally:
+            with self._active_lock:
+                self._active_ids.discard(job_id)
+            self.clear_cancel_request(job_id)
 
     def update(
         self,
@@ -158,6 +230,8 @@ class JobService:
             result = fn()
             finished = datetime.now(tz=UTC).replace(tzinfo=None)
             self.update(job_id, status="succeeded", result_json=result, finished_at=finished)
+        except JobCancelledError:
+            return
         except SpotifyRateLimited as e:
             from datetime import timedelta
 

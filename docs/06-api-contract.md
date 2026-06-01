@@ -73,6 +73,8 @@ Réponse standard :
 
 ## Jobs
 
+> **Implémentation phase 3** : seul `GET /api/v1/jobs/{job_id}` est exposé ([`core/app/api/v1/jobs.py`](../core/app/api/v1/jobs.py)). `GET /jobs` (liste) et `POST /jobs/{id}/cancel` sont documentés ci-dessous comme **cible**. Modèle d'exécution et endpoints futurs (`/items`, `/workers`) : [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §15.
+
 ### `POST /jobs/{job_id}/cancel`
 
 Annule un job si possible.
@@ -466,7 +468,58 @@ Filtres : `action_type`, `dry_run`, `status`, pagination.
 
 Détail avec `filter`, `selected_track_ids`, `result`, `warnings`.
 
-## Phase 3 — Features / ReccoBeats
+## Phase 3 — Features / ReccoBeats (implémenté)
+
+### `POST /features/reccobeats/enrich`
+
+Body :
+
+```json
+{
+  "track_ids": [1, 2, 3],
+  "filter": {},
+  "batch_size": 50,
+  "only_missing": true,
+  "retry_failed": false,
+  "force_refresh": false,
+  "limit": null
+}
+```
+
+Réponse : `{ "job_id": "...", "status": "pending" }`.
+
+Job type : `reccobeats_enrichment`. Erreur `409 JOB_ALREADY_RUNNING` si un job enrichissement est déjà actif.
+
+**Batch HTTP (phase 3.5)** : le job appelle `GET /v1/audio-features?ids=` par chunks de jusqu'à `RECCOBEATS_HTTP_BATCH_SIZE` (défaut 40, env). Le champ body `batch_size` (défaut 50) contrôle uniquement la **pause** entre groupes de pistes traitées (`RECCOBEATS_BATCH_DELAY_MS`), pas la taille des requêtes ReccoBeats.
+
+### `GET /features/coverage`
+
+Query : `source=reccobeats|all`, `include_failed`, `include_fields`, `recent_failures_limit`.
+
+Réponse :
+
+```json
+{
+  "summary": {
+    "track_count": 5000,
+    "with_any_features": 4200,
+    "with_reccobeats": 4100,
+    "missing_reccobeats": 900,
+    "failed_reccobeats": 50,
+    "coverage_percent": 82.0
+  },
+  "sources": [],
+  "fields": [{ "field": "bpm", "available_count": 4000, "coverage_percent": 80.0 }],
+  "recent_failures": []
+}
+```
+
+### Endpoints différés
+
+- `GET /features/tracks/{track_id}` — phase 3+ / fusion
+- `POST /features/merge/recompute` — phase 4+
+
+## Phase 3 — Features / ReccoBeats (doc historique)
 
 ### `POST /features/reccobeats/enrich`
 

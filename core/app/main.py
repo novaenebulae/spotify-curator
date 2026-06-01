@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import router as v1_router
 from app.database.init_db import init_db
+from app.jobs.service import JobService
 from app.observability.errors import register_exception_handlers
 from app.observability.tracks_perf_middleware import TracksPerfMiddleware
 from app.settings.config import settings
@@ -25,6 +26,9 @@ async def lifespan(_app: FastAPI):
     try:
         init_db()
         logger.info("Database migrations applied")
+        reconciled = JobService().reconcile_orphaned_jobs()
+        if reconciled:
+            logger.info("Reconciled orphaned jobs: %s", reconciled)
     except Exception:
         logger.exception("Database migration failed during startup")
         raise

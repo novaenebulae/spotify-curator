@@ -38,6 +38,11 @@ AUDIO_DEBUG_KEEP_FAILED_SEGMENTS=false
 RECCOBEATS_BASE_URL=https://api.reccobeats.com
 RECCOBEATS_TIMEOUT_SECONDS=15
 RECCOBEATS_MAX_RETRIES=3
+RECCOBEATS_BATCH_DELAY_MS=100
+RECCOBEATS_HTTP_BATCH_SIZE=40
+RECCOBEATS_DB_UPSERT_BATCH_SIZE=50
+RECCOBEATS_ENRICH_DEFAULT_LIMIT=5000
+RECCOBEATS_ENRICH_MAX_LIMIT=10000
 
 # Playlist engine
 PLAYLIST_DEFAULT_TARGET_SIZE=80
@@ -47,6 +52,12 @@ PLAYLIST_DRY_RUN_REQUIRED=true
 LOG_LEVEL=INFO
 LOG_REDACT_SECRETS=true
 ```
+
+## Variables jobs / workers
+
+**Lues par le core aujourd'hui** : `JOB_DEFAULT_MAX_ATTEMPTS`, `RECCOBEATS_*` dont `RECCOBEATS_HTTP_BATCH_SIZE` et `RECCOBEATS_DB_UPSERT_BATCH_SIZE` (phase 3.5 — voir bloc `.env.example` ci-dessus). `JOB_POLL_INTERVAL_MS` est documentée mais **non utilisée**.
+
+**Cible** (concurrence workers, `job_items`, Essentia, etc.) : [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §14 — ne pas dupliquer tout le bloc dans ce fichier tant que le code ne les lit pas.
 
 ## Profils Docker Compose
 
@@ -78,7 +89,7 @@ Aucune variable sensible ne doit être commitée. `SPOTIFY_CLIENT_ID` n’est pa
 
 ## Migrations Alembic
 
-Révision unique : `0001_initial` (schéma phase 1.5 consolidé).
+Révisions : `0001_initial` … `0005_phase3_features` (schéma phase 3 features multi-source).
 
 ```bash
 cd core

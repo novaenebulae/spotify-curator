@@ -6,6 +6,8 @@ Tags: #backlog #phase-4 #audio #yt-dlp #essentia
 
 Analyser des segments audio temporaires pour compléter les features locales low-level.
 
+Modèle d'exécution parallèle (workers audio + Essentia Docker persistants, `job_items`, SQLite WAL) : [`docs/16-job-execution-model-and-worker-parallelism.md`](../docs/16-job-execution-model-and-worker-parallelism.md) §9–11.
+
 
 ## Definition of Done phase
 

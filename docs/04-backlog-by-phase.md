@@ -10,6 +10,7 @@ Tags: #backlog #roadmap #phases
 | 1 | Spotify backup | OAuth PKCE, import liked/playlists, snapshots, diff, exports | phase 0 |
 | 2 | Gestion bibliothèque | recherche, table, doublons, absents, dry-run actions, historique | phase 1 |
 | 3 | ReccoBeats | tables features, client, normalisation, jobs, coverage, UI enrichment | phase 2 |
+| 3.5 | ReccoBeats batch | `GET /v1/audio-features?ids=` (≤40), enrichissement par chunks, tests mock | phase 3 **DONE** |
 | 4 | Analyse locale | AudioProvider, segments yt-dlp, FFmpeg, Essentia low-level, cleanup | phase 3 partielle |
 | 5 | Playlist v1 | règles simples, filtres, scoring, diversité, preview, sync dry-run | phase 3, phase 2 |
 | 6 | Clustering visuel | feature profiles, matrice, UMAP, HDBSCAN, carte 2D | phase 3/4/5 |

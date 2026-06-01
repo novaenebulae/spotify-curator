@@ -43,6 +43,8 @@ Chaque job doit fournir :
 
 ## Statuts jobs
 
+**API** (`GET /api/v1/jobs/{id}`) :
+
 ```text
 pending
 running
@@ -50,8 +52,11 @@ success
 failed
 cancelled
 rate_limited
-partial_success
 ```
+
+Mapping depuis SQLite : `queued` → `pending`, `succeeded` → `success` ([`core/app/jobs/status_mapping.py`](../core/app/jobs/status_mapping.py)).
+
+**Cible** : `partial_success` pour jobs batch avec échecs partiels ; historique `job_events` et heartbeats workers — [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §3 et §17.
 
 ## Retry
 
