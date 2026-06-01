@@ -4,8 +4,8 @@ import json
 import logging
 import re
 import time
-from urllib.parse import urlparse
 from typing import Any
+from urllib.parse import urlparse
 
 import httpx
 

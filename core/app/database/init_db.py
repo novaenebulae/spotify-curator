@@ -5,6 +5,18 @@ from sqlalchemy import text
 from app.database.engine import get_engine
 from app.database.migrate import run_migrations
 from app.database.models import Base  # noqa: F401
+from app.database.models_audio import (  # noqa: F401
+    AudioAnalysisJob,
+    AudioDownloadJob,
+    TrackSegment,
+)
+from app.database.models_features import (  # noqa: F401
+    AudioFeature,
+    AudioFeatureRawPayload,
+    FeatureSource,
+)
+from app.database.models_job_items import JobEvent, JobItem, WorkerHeartbeat  # noqa: F401
+from app.database.models_previews import TrackPreview  # noqa: F401
 from app.database.models_jobs import Job  # noqa: F401
 from app.database.models_library import (  # noqa: F401
     Album,

@@ -6,9 +6,6 @@ Tags: #backlog #phase-4 #audio #yt-dlp #essentia
 
 Analyser des segments audio temporaires pour compléter les features locales low-level.
 
-Modèle d'exécution parallèle (workers audio + Essentia Docker persistants, `job_items`, SQLite WAL) : [`docs/16-job-execution-model-and-worker-parallelism.md`](../docs/16-job-execution-model-and-worker-parallelism.md) §9–11.
-
-
 ## Definition of Done phase
 
 - Les livrables de phase sont présents.
@@ -18,132 +15,69 @@ Modèle d'exécution parallèle (workers audio + Essentia Docker persistants, `j
 - Aucun secret, cache, modèle lourd ou fichier audio n’est commité.
 - Aucune régression sur les phases précédentes.
 
-
 ## 4.1 — AudioProvider
 
-Statut : TODO
+Statut : DONE
 
-### Sous-tâches
-
-- Interface `AudioProvider`.
-- `resolve(track)`.
-- `get_segments(track, strategy)`.
-- `cleanup(job)`.
-- `TestAudioProvider`.
-
-### Critères d’acceptation
-
-- Interface testée sans yt-dlp réel.
+- Interface `AudioProvider`, `StubAudioProvider` / `YtDlpSegmentProvider`.
+- Tests unitaires sans réseau.
 
 ## 4.2 — Stratégie segments
 
-Statut : TODO
+Statut : DONE
 
-### Sous-tâches
-
-- A 10–25 %.
-- B 45–60 %.
-- C 70–85 %.
-- Limite 30s.
-- Gestion titres courts.
-- Tests limites.
-
-### Critères d’acceptation
-
-- Aucun segment > 30s.
+- `abc_default`, limite 30s, cas courts, tests limites.
+- **Hybride** : `hybrid_deezer_youtube_representative` (doc [`17-audio-preview-and-segment-strategy.md`](../docs/17-audio-preview-and-segment-strategy.md)), migration `0007`, previews Deezer metadata, worker `preview-resolver-worker`.
 
 ## 4.3 — YtDlpSegmentProvider
 
-Statut : TODO
+Statut : DONE
 
-### Sous-tâches
-
-- Résolution source.
-- Matching titre/artiste/durée.
-- `download_ranges`.
-- `noplaylist`.
-- FFmpeg WAV.
-- Logs.
-
-### Critères d’acceptation
-
-- Segments uniquement.
-- Pas de playlist entière.
+- Résolution, matching, `download-sections`, `noplaylist`, FFmpeg WAV.
 
 ## 4.4 — audio_download_jobs
 
-Statut : TODO
-
-### Sous-tâches
-
-- Persister jobs download.
-- Statuts.
-- Attempts.
-- Errors.
-- Rate limits.
+Statut : DONE
 
 ## 4.5 — track_segments
 
-Statut : TODO
+Statut : DONE
 
-### Sous-tâches
-
-- Stocker start/end/duration.
-- Hash fichier.
-- Source hash.
-- deleted_at.
-- Contrainte DB <=30.
+- Contrainte DB `duration_seconds <= 30`.
 
 ## 4.6 — Essentia low-level
 
-Statut : TODO
+Statut : DONE
 
-### Sous-tâches
-
-- Service Docker/profile.
-- Command wrapper.
-- Profiles YAML.
-- Smoke test.
-- JSON output.
-
-### Critères d’acceptation
-
-- Essentia traite WAV court.
+- Worker Docker persistant, profil YAML, subprocess (pas de `docker run` par piste).
 
 ## 4.7 — Parser JSON
 
-Statut : TODO
-
-### Sous-tâches
-
-- Parser BPM.
-- Parser key.
-- Parser loudness.
-- Parser MFCC/HPCP/spectral.
-- Tests fixtures JSON.
+Statut : DONE
 
 ## 4.8 — Merge features
 
-Statut : TODO
+Statut : DONE (MVP)
 
-### Sous-tâches
-
-- Priorités sources.
-- Confidence.
-- Multi-segments aggregation.
-- Recompute active features.
+- `POST /features/merge/recompute`, upsert `essentia_lowlevel`.
 
 ## 4.9 — Cleanup
 
-Statut : TODO
+Statut : DONE
 
-### Sous-tâches
+## Workers & jobs
 
-- Delete audio.
-- deleted_at.
-- Logs cleanup.
-- UI nettoyage.
+Statut : DONE
 
-### Critères d’acceptation
+- Tables `job_items`, `worker_heartbeats`, `job_events`.
+- Services `audio-downloader` et `essentia-lowlevel-worker` (profil Compose `audio`).
 
-- Pas d’audio résiduel après job normal.
+## Validation
+
+```bash
+cd core && uv run alembic upgrade head
+cd core && uv run pytest -q
+docker compose up -d --build core-api
+docker compose --profile audio up -d --build --scale audio-downloader=2 --scale essentia-lowlevel-worker=2
+curl http://127.0.0.1:8765/api/v1/workers
+```

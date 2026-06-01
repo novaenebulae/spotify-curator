@@ -1,0 +1,28 @@
+# Minimal Essentia low-level profile for spotify-curator phase 4
+analysis:
+  name: spotify_curator_lowlevel_v1
+  sampleRate: 44100
+  startTime: 0
+  endTime: 0
+
+algorithms:
+  - name: RhythmExtractor2013
+    params: {}
+  - name: KeyExtractor
+    params: {}
+  - name: Loudness
+    params: {}
+  - name: SpectralCentroidTime
+    params: {}
+  - name: SpectralRolloffTime
+    params: {}
+  - name: SpectralContrast
+    params: {}
+  - name: MFCC
+    params: {}
+  - name: HPCP
+    params: {}
+  - name: DynamicComplexity
+    params: {}
+  - name: OnsetRate
+    params: {}

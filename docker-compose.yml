@@ -7,7 +7,6 @@ services:
       - "127.0.0.1:8765:8765"
     environment:
       - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/spotify_curator.sqlite}
-      # WAL on named volume (Linux FS inside Docker VM). Use DELETE only if you remount ./data.
       - SQLITE_JOURNAL_MODE=${SQLITE_JOURNAL_MODE:-WAL}
       - CACHE_DIR=${CACHE_DIR:-/app/cache}
       - MODELS_DIR=${MODELS_DIR:-/app/models}
@@ -25,12 +24,17 @@ services:
       - RECCOBEATS_DB_UPSERT_BATCH_SIZE=${RECCOBEATS_DB_UPSERT_BATCH_SIZE:-50}
       - RECCOBEATS_ENRICH_DEFAULT_LIMIT=${RECCOBEATS_ENRICH_DEFAULT_LIMIT:-5000}
       - RECCOBEATS_ENRICH_MAX_LIMIT=${RECCOBEATS_ENRICH_MAX_LIMIT:-10000}
+      - AUDIO_SEGMENT_MAX_SECONDS=${AUDIO_SEGMENT_MAX_SECONDS:-30}
+      - AUDIO_KEEP_SEGMENTS_AFTER_ANALYSIS=${AUDIO_KEEP_SEGMENTS_AFTER_ANALYSIS:-false}
+      - JOB_EVENTS_ENABLED=${JOB_EVENTS_ENABLED:-true}
+      - WORKER_HEARTBEATS_ENABLED=${WORKER_HEARTBEATS_ENABLED:-true}
     volumes:
       - spotify_curator_data:/app/data
-      - ./cache:/app/cache
+      - spotify_curator_cache:/app/cache
       - ./models:/app/models
       - ./logs:/app/logs
       - ./exports:/app/exports
+      - ./profiles:/app/profiles:ro
     command:
       - uv
       - run
@@ -44,9 +48,73 @@ services:
       - info
       - --access-log
 
+  audio-downloader:
+    profiles: ["audio"]
+    build:
+      context: .
+      dockerfile: docker/audio-downloader/Dockerfile
+    environment:
+      - PYTHONPATH=/app
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/spotify_curator.sqlite}
+      - SQLITE_JOURNAL_MODE=${SQLITE_JOURNAL_MODE:-WAL}
+      - CACHE_DIR=${CACHE_DIR:-/app/cache}
+      - AUDIO_USE_TEST_PROVIDER=${AUDIO_USE_TEST_PROVIDER:-}
+      - JOB_EVENTS_ENABLED=${JOB_EVENTS_ENABLED:-true}
+      - WORKER_HEARTBEATS_ENABLED=${WORKER_HEARTBEATS_ENABLED:-true}
+      - AUDIO_DOWNLOAD_CONCURRENCY=${AUDIO_DOWNLOAD_CONCURRENCY:-2}
+      - AUDIO_SEGMENT_MAX_SECONDS=${AUDIO_SEGMENT_MAX_SECONDS:-30}
+      - YTDLP_TIMEOUT_SECONDS=${YTDLP_TIMEOUT_SECONDS:-120}
+      - FFMPEG_TIMEOUT_SECONDS=${FFMPEG_TIMEOUT_SECONDS:-120}
+    volumes:
+      - spotify_curator_data:/app/data
+      - spotify_curator_cache:/app/cache
+      - ./profiles:/app/profiles:ro
+    restart: unless-stopped
+
+  preview-resolver-worker:
+    profiles: ["audio"]
+    build:
+      context: .
+      dockerfile: docker/preview-resolver/Dockerfile
+    environment:
+      - PYTHONPATH=/app
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/spotify_curator.sqlite}
+      - SQLITE_JOURNAL_MODE=${SQLITE_JOURNAL_MODE:-WAL}
+      - DEEZER_API_BASE_URL=${DEEZER_API_BASE_URL:-https://api.deezer.com}
+      - DEEZER_TIMEOUT_SECONDS=${DEEZER_TIMEOUT_SECONDS:-15}
+      - DEEZER_MAX_RETRIES=${DEEZER_MAX_RETRIES:-3}
+      - JOB_EVENTS_ENABLED=${JOB_EVENTS_ENABLED:-true}
+      - WORKER_HEARTBEATS_ENABLED=${WORKER_HEARTBEATS_ENABLED:-true}
+    volumes:
+      - spotify_curator_data:/app/data
+    restart: unless-stopped
+
+  essentia-lowlevel-worker:
+    profiles: ["audio"]
+    build:
+      context: .
+      dockerfile: docker/essentia-lowlevel-worker/Dockerfile
+    environment:
+      - PYTHONPATH=/app
+      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/spotify_curator.sqlite}
+      - SQLITE_JOURNAL_MODE=${SQLITE_JOURNAL_MODE:-WAL}
+      - CACHE_DIR=${CACHE_DIR:-/app/cache}
+      - ESSENTIA_LOWLEVEL_PROFILE=${ESSENTIA_LOWLEVEL_PROFILE:-/app/profiles/essentia_lowlevel_basic.yaml}
+      - ESSENTIA_LOWLEVEL_PIPELINE_VERSION=${ESSENTIA_LOWLEVEL_PIPELINE_VERSION:-essentia_lowlevel_v1}
+      - ESSENTIA_USE_FIXTURE_JSON=${ESSENTIA_USE_FIXTURE_JSON:-}
+      - JOB_EVENTS_ENABLED=${JOB_EVENTS_ENABLED:-true}
+      - WORKER_HEARTBEATS_ENABLED=${WORKER_HEARTBEATS_ENABLED:-true}
+      - AUDIO_KEEP_SEGMENTS_AFTER_ANALYSIS=${AUDIO_KEEP_SEGMENTS_AFTER_ANALYSIS:-false}
+    volumes:
+      - spotify_curator_data:/app/data
+      - spotify_curator_cache:/app/cache
+      - ./profiles:/app/profiles:ro
+    restart: unless-stopped
+
 volumes:
-  # Created by Compose on first up, or pre-filled via scripts/migrate-sqlite-to-docker-volume.ps1
   spotify_curator_data:
     name: spotify_curator_data
     external: false
-
+  spotify_curator_cache:
+    name: spotify_curator_cache
+    external: false

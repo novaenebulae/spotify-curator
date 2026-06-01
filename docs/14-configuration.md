@@ -55,9 +55,9 @@ LOG_REDACT_SECRETS=true
 
 ## Variables jobs / workers
 
-**Lues par le core aujourd'hui** : `JOB_DEFAULT_MAX_ATTEMPTS`, `RECCOBEATS_*` dont `RECCOBEATS_HTTP_BATCH_SIZE` et `RECCOBEATS_DB_UPSERT_BATCH_SIZE` (phase 3.5 — voir bloc `.env.example` ci-dessus). `JOB_POLL_INTERVAL_MS` est documentée mais **non utilisée**.
+**Lues par le core aujourd'hui** : `JOB_DEFAULT_MAX_ATTEMPTS`, `RECCOBEATS_*`, et (phase 4) `JOB_*`, `WORKER_*`, `AUDIO_*`, `YTDLP_*`, `FFMPEG_*`, `ESSENTIA_LOWLEVEL_*` — voir [`.env.example`](../.env.example).
 
-**Cible** (concurrence workers, `job_items`, Essentia, etc.) : [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §14 — ne pas dupliquer tout le bloc dans ce fichier tant que le code ne les lit pas.
+Profil Compose **`audio`** : `audio-downloader`, `essentia-lowlevel-worker` (voir [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md)).
 
 ## Profils Docker Compose
 

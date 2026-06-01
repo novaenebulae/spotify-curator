@@ -26,9 +26,13 @@ async def lifespan(_app: FastAPI):
     try:
         init_db()
         logger.info("Database migrations applied")
-        reconciled = JobService().reconcile_orphaned_jobs()
+        jobs_svc = JobService()
+        reconciled = jobs_svc.reconcile_orphaned_jobs()
         if reconciled:
             logger.info("Reconciled orphaned jobs: %s", reconciled)
+        stale_items = jobs_svc.reconcile_orphaned_job_items()
+        if stale_items:
+            logger.info("Released stale job item locks: %d", stale_items)
     except Exception:
         logger.exception("Database migration failed during startup")
         raise

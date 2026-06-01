@@ -1,0 +1,24 @@
+{
+  "data": [
+    {
+      "id": 3135556,
+      "title": "Harder Better Faster Stronger",
+      "duration": 224,
+      "preview": "https://cdns-preview-d.dzcdn.net/stream/d-preview.mp3",
+      "link": "https://www.deezer.com/track/3135556",
+      "isrc": "GBDUW0100057",
+      "artist": {"name": "Daft Punk"},
+      "album": {"title": "Discovery"}
+    },
+    {
+      "id": 999,
+      "title": "Harder Better Faster Stronger (Live)",
+      "duration": 300,
+      "preview": "https://cdns-preview-d.dzcdn.net/stream/d-live.mp3",
+      "link": "https://www.deezer.com/track/999",
+      "artist": {"name": "Daft Punk"},
+      "album": {"title": "Live"}
+    }
+  ],
+  "total": 2
+}

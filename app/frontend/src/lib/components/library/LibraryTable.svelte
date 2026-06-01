@@ -1,5 +1,6 @@
 <script lang="ts">
 	import AlbumCover from '$lib/components/common/AlbumCover.svelte';
+	import TrackPreviewButton from '$lib/components/library/TrackPreviewButton.svelte';
 	import StatusBadge from '$lib/components/common/StatusBadge.svelte';
 	import type { TrackItem } from '$lib/libraryApi';
 	import { formatDuration } from '$lib/libraryApi';
@@ -53,6 +54,7 @@
 					/>
 				</th>
 				<th>Cover</th>
+				<th>Preview</th>
 				<th
 					><button type="button" class="sort-btn" onclick={() => onSort('title')}
 						>{sortLabel('title', 'Track')}</button
@@ -90,6 +92,9 @@
 							size="md"
 							href={spotifyHref(track)}
 						/>
+					</td>
+					<td>
+						<TrackPreviewButton trackId={track.track_id} />
 					</td>
 					<td>
 						<div class="track-cell">

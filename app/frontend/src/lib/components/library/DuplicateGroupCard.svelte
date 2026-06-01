@@ -45,7 +45,7 @@
 			<AlbumCover
 				src={track.cover_image_url}
 				alt={track.album_name ?? track.title}
-				size="xl"
+				size="lg"
 				href={spotifyHref(track)}
 			/>
 			<div>

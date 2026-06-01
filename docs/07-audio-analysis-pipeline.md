@@ -6,6 +6,8 @@ Tags: #audio #yt-dlp #ffmpeg #essentia #reccobeats #features
 
 Enrichir les titres avec des features musicales issues de sources multiples : ReccoBeats, analyse locale low-level, modèles avancés et tags utilisateur.
 
+**Stratégie segments (hybride Deezer + YouTube)** : voir [`17-audio-preview-and-segment-strategy.md`](17-audio-preview-and-segment-strategy.md).
+
 ## Sources
 
 1. ReccoBeats.

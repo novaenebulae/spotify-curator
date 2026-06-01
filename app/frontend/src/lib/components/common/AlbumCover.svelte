@@ -7,7 +7,7 @@
 	}: {
 		src?: string | null;
 		alt: string;
-		size?: 'sm' | 'md' | 'lg';
+		size?: 'sm' | 'md' | 'lg' | 'xl';
 		href?: string | null;
 	} = $props();
 

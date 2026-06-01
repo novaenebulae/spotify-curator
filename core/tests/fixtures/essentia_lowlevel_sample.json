@@ -1,0 +1,27 @@
+{
+  "metadata": {
+    "audio_properties": {
+      "sample_rate": 44100,
+      "length": 15.0
+    }
+  },
+  "tonal": {
+    "key_key": "C",
+    "key_scale": "major",
+    "key_strength": 0.82
+  },
+  "rhythm": {
+    "bpm": 120.5,
+    "beats_count": 30
+  },
+  "lowlevel": {
+    "loudness": -8.2,
+    "spectral_centroid": { "mean": 2200.0 },
+    "spectral_rolloff": { "mean": 4500.0 },
+    "spectral_contrast": { "mean": [1.0, 2.0, 3.0] },
+    "mfcc": { "mean": [0.1, 0.2, 0.3, 0.4, 0.5] },
+    "hpcp": { "mean": [0.5, 0.4, 0.3] },
+    "dynamic_complexity": 4.5,
+    "onset_rate": 2.1
+  }
+}

@@ -1,9 +1,9 @@
 import sqlite3
 from pathlib import Path
 
-from alembic import command
 from sqlalchemy import text
 
+from alembic import command
 from app.database.engine import get_engine, reset_engine
 from app.database.migrate import run_migrations
 

@@ -3,10 +3,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from alembic import command
 from alembic.config import Config
 from sqlalchemy import inspect, text
 
+from alembic import command
 from app.database.engine import get_engine, reset_engine
 
 _PHASE1_HEAD_REVISION = "0001_initial"

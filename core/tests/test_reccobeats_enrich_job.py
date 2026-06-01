@@ -18,8 +18,6 @@ from app.main import create_app
 from app.reccobeats.client import ReccoBeatsClient
 from tests.fixtures.library_seed import seed_library
 from tests.fixtures.reccobeats_responses import (
-    SAMPLE_FEATURES,
-    SAMPLE_TRACK,
     batch_response_for_spotify_ids,
 )
 

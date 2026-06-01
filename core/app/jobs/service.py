@@ -12,9 +12,9 @@ from sqlalchemy.orm import Session
 
 from app.database.engine import get_engine
 from app.database.models_jobs import Job
-from app.observability.debug_session_log import debug_session_log
 from app.jobs.errors import JobCancelledError
 from app.jobs.status_mapping import map_job_status
+from app.observability.debug_session_log import debug_session_log
 from app.settings.config import settings
 from app.spotify.client import SpotifyRateLimited
 
@@ -82,6 +82,18 @@ class JobService:
     def is_active(self, job_id: str) -> bool:
         with self._active_lock:
             return job_id in self._active_ids
+
+    def is_cancelled(self, job_id: str) -> bool:
+        engine = get_engine()
+        with Session(engine) as session:
+            row = session.get(Job, job_id)
+            return row is not None and row.status == "cancelled"
+
+    def reconcile_orphaned_job_items(self) -> int:
+
+        from app.jobs.items.service import JobItemService
+
+        return JobItemService().release_stale_locks()
 
     def reconcile_orphaned_jobs(self, *, job_type: str | None = None) -> list[str]:
         """Mark DB jobs as failed when no worker thread is running them (e.g. after crash)."""

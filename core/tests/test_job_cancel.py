@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import time
-from datetime import UTC, datetime
-from unittest.mock import patch
 
 import httpx
 from fastapi.testclient import TestClient
@@ -10,9 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database.engine import get_engine
 from app.database.init_db import init_db
-from app.database.models_jobs import Job
 from app.features.enrichment import ReccoBeatsEnrichmentService
-from app.jobs.service import JobService
 from app.main import create_app
 from tests.fixtures.library_seed import seed_library
 from tests.fixtures.reccobeats_responses import batch_response_for_spotify_ids

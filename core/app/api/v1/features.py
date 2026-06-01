@@ -1,16 +1,30 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Query
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.database.engine import get_engine
 from app.features.coverage import FeatureCoverageService
 from app.features.enrichment import ReccoBeatsEnrichmentService
+from app.features.merge import FeatureMergeService
 from app.features.schemas import CoverageResponse, EnrichJobResponse, ReccoBeatsEnrichRequest
 from app.jobs.status_mapping import map_job_status
 
 router = APIRouter(prefix="/features")
 _enrichment = ReccoBeatsEnrichmentService()
 _coverage = FeatureCoverageService()
+_merge = FeatureMergeService()
+
+
+class MergeRecomputeRequest(BaseModel):
+    track_ids: list[int] | None = None
+    limit: int = 5000
+
+
+class MergeRecomputeResponse(BaseModel):
+    tracks_processed: int
+    deactivated_rows: int
 
 
 @router.post("/reccobeats/enrich", response_model=EnrichJobResponse)
@@ -34,8 +48,6 @@ def get_feature_coverage(
     include_fields: bool = Query(default=True),
     recent_failures_limit: int = Query(default=20, ge=1, le=100),
 ) -> CoverageResponse:
-    from sqlalchemy.orm import Session
-
     engine = get_engine()
     with Session(engine) as session:
         return _coverage.get_coverage(
@@ -45,3 +57,19 @@ def get_feature_coverage(
             include_fields=include_fields,
             recent_failures_limit=recent_failures_limit,
         )
+
+
+@router.post("/merge/recompute", response_model=MergeRecomputeResponse)
+def recompute_feature_merge(body: MergeRecomputeRequest) -> MergeRecomputeResponse:
+    engine = get_engine()
+    with Session(engine) as session:
+        stats = _merge.recompute(
+            session,
+            track_ids=body.track_ids,
+            limit=body.limit,
+        )
+        session.commit()
+    return MergeRecomputeResponse(
+        tracks_processed=stats["tracks_processed"],
+        deactivated_rows=stats["deactivated_rows"],
+    )

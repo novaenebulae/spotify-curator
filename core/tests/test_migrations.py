@@ -1,7 +1,9 @@
 from pathlib import Path
 
+import pytest
 from alembic.config import Config
 from sqlalchemy import inspect, text
+from sqlalchemy.exc import IntegrityError
 
 from alembic import command
 from app.database.engine import get_engine, reset_engine
@@ -42,7 +44,7 @@ def test_migrations_upgrade_head_on_empty_db(tmp_path, monkeypatch) -> None:
     with engine.connect() as conn:
         row = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
     assert row is not None
-    assert row[0] == "0005_phase3_features"
+    assert row[0] == "0007_track_previews_hybrid"
 
     assert "library_actions" in tables
     sp_cols = {c["name"] for c in inspector.get_columns("spotify_tracks")}
@@ -74,3 +76,44 @@ def test_migrations_upgrade_head_on_empty_db(tmp_path, monkeypatch) -> None:
     assert row is not None
     assert row[0] == "reccobeats"
     assert row[1] == 1
+
+    assert "track_previews" in tables
+    tp_cols = {c["name"] for c in inspector.get_columns("track_previews")}
+    assert "preview_url" in tp_cols
+    assert "match_confidence" in tp_cols
+
+    seg_cols = {c["name"] for c in inspector.get_columns("track_segments")}
+    assert "source_quality" in seg_cols
+
+    assert "job_items" in tables
+    assert "track_segments" in tables
+    assert "worker_heartbeats" in tables
+
+    with engine.connect() as conn:
+        ess = conn.execute(
+            text("SELECT is_active FROM feature_sources WHERE name = 'essentia_lowlevel'")
+        ).fetchone()
+    assert ess is not None
+    assert ess[0] == 1
+
+    with engine.connect() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO tracks (id, name, normalized_title, duration_ms, created_at, updated_at)
+                VALUES (1, 't', 't', 60000, datetime('now'), datetime('now'))
+                """
+            )
+        )
+        conn.commit()
+        with pytest.raises(IntegrityError):
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO track_segments
+                    (track_id, start_seconds, end_seconds, duration_seconds, segment_type, source, created_at)
+                    VALUES (1, 0, 35, 35, 'A', 'test', datetime('now'))
+                    """
+                )
+            )
+            conn.commit()

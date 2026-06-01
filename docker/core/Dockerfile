@@ -14,6 +14,7 @@ COPY core/app /app/app
 COPY core/scripts /app/scripts
 COPY core/alembic /app/alembic
 COPY core/alembic.ini /app/alembic.ini
+COPY profiles /app/profiles
 
 EXPOSE 8765
 

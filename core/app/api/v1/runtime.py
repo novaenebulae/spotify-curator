@@ -28,6 +28,16 @@ def runtime_config() -> dict:
         "cache_dir": settings.cache_dir,
         "data_dir": settings.data_dir,
         "app_version": settings.app_version,
+        "audio_segment_max_seconds": settings.audio_segment_max_seconds,
+        "audio_keep_segments_after_analysis": settings.audio_keep_segments_after_analysis,
+        "audio_segment_default_seconds": settings.audio_segment_default_seconds,
+        "worker_heartbeats_enabled": settings.worker_heartbeats_enabled,
+        "essentia_lowlevel_pipeline_version": settings.essentia_lowlevel_pipeline_version,
+        "audio_segment_strategy": settings.audio_segment_strategy,
+        "audio_previews_enabled": settings.audio_previews_enabled,
+        "deezer_preview_ui_min_confidence": settings.deezer_preview_ui_min_confidence,
+        "deezer_preview_analysis_min_confidence": settings.deezer_preview_analysis_min_confidence,
+        "youtube_min_confidence": settings.youtube_min_confidence,
     }
 
 

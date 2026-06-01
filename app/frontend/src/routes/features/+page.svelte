@@ -3,6 +3,7 @@
 	import CoverageCards from '$lib/components/features/CoverageCards.svelte';
 	import EnrichActions from '$lib/components/features/EnrichActions.svelte';
 	import FieldCoverageTable from '$lib/components/features/FieldCoverageTable.svelte';
+	import LocalAudioAnalysis from '$lib/components/features/LocalAudioAnalysis.svelte';
 	import RecentFailuresList from '$lib/components/features/RecentFailuresList.svelte';
 	import JobRunSummary from '$lib/components/import/JobRunSummary.svelte';
 	import {
@@ -128,6 +129,8 @@
 		{busy}
 		onRetry={() => runEnrichment(retryFailedReccoBeats, 'Retry failed tracks')}
 	/>
+
+	<LocalAudioAnalysis />
 {/if}
 
 <style>

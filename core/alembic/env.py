@@ -34,6 +34,13 @@ from app.database.models_snapshots import (  # noqa: F401
     PlaylistTrackSnapshot,
     Snapshot,
 )
+from app.database.models_audio import (  # noqa: F401
+    AudioAnalysisJob,
+    AudioDownloadJob,
+    TrackSegment,
+)
+from app.database.models_job_items import JobEvent, JobItem, WorkerHeartbeat  # noqa: F401
+from app.database.models_previews import TrackPreview  # noqa: F401
 from app.database.models_spotify_auth import SpotifyAuthToken  # noqa: F401
 
 config = context.config
