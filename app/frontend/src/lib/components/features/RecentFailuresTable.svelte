@@ -2,6 +2,21 @@
 	import type { RecentFailure } from '$lib/featuresApi';
 	import StatusBadge from '$lib/components/common/StatusBadge.svelte';
 
+	function formatWhen(iso: string | null | undefined): string {
+		if (!iso) return '—';
+		try {
+			const d = new Date(iso);
+			return d.toLocaleString(undefined, {
+				month: 'short',
+				day: 'numeric',
+				hour: '2-digit',
+				minute: '2-digit'
+			});
+		} catch {
+			return iso.slice(0, 16);
+		}
+	}
+
 	let {
 		failures,
 		page = 1,
@@ -31,6 +46,7 @@
 	<table>
 		<thead>
 			<tr>
+				<th>When</th>
 				<th>Source</th>
 				<th>Track</th>
 				<th>Artists</th>
@@ -41,6 +57,7 @@
 		<tbody>
 			{#each failures as f (f.source ? `${f.source}:${f.track_id}` : String(f.track_id))}
 				<tr>
+					<td class="when-col">{formatWhen(f.occurred_at)}</td>
 					<td class="source-col">{f.source ?? '—'}</td>
 					<td class="track-col">
 						{#if onInspect}
@@ -85,6 +102,13 @@
 <style>
 	.failures-table {
 		max-height: min(50vh, 420px);
+	}
+	.when-col {
+		min-width: 7rem;
+		max-width: 9rem;
+		font-size: 0.8rem;
+		color: var(--color-muted);
+		white-space: nowrap;
 	}
 	.source-col {
 		min-width: 7rem;

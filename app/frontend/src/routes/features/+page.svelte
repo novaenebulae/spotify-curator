@@ -17,7 +17,8 @@
 		type FeatureCoverage
 	} from '$lib/featuresApi';
 	import { fetchHealth } from '$lib/coreApi';
-	import { jobTracker, trackJob } from '$lib/jobTracker';
+	import { getFailuresAfterParam } from '$lib/featuresApi';
+	import { hydrateLastJobsFromApi, jobTracker, trackJob } from '$lib/jobTracker';
 
 	let loading = $state(true);
 	let offline = $state(false);
@@ -31,6 +32,7 @@
 	let batchSize = $state(50);
 	let limit = $state<number | null>(null);
 	let inspectTrack: TrackItem | null = $state(null);
+	let jobsInsightsLoading = $state(false);
 
 	const controller = new AbortController();
 
@@ -53,7 +55,8 @@
 						include_failed: true,
 						source: 'all',
 						failures_page: failuresPage,
-						failures_page_size: failuresPageSize
+						failures_page_size: failuresPageSize,
+						failures_after: getFailuresAfterParam()
 					},
 					controller.signal
 				)
@@ -78,7 +81,12 @@
 			const opts: { limit?: number; batch_size?: number } = { batch_size: batchSize };
 			if (limit != null) opts.limit = limit;
 			const { job_id } = await startFn(opts, controller.signal);
-			await trackJob(job_id, label, { onComplete: loadCoverage });
+			await trackJob(job_id, label, {
+				onComplete: async () => {
+					await loadJobsInsights();
+					await loadCoverage();
+				}
+			});
 		} catch (e) {
 			jobTracker.update((s) => ({
 				...s,
@@ -87,7 +95,14 @@
 		}
 	}
 
+	async function loadJobsInsights() {
+		jobsInsightsLoading = true;
+		await hydrateLastJobsFromApi();
+		jobsInsightsLoading = false;
+	}
+
 	onMount(() => {
+		void loadJobsInsights();
 		loadCoverage();
 	});
 	function failureToTrackItem(f: RecentFailure): TrackItem {
@@ -158,21 +173,34 @@
 			onForceRefresh={() => runEnrichment(forceRefreshReccoBeats, 'Force refresh all')}
 		/>
 
-		<LocalAudioAnalysis onJobComplete={loadCoverage} />
+		<LocalAudioAnalysis
+			onJobComplete={async () => {
+				await loadJobsInsights();
+				await loadCoverage();
+			}}
+		/>
 	{/if}
 
 	{#if actionError}
 		<pre class="error">{actionError}</pre>
 	{/if}
 
-	<JobRunSummary job={lastEnrichJob} />
+	<JobRunSummary job={lastEnrichJob} loading={jobsInsightsLoading} />
 
-	<FieldCoverageTable fields={coverage?.fields ?? []} {loading} />
+	<FieldCoverageTable
+		fields={coverage?.fields ?? []}
+		fieldsBySource={coverage?.fields_by_source}
+		{loading}
+	/>
 	<RecentFailuresList
 		failures={coverage?.failures ?? null}
 		busy={loading}
 		onPageChange={(p) => {
 			failuresPage = p;
+			loadCoverage();
+		}}
+		onCleared={() => {
+			failuresPage = 1;
 			loadCoverage();
 		}}
 		onInspect={inspectFailure}

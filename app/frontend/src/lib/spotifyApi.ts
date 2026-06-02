@@ -136,6 +136,20 @@ export function fetchJob(jobId: string, signal?: AbortSignal): Promise<Job> {
 	return apiFetch<JobApiResponse>(`/jobs/${jobId}`, { signal }).then(normalizeJob);
 }
 
+export type LatestJobsInsights = {
+	jobs: Record<string, Job | null>;
+};
+
+export function fetchLatestJobsByType(signal?: AbortSignal): Promise<LatestJobsInsights> {
+	return apiFetch<{ jobs: Record<string, JobApiResponse | null> }>('/jobs/insights/latest', {
+		signal
+	}).then((data) => ({
+		jobs: Object.fromEntries(
+			Object.entries(data.jobs).map(([k, v]) => [k, v ? normalizeJob(v) : null])
+		)
+	}));
+}
+
 export function cancelJob(jobId: string, signal?: AbortSignal): Promise<{ job_id: string; status: string }> {
 	return apiFetch<{ job_id: string; status: string }>(`/jobs/${jobId}/cancel`, {
 		method: 'POST',

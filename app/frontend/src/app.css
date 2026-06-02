@@ -27,7 +27,7 @@
 	--space-lg: 1rem;
 	--space-xl: 1.5rem;
 	--shadow-card: 0 2px 8px rgba(0, 0, 0, 0.35);
-	--layout-max: 1200px;
+	--layout-max: 2000px;
 }
 
 * {
@@ -297,6 +297,33 @@ td {
 .table-sticky-wrap {
 	overflow: auto;
 	max-height: min(70vh, 640px);
+	scrollbar-width: thin;
+	scrollbar-color: var(--color-border) var(--color-surface);
+}
+
+.table-sticky-wrap::-webkit-scrollbar {
+	width: 10px;
+	height: 10px;
+}
+
+.table-sticky-wrap::-webkit-scrollbar-track {
+	background: var(--color-surface);
+	border-radius: var(--radius-sm);
+}
+
+.table-sticky-wrap::-webkit-scrollbar-thumb {
+	background: var(--color-border);
+	border-radius: var(--radius-sm);
+	border: 2px solid var(--color-surface);
+}
+
+.table-sticky-wrap::-webkit-scrollbar-thumb:hover {
+	background: var(--color-muted);
+}
+
+body {
+	scrollbar-width: thin;
+	scrollbar-color: var(--color-border) var(--color-bg);
 }
 
 .table-sticky thead th {

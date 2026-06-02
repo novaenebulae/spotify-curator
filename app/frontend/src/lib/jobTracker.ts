@@ -1,7 +1,7 @@
 import { get, writable } from 'svelte/store';
 
 import { pollJobUntilDone } from '$lib/jobPoller';
-import { cancelJob, fetchJob, type Job } from '$lib/spotifyApi';
+import { cancelJob, fetchJob, fetchLatestJobsByType, type Job } from '$lib/spotifyApi';
 
 const STORAGE_KEY = 'spotify_curator_active_job';
 
@@ -136,6 +136,37 @@ export async function cancelTrackedJob(): Promise<void> {
 		return;
 	}
 	patch({ cancelBusy: false });
+}
+
+function mergeJobMaps(
+	current: Record<string, Job>,
+	incoming: Record<string, Job | null>
+): Record<string, Job> {
+	const merged = { ...current };
+	for (const [jobType, job] of Object.entries(incoming)) {
+		if (!job || !isTerminal(job.status)) continue;
+		const existing = merged[jobType];
+		if (!existing?.finished_at || (job.finished_at && job.finished_at > existing.finished_at)) {
+			merged[jobType] = job;
+		}
+	}
+	return merged;
+}
+
+/** Load latest terminal jobs from API (survives page reload). */
+export async function hydrateLastJobsFromApi(): Promise<void> {
+	try {
+		const { jobs } = await fetchLatestJobsByType();
+		const normalized: Record<string, Job> = {};
+		for (const [k, v] of Object.entries(jobs)) {
+			if (v) normalized[k] = v;
+		}
+		patch({
+			lastJobsByType: mergeJobMaps(get(jobTracker).lastJobsByType, normalized)
+		});
+	} catch {
+		/* offline or API unavailable */
+	}
 }
 
 /** Resume polling after navigation or full page reload. */

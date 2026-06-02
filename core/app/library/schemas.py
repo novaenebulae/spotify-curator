@@ -52,6 +52,9 @@ class TrackListItem(BaseModel):
     last_seen_at: datetime | None = None
     external_url: str | None = None
     preview_url: str | None = None
+    reccobeats_status: str = "missing"
+    essentia_status: str = "missing"
+    preview_available: bool = False
 
 
 class PaginationOut(BaseModel):

@@ -31,6 +31,7 @@ class TrackSearchPerf:
     artists_ms: float = 0.0
     albums_ms: float = 0.0
     playlists_ms: float = 0.0
+    feature_status_ms: float = 0.0
     sql_query_count: int = 0
     sql_ms: float = 0.0
 

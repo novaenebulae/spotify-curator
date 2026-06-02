@@ -20,6 +20,7 @@ from app.library.schemas import (
     TrackSearchFilters,
 )
 from app.library.snapshots import SnapshotService
+from app.library.track_feature_status import batch_feature_status_for_tracks
 from app.observability.errors import ApiError
 from app.observability.sql_perf import (
     perf_segment,
@@ -99,6 +100,8 @@ class TrackSearchService:
                     playlist_counts = self._repo.fetch_playlist_counts_for_tracks(
                         session, sp_ids
                     )
+                with perf_segment(perf, "feature_status_ms"):
+                    feature_status_map = batch_feature_status_for_tracks(session, track_ids)
 
                 dup_ids = duplicate_track_ids or set()
                 items: list[TrackListItem] = []
@@ -113,6 +116,7 @@ class TrackSearchService:
                         else:
                             dup_status = "potential"
 
+                    fs = feature_status_map.get(row.track_id, {})
                     items.append(
                         TrackListItem(
                             track_id=row.track_id,
@@ -138,6 +142,9 @@ class TrackSearchService:
                             last_seen_at=row.last_seen_at,
                             external_url=row.external_url,
                             preview_url=row.preview_url,
+                            reccobeats_status=str(fs.get("reccobeats_status", "missing")),
+                            essentia_status=str(fs.get("essentia_status", "missing")),
+                            preview_available=bool(fs.get("preview_available", False)),
                         )
                     )
 

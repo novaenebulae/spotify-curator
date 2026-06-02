@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database.models_library import Artist, TrackArtist
 from app.database.repositories.audio_features import AudioFeaturesRepository
 from app.database.repositories.feature_sources import FeatureSourcesRepository
+from app.features.failures_insights import FailureInsightsService
 from app.features.schemas import (
     CoverageFieldOut,
+    CoverageFieldsBySourceOut,
     CoverageResponse,
     CoverageSourceOut,
     CoverageSummaryOut,
@@ -36,9 +40,11 @@ class FeatureCoverageService:
         *,
         features_repo: AudioFeaturesRepository | None = None,
         sources_repo: FeatureSourcesRepository | None = None,
+        failures_insights: FailureInsightsService | None = None,
     ) -> None:
         self._features = features_repo or AudioFeaturesRepository()
         self._sources = sources_repo or FeatureSourcesRepository()
+        self._failures = failures_insights or FailureInsightsService(features_repo=self._features)
 
     def get_coverage(
         self,
@@ -50,6 +56,7 @@ class FeatureCoverageService:
         recent_failures_limit: int = 20,
         failures_page: int = 1,
         failures_page_size: int = 20,
+        failures_after: datetime | None = None,
     ) -> CoverageResponse:
         track_count = self._features.count_tracks_total(session)
         sources_out: list[CoverageSourceOut] = []
@@ -73,6 +80,8 @@ class FeatureCoverageService:
         reccobeats_source = self._sources.get_by_name(session, "reccobeats")
         essentia_source = self._sources.get_by_name(session, "essentia_lowlevel")
         fields_out: list[CoverageFieldOut] = []
+        fields_rb: list[CoverageFieldOut] = []
+        fields_ess: list[CoverageFieldOut] = []
         recent_failures: list[RecentFailureOut] = []
         failures_page_out: FailurePageOut | None = None
 
@@ -122,53 +131,50 @@ class FeatureCoverageService:
                             session, feature_source_id=src.id, field_name=field_name
                         )
                         pct = (available / track_count * 100.0) if track_count else 0.0
-                        fields_out.append(
+                        row = CoverageFieldOut(
+                            field=field_name,
+                            available_count=available,
+                            coverage_percent=round(pct, 2),
+                        )
+                        fields_out.append(row)
+                        fields_rb.append(row)
+            if src.name == "essentia_lowlevel":
+                with_essentia = covered
+                missing_essentia = missing
+                failed_essentia = failed
+                not_found_essentia = not_found
+                if include_fields:
+                    for field_name in COVERAGE_FIELDS:
+                        available = self._features.count_field_available(
+                            session, feature_source_id=src.id, field_name=field_name
+                        )
+                        pct = (available / track_count * 100.0) if track_count else 0.0
+                        fields_ess.append(
                             CoverageFieldOut(
                                 field=field_name,
                                 available_count=available,
                                 coverage_percent=round(pct, 2),
                             )
                         )
-            if src.name == "essentia_lowlevel":
-                with_essentia = covered
-                missing_essentia = missing
-                failed_essentia = failed
-                not_found_essentia = not_found
 
         if include_failed:
             failure_source_ids = [s.id for s in source_rows if s is not None]
             if failure_source_ids:
-                recent_failures = self._build_recent_failures_multi(
-                    session, feature_source_ids=failure_source_ids, limit=recent_failures_limit
-                )
-                total = self._features.count_failures(
-                    session, feature_source_ids=failure_source_ids
-                )
                 page = max(1, int(failures_page))
                 page_size = max(1, min(int(failures_page_size), 200))
                 offset = (page - 1) * page_size
-                rows = self._features.list_failures_page(
+                recent_failures = self._failures.list_recent(
                     session,
                     feature_source_ids=failure_source_ids,
+                    failures_after=failures_after,
+                    limit=recent_failures_limit,
+                )
+                failures_page_out = self._failures.list_failures_page(
+                    session,
+                    feature_source_ids=failure_source_ids,
+                    failures_after=failures_after,
                     offset=offset,
                     limit=page_size,
-                )
-                items: list[RecentFailureOut] = []
-                for feature, track, src in rows:
-                    artist_names = self._artist_names(session, track.id)
-                    items.append(
-                        RecentFailureOut(
-                            source=src.name,
-                            track_id=track.id,
-                            title=track.name,
-                            artist_names=artist_names,
-                            status=feature.status,
-                            error_code=feature.error_code,
-                            error_message=feature.error_message,
-                        )
-                    )
-                failures_page_out = FailurePageOut(
-                    total=total, page=page, page_size=page_size, items=items
                 )
 
         if reccobeats_source:
@@ -193,10 +199,18 @@ class FeatureCoverageService:
             coverage_percent=round(summary_pct, 2),
         )
 
+        fields_by_source = None
+        if include_fields and (fields_rb or fields_ess):
+            fields_by_source = CoverageFieldsBySourceOut(
+                reccobeats=fields_rb,
+                essentia_lowlevel=fields_ess,
+            )
+
         return CoverageResponse(
             summary=summary,
             sources=sources_out,
             fields=fields_out,
+            fields_by_source=fields_by_source,
             recent_failures=recent_failures,
             failures=failures_page_out,
         )

@@ -62,6 +62,9 @@ export type TrackItem = {
 	availability_status: string;
 	market_status: string;
 	duplicate_status: string;
+	reccobeats_status?: string;
+	essentia_status?: string;
+	preview_available?: boolean;
 };
 
 export type TracksResponse = {

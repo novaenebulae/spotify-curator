@@ -42,6 +42,22 @@
 		const s = track.availability_status || track.market_status;
 		return s !== 'available' && s !== 'unknown';
 	}
+
+	function featureVariant(
+		status: string | undefined
+	): 'ok' | 'missing' | 'unavailable' | 'neutral' {
+		if (status === 'success' || status === 'partial') return 'ok';
+		if (status === 'failed') return 'unavailable';
+		if (status === 'not_found') return 'missing';
+		return 'missing';
+	}
+
+	function featureShort(status: string | undefined): string {
+		if (status === 'success' || status === 'partial') return '✓';
+		if (status === 'failed') return '!';
+		if (status === 'not_found') return '?';
+		return '—';
+	}
 </script>
 
 <div class="table-sticky-wrap table-sticky library-table-wrap">
@@ -51,6 +67,7 @@
 			<col class="col-cover" />
 			<col class="col-preview" />
 			<col class="col-track" />
+			<col class="col-features" />
 			<col class="col-duration" />
 			<col class="col-liked" />
 			<col class="col-playlists" />
@@ -67,23 +84,24 @@
 					/>
 				</th>
 				<th class="col-cover">Cover</th>
-				<th class="col-preview">Preview</th>
-				<th
+				<th class="col-preview" title="Deezer preview">▶</th>
+				<th class="col-track"
 					><button type="button" class="sort-btn" onclick={() => onSort('title')}
 						>{sortLabel('title', 'Track')}</button
 					></th
 				>
-				<th
+				<th class="col-features" title="ReccoBeats, Essentia, Preview">Features</th>
+				<th class="col-duration"
 					><button type="button" class="sort-btn" onclick={() => onSort('duration_ms')}
 						>{sortLabel('duration_ms', 'Duration')}</button
 					></th
 				>
-				<th
+				<th class="col-liked"
 					><button type="button" class="sort-btn" onclick={() => onSort('liked_added_at')}
 						>{sortLabel('liked_added_at', 'Liked')}</button
 					></th
 				>
-				<th class="col-playlists">Pl.</th>
+				<th class="col-playlists" title="Playlist count">Playlists</th>
 				<th class="col-isrc">ISRC</th>
 				<th class="col-status">Status</th>
 			</tr>
@@ -149,27 +167,49 @@
 								{#if track.album?.name}
 									<p class="track-cell-sub track-cell-album">{track.album.name}</p>
 								{/if}
-								<div class="track-badges">
-									{#if track.liked}
-										<StatusBadge variant="liked" label="Liked" />
-									{/if}
-									{#if isUnavailable(track)}
-										<StatusBadge variant="unavailable" label="Unavailable" />
-									{/if}
-									{#if track.duplicate_status && track.duplicate_status !== 'none'}
-										<StatusBadge variant="duplicate" label={track.duplicate_status} />
-									{/if}
-								</div>
 							</div>
+							<div class="track-badges-col">
+								{#if track.liked}
+									<StatusBadge variant="liked" label="Liked" />
+								{/if}
+								{#if isUnavailable(track)}
+									<StatusBadge variant="unavailable" label="Unavailable" />
+								{/if}
+								{#if track.duplicate_status && track.duplicate_status !== 'none'}
+									<StatusBadge variant="duplicate" label={track.duplicate_status} />
+								{/if}
+							</div>
+						</div>
+					</td>
+					<td class="col-features">
+						<div class="features-badges" title="ReccoBeats / Essentia / Deezer preview">
+							<span
+								class="feat-pill"
+								class:feat-ok={featureVariant(track.reccobeats_status) === 'ok'}
+								title="ReccoBeats: {track.reccobeats_status ?? 'missing'}"
+								>RB {featureShort(track.reccobeats_status)}</span
+							>
+							<span
+								class="feat-pill"
+								class:feat-ok={featureVariant(track.essentia_status) === 'ok'}
+								title="Essentia: {track.essentia_status ?? 'missing'}"
+								>ES {featureShort(track.essentia_status)}</span
+							>
+							<span
+								class="feat-pill"
+								class:feat-ok={track.preview_available}
+								title={track.preview_available ? 'Deezer preview OK' : 'No Deezer preview'}
+								>PV {track.preview_available ? '✓' : '—'}</span
+							>
 						</div>
 					</td>
 					<td class="col-duration">{formatDuration(track.duration_ms)}</td>
 					<td class="col-liked liked-date"
 						>{track.liked_added_at ? track.liked_added_at.slice(0, 10) : '—'}</td
 					>
-					<td>{track.playlist_count}</td>
-					<td><code>{track.isrc ?? '—'}</code></td>
-					<td>{track.availability_status}</td>
+					<td class="col-playlists num">{track.playlist_count}</td>
+					<td class="col-isrc"><code>{track.isrc ?? '—'}</code></td>
+					<td class="col-status">{track.availability_status}</td>
 				</tr>
 			{/each}
 		</tbody>
@@ -188,38 +228,67 @@
 		width: 3.5rem;
 	}
 	.library-table .col-preview {
-		width: 3.25rem;
+		width: 3.75rem;
 	}
 	.library-table .col-track {
-		width: auto;
-		min-width: 280px;
+		width: 28%;
+		min-width: 11rem;
+		max-width: 22rem;
+	}
+	.library-table .col-features {
+		width: 7.5rem;
 	}
 	.library-table .col-duration {
 		width: 4.5rem;
 	}
 	.library-table .col-liked {
-		width: 6.75rem;
+		width: 6.5rem;
 	}
 	.library-table .col-playlists {
-		width: 2.75rem;
+		width: 4.75rem;
 	}
 	.library-table .col-isrc {
-		width: 8.5rem;
+		width: 8rem;
 	}
 	.library-table .col-status {
 		width: 5.5rem;
 	}
 	.col-preview {
 		text-align: center;
+		vertical-align: middle;
 	}
 	.preview-cell {
 		display: flex;
 		justify-content: center;
 		align-items: center;
+		min-height: 2.5rem;
+	}
+	.col-playlists.num {
+		text-align: center;
+		font-variant-numeric: tabular-nums;
 	}
 	.liked-date {
 		white-space: nowrap;
 		font-variant-numeric: tabular-nums;
+	}
+	.track-cell {
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: var(--space-sm);
+		min-width: 0;
+	}
+	.track-cell-meta {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
+	.track-badges-col {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		justify-content: center;
+		gap: 0.25rem;
+		flex-shrink: 0;
 	}
 	.track-primary-line {
 		display: flex;
@@ -231,6 +300,9 @@
 		margin: 0;
 		font-weight: 600;
 		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 	.track-cell-artists {
 		margin: 0;
@@ -244,12 +316,26 @@
 	}
 	.track-cell-album {
 		margin: 0.15rem 0 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
-	.track-badges {
+	.features-badges {
 		display: flex;
-		flex-wrap: wrap;
-		gap: 0.35rem;
-		margin-top: 0.25rem;
+		flex-direction: column;
+		gap: 0.2rem;
+		font-size: 0.7rem;
+	}
+	.feat-pill {
+		display: inline-block;
+		padding: 0.1rem 0.35rem;
+		border-radius: var(--radius-sm);
+		background: var(--color-surface-elevated);
+		color: var(--color-muted);
+		white-space: nowrap;
+	}
+	.feat-pill.feat-ok {
+		color: var(--color-success);
 	}
 	.sort-btn {
 		background: none;
@@ -279,5 +365,9 @@
 	}
 	.spotify-link:hover {
 		color: var(--color-text);
+	}
+	.col-isrc code {
+		font-size: 0.75rem;
+		word-break: break-all;
 	}
 </style>

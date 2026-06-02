@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -63,7 +65,13 @@ def get_feature_coverage(
     recent_failures_limit: int = Query(default=20, ge=1, le=100),
     failures_page: int = Query(default=1, ge=1),
     failures_page_size: int = Query(default=20, ge=1, le=200),
+    failures_after: str | None = Query(default=None),
 ) -> CoverageResponse:
+    failures_after_dt: datetime | None = None
+    if failures_after:
+        failures_after_dt = datetime.fromisoformat(failures_after.replace("Z", "+00:00"))
+        if failures_after_dt.tzinfo is not None:
+            failures_after_dt = failures_after_dt.replace(tzinfo=None)
     engine = get_engine()
     with Session(engine) as session:
         return _coverage.get_coverage(
@@ -74,6 +82,7 @@ def get_feature_coverage(
             recent_failures_limit=recent_failures_limit,
             failures_page=failures_page,
             failures_page_size=failures_page_size,
+            failures_after=failures_after_dt,
         )
 
 

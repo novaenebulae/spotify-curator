@@ -76,6 +76,12 @@ export type RecentFailure = {
 	status: string;
 	error_code: string | null;
 	error_message: string | null;
+	occurred_at?: string | null;
+};
+
+export type CoverageFieldsBySource = {
+	reccobeats: CoverageField[];
+	essentia_lowlevel: CoverageField[];
 };
 
 export type FailurePage = {
@@ -89,9 +95,17 @@ export type FeatureCoverage = {
 	summary: CoverageSummary;
 	sources: CoverageSource[];
 	fields: CoverageField[];
+	fields_by_source?: CoverageFieldsBySource | null;
 	recent_failures: RecentFailure[];
 	failures?: FailurePage | null;
 };
+
+export const FAILURES_CLEARED_STORAGE_KEY = 'features_failures_cleared_at';
+
+export function getFailuresAfterParam(): string | undefined {
+	if (typeof localStorage === 'undefined') return undefined;
+	return localStorage.getItem(FAILURES_CLEARED_STORAGE_KEY) ?? undefined;
+}
 
 export type EnrichPayload = {
 	track_ids?: number[];
@@ -115,6 +129,7 @@ export async function getFeatureCoverage(
 		include_fields?: boolean;
 		failures_page?: number;
 		failures_page_size?: number;
+		failures_after?: string;
 	},
 	signal?: AbortSignal
 ): Promise<FeatureCoverage> {
@@ -125,6 +140,7 @@ export async function getFeatureCoverage(
 	if (params?.failures_page !== undefined) sp.set('failures_page', String(params.failures_page));
 	if (params?.failures_page_size !== undefined)
 		sp.set('failures_page_size', String(params.failures_page_size));
+	if (params?.failures_after) sp.set('failures_after', params.failures_after);
 	const qs = sp.toString();
 	return apiFetch<FeatureCoverage>(`/api/v1/features/coverage${qs ? `?${qs}` : ''}`, { signal });
 }

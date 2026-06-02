@@ -791,7 +791,7 @@ Chaque onglet doit conserver son état local si possible : recherche, page, filt
 - Sélection multi-page non conservée par défaut.
 - Pas de bouton `Apply to Spotify`.
 - Dry-run obligatoire.
-- Pas de features audio dans la table principale (détails via drawer, pas de colonnes BPM/energy en table).
+- Colonne **Features** compacte (RB / Essentia / Preview) + détails via drawer ; pas de colonnes BPM/energy détaillées en table.
 - Pas de clustering.
 
 ### 11.5 Drawer features par titre (implémenté)
@@ -804,6 +804,13 @@ Chaque onglet doit conserver son état local si possible : recherche, page, filt
 - **États** : loading, empty (« Not analysed yet » + lien `/features`), error, offline core.
 - **Données** : `GET /api/v1/features/tracks/{track_id}` via `featuresApi.getTrackFeatures`.
 - Checkbox, preview play et tri de colonnes **n’ouvrent pas** le drawer.
+
+### 11.6 Écran Features — couverture et derniers jobs (implémenté)
+
+- **Last runs** : carte toujours affichée ; hydrate depuis `GET /api/v1/jobs/insights/latest` au chargement et après chaque job (enrichissement ReccoBeats, download segments, Essentia, resolve previews).
+- **Field coverage** : section repliable (fermée par défaut) ; grille compacte ReccoBeats vs Essentia (`fields_by_source` sur `/api/v1/features/coverage`).
+- **Recent failures** : section repliable ; sources `reccobeats`, `essentia_lowlevel`, `deezer_preview`, `audio_download` ; colonne date ; bouton **Clear list** = masquage des échecs antérieurs (`failures_after` + `localStorage` `features_failures_cleared_at`).
+- Scrollbars des tableaux scrollables alignées sur le thème sombre (`app.css`).
 
 ---
 

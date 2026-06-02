@@ -39,6 +39,7 @@ class TracksPerfMiddleware(BaseHTTPMiddleware):
                 "artists_ms": round(perf.artists_ms, 2),
                 "albums_ms": round(perf.albums_ms, 2),
                 "playlists_ms": round(perf.playlists_ms, 2),
+                "feature_status_ms": round(perf.feature_status_ms, 2),
                 "sql_ms": round(perf.sql_ms, 2),
                 "sql_query_count": perf.sql_query_count,
             }

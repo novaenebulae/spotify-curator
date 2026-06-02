@@ -59,6 +59,7 @@ class RecentFailureOut(BaseModel):
     status: str
     error_code: str | None
     error_message: str | None
+    occurred_at: str | None = None
 
 
 class FailurePageOut(BaseModel):
@@ -68,10 +69,16 @@ class FailurePageOut(BaseModel):
     items: list[RecentFailureOut]
 
 
+class CoverageFieldsBySourceOut(BaseModel):
+    reccobeats: list[CoverageFieldOut] = Field(default_factory=list)
+    essentia_lowlevel: list[CoverageFieldOut] = Field(default_factory=list)
+
+
 class CoverageResponse(BaseModel):
     summary: CoverageSummaryOut
     sources: list[CoverageSourceOut]
     fields: list[CoverageFieldOut]
+    fields_by_source: CoverageFieldsBySourceOut | None = None
     recent_failures: list[RecentFailureOut]
     failures: FailurePageOut | None = None
 

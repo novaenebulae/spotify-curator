@@ -64,11 +64,22 @@
 
 <style>
 	.preview-btn {
-		font-size: 0.85rem;
-		padding: 0.15rem 0.4rem;
-		border: none;
-		background: transparent;
+		font-size: 1rem;
+		line-height: 1;
+		min-width: 2rem;
+		min-height: 2rem;
+		padding: 0.25rem;
+		border: 1px solid var(--color-border);
+		border-radius: var(--radius-sm);
+		background: var(--color-surface-elevated);
 		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+	}
+	.preview-btn:not(.muted):hover {
+		border-color: var(--color-accent);
+		color: var(--color-accent);
 	}
 	.preview-btn.muted {
 		color: var(--muted, #888);

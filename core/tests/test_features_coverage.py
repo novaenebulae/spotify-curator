@@ -99,6 +99,8 @@ def test_coverage_with_features(tmp_path, monkeypatch) -> None:
     assert data["summary"]["missing_reccobeats"] == 3
     assert data["fields"]
     assert any(f["field"] == "bpm" and f["available_count"] == 1 for f in data["fields"])
+    assert data.get("fields_by_source") is not None
+    assert "reccobeats" in data["fields_by_source"]
 
 
 def test_coverage_recent_failures(tmp_path, monkeypatch) -> None:

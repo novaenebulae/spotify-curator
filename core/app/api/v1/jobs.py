@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database.engine import get_engine
 from app.database.models_jobs import Job as JobRow
+from app.jobs.insights import latest_jobs_by_type
 from app.jobs.items.constants import JOB_TYPE_AUDIO_DOWNLOAD, JOB_TYPE_ESSENTIA_LOWLEVEL
 from app.jobs.items.service import JobItemService
 from app.jobs.service import JobService
@@ -49,6 +50,14 @@ def list_jobs(
             for r in rows
         ]
     }
+
+
+@router.get("/insights/latest")
+def get_latest_job_insights() -> dict:
+    engine = get_engine()
+    with Session(engine) as session:
+        jobs = latest_jobs_by_type(session)
+    return {"jobs": jobs}
 
 
 @router.get("/{job_id}")
