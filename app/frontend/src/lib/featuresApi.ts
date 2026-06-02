@@ -69,6 +69,7 @@ export type CoverageField = {
 };
 
 export type RecentFailure = {
+	id: string;
 	source?: string | null;
 	track_id: number;
 	title: string;

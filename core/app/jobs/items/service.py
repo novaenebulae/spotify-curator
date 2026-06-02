@@ -13,7 +13,11 @@ from app.database.engine import get_engine
 from app.database.models_job_items import JobItem
 from app.database.models_jobs import Job
 from app.database.repositories.job_items import JobItemsRepository
-from app.jobs.items.constants import TERMINAL_ITEM_STATUSES, WORKER_ITEM_TYPES
+from app.jobs.items.constants import (
+    JOB_TYPE_PREVIEW_RESOLVE,
+    TERMINAL_ITEM_STATUSES,
+    WORKER_ITEM_TYPES,
+)
 from app.jobs.items.events import JobEventsService
 from app.jobs.service import JobService
 from app.settings.config import settings
@@ -366,7 +370,62 @@ class JobItemService:
                 sample = self._items.first_failed_for_job(session, job_id)
                 if sample and sample.error_message:
                     job.last_error = sample.error_message[:2000]
+            job.result_json = json.dumps(
+                self._build_terminal_result_json(session, job, counts)
+            )
         session.flush()
+
+    def _build_terminal_result_json(
+        self,
+        session: Session,
+        job: Job,
+        counts: dict[str, int],
+    ) -> dict[str, Any]:
+        try:
+            existing = json.loads(job.result_json or "{}")
+        except json.JSONDecodeError:
+            existing = {}
+        if not isinstance(existing, dict):
+            existing = {}
+
+        failed = counts.get("failed", 0)
+        skipped = counts.get("skipped", 0)
+        total = sum(counts.values())
+        track_count = int(existing.get("track_count") or total or 0)
+
+        if job.job_type == JOB_TYPE_PREVIEW_RESOLVE:
+            succeeded, not_found = self._preview_resolve_outcome_counts(session, job.id)
+        else:
+            succeeded = counts.get("success", 0)
+            not_found = 0
+
+        return {
+            **existing,
+            "track_count": track_count,
+            "succeeded": succeeded,
+            "failed": failed,
+            "skipped": skipped,
+            "not_found": not_found,
+            "partial": 0,
+        }
+
+    def _preview_resolve_outcome_counts(
+        self, session: Session, job_id: str
+    ) -> tuple[int, int]:
+        succeeded = 0
+        not_found = 0
+        for item in self._items.list_for_job(session, job_id, limit=100_000, offset=0):
+            if item.status != "success":
+                continue
+            try:
+                payload = json.loads(item.result_json or "{}")
+            except json.JSONDecodeError:
+                payload = {}
+            if payload.get("is_available"):
+                succeeded += 1
+            else:
+                not_found += 1
+        return succeeded, not_found
 
     def cancel_pending_for_job(self, job_id: str) -> int:
         now = datetime.now(tz=UTC).replace(tzinfo=None)

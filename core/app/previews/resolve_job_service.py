@@ -45,7 +45,7 @@ class PreviewResolveJobService:
             ids = self._select_track_ids(
                 session,
                 only_missing=only_missing and not force_refresh,
-                limit=limit or 5000,
+                limit=limit,
             )
             if not ids:
                 raise ApiError(
@@ -78,7 +78,7 @@ class PreviewResolveJobService:
         session: Session,
         *,
         only_missing: bool,
-        limit: int,
+        limit: int | None,
     ) -> list[int]:
         if only_missing:
             return self._previews.list_track_ids_missing(
@@ -86,7 +86,10 @@ class PreviewResolveJobService:
             )
         from app.database.models_library import Track
 
-        return list(session.scalars(select(Track.id).order_by(Track.id).limit(limit)))
+        stmt = select(Track.id).order_by(Track.id)
+        if limit is not None:
+            stmt = stmt.limit(limit)
+        return list(session.scalars(stmt))
 
     def _has_running(self, session: Session) -> bool:
         row = session.execute(

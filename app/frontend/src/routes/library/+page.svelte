@@ -608,4 +608,10 @@
 		font-size: 0.8rem;
 		max-height: 240px;
 	}
+
+	.row.actions {
+		margin-left: auto;
+		margin-right: auto;
+		justify-content: center;
+	}
 </style>

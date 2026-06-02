@@ -226,6 +226,7 @@ class FeatureCoverageService:
             artist_names = self._artist_names(session, track.id)
             out.append(
                 RecentFailureOut(
+                    id=f"feature:{feature.id}",
                     track_id=track.id,
                     title=track.name,
                     artist_names=artist_names,
@@ -248,6 +249,7 @@ class FeatureCoverageService:
             artist_names = self._artist_names(session, track.id)
             out.append(
                 RecentFailureOut(
+                    id=f"feature:{feature.id}",
                     source=src.name,
                     track_id=track.id,
                     title=track.name,

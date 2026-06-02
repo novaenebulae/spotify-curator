@@ -56,7 +56,7 @@ class TrackPreviewsRepository:
         session: Session,
         *,
         provider: str,
-        limit: int,
+        limit: int | None = None,
     ) -> list[int]:
         subq = (
             select(TrackPreview.track_id)
@@ -70,8 +70,9 @@ class TrackPreviewsRepository:
             select(Track.id)
             .where(Track.id.not_in(subq))
             .order_by(Track.id)
-            .limit(limit)
         )
+        if limit is not None:
+            stmt = stmt.limit(limit)
         return list(session.scalars(stmt))
 
     def coverage_summary(self, session: Session) -> dict[str, int | float]:

@@ -807,7 +807,8 @@ Chaque onglet doit conserver son état local si possible : recherche, page, filt
 
 ### 11.6 Écran Features — couverture et derniers jobs (implémenté)
 
-- **Last runs** : carte toujours affichée ; hydrate depuis `GET /api/v1/jobs/insights/latest` au chargement et après chaque job (enrichissement ReccoBeats, download segments, Essentia, resolve previews).
+- **Last runs** : section repliable (fermée par défaut, `features_last_runs_open`) ; hydrate depuis `GET /api/v1/jobs/insights/latest` ; tuiles compactes par type de job (Processed, Succeeded, Failed + Not found ou Skipped selon le job).
+- **Accueil** : tuiles ReccoBeats, Essentia local, Deezer previews et lien Features (couverture via `/api/v1/features/coverage` et `/api/v1/previews/coverage`).
 - **Field coverage** : section repliable (fermée par défaut) ; grille compacte ReccoBeats vs Essentia (`fields_by_source` sur `/api/v1/features/coverage`).
 - **Recent failures** : section repliable ; sources `reccobeats`, `essentia_lowlevel`, `deezer_preview`, `audio_download` ; colonne date ; bouton **Clear list** = masquage des échecs antérieurs (`failures_after` + `localStorage` `features_failures_cleared_at`).
 - Scrollbars des tableaux scrollables alignées sur le thème sombre (`app.css`).

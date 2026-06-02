@@ -4,6 +4,9 @@
 	import { fetchHealth } from '$lib/coreApi';
 	import { fetchLibrarySummary } from '$lib/libraryApi';
 	import { fetchAuthStatus } from '$lib/spotifyApi';
+	import { getFeatureCoverage } from '$lib/featuresApi';
+	import { fetchPreviewCoverage, type PreviewCoverage } from '$lib/previewApi';
+	import type { FeatureCoverage } from '$lib/featuresApi';
 
 	let loading = $state(true);
 	let offline = $state(false);
@@ -13,15 +16,36 @@
 	let tracksTotal = $state(0);
 	let playlistsTotal = $state(0);
 	let latestSnapshot: { id: string; created_at?: string } | null = $state(null);
+	let coverage = $state<FeatureCoverage | null>(null);
+	let previewCoverage = $state<PreviewCoverage | null>(null);
+
+	const reccobeatsPct = $derived(
+		coverage && coverage.summary.track_count > 0
+			? Math.round(
+					(coverage.summary.with_reccobeats / coverage.summary.track_count) * 1000
+				) / 10
+			: null
+	);
+
+	const essentiaPct = $derived(
+		coverage && coverage.summary.track_count > 0
+			? Math.round(
+					((coverage.summary.with_essentia_lowlevel ?? 0) / coverage.summary.track_count) *
+						1000
+				) / 10
+			: null
+	);
 
 	onMount(async () => {
 		loading = true;
 		offline = false;
 		try {
-			const [health, summary, auth] = await Promise.all([
+			const [health, summary, auth, cov, previews] = await Promise.all([
 				fetchHealth(),
 				fetchLibrarySummary(),
-				fetchAuthStatus()
+				fetchAuthStatus(),
+				getFeatureCoverage({ include_failed: false, include_fields: false }).catch(() => null),
+				fetchPreviewCoverage().catch(() => null)
 			]);
 			coreOk = health.status === 'ok';
 			coreVersion = health.version ?? '—';
@@ -29,6 +53,8 @@
 			playlistsTotal = summary.playlists_total;
 			latestSnapshot = summary.latest_snapshot;
 			spotifyConnected = auth.connected || summary.spotify_connected;
+			coverage = cov;
+			previewCoverage = previews;
 		} catch {
 			offline = true;
 		} finally {
@@ -70,7 +96,7 @@
 		</div>
 		<div class="stat-card">
 			<h3>Latest snapshot</h3>
-			<p class="stat-value" style="font-size: 1rem">
+			<p class="stat-value snapshot-id">
 				{latestSnapshot ? latestSnapshot.id.slice(0, 8) + '…' : 'None'}
 			</p>
 			{#if latestSnapshot?.created_at}
@@ -79,10 +105,59 @@
 		</div>
 	</div>
 
+	{#if tracksTotal > 0}
+		<h2 class="section-label">Enrichment &amp; audio</h2>
+		<div class="stat-grid enrichment-grid">
+			<button type="button" class="stat-card stat-card-link" onclick={() => goto('/features')}>
+				<h3>ReccoBeats</h3>
+				{#if reccobeatsPct != null}
+					<p class="stat-value">{reccobeatsPct}%</p>
+					<p class="muted">
+						{coverage?.summary.with_reccobeats.toLocaleString() ?? '—'} / {tracksTotal.toLocaleString()}
+						tracks
+					</p>
+				{:else}
+					<p class="stat-value muted">—</p>
+					<p class="muted">Open Features</p>
+				{/if}
+			</button>
+			<button type="button" class="stat-card stat-card-link" onclick={() => goto('/features')}>
+				<h3>Essentia (local)</h3>
+				{#if essentiaPct != null}
+					<p class="stat-value">{essentiaPct}%</p>
+					<p class="muted">
+						{(coverage?.summary.with_essentia_lowlevel ?? 0).toLocaleString()} analyzed
+					</p>
+				{:else}
+					<p class="stat-value muted">—</p>
+					<p class="muted">Segments + analysis</p>
+				{/if}
+			</button>
+			<button type="button" class="stat-card stat-card-link" onclick={() => goto('/library')}>
+				<h3>Deezer previews</h3>
+				{#if previewCoverage}
+					<p class="stat-value">{previewCoverage.coverage_percent}%</p>
+					<p class="muted">
+						{previewCoverage.with_deezer_preview.toLocaleString()} / {previewCoverage.track_count.toLocaleString()}
+					</p>
+				{:else}
+					<p class="stat-value muted">—</p>
+					<p class="muted">Resolve from Library</p>
+				{/if}
+			</button>
+			<button type="button" class="stat-card stat-card-link" onclick={() => goto('/features')}>
+				<h3>Feature enrichment</h3>
+				<p class="stat-value link-label">Open →</p>
+				<p class="muted">Jobs, coverage, failures, local analysis</p>
+			</button>
+		</div>
+	{/if}
+
 	<section class="card">
 		<h2>Quick actions</h2>
 		<div class="row actions">
 			<button type="button" onclick={() => goto('/library')}>Open Library</button>
+			<button type="button" class="secondary" onclick={() => goto('/features')}>Features</button>
 			<button type="button" class="secondary" onclick={() => goto('/import')}>Import Library</button>
 			<button type="button" class="secondary" onclick={() => goto('/settings')}>Settings</button>
 		</div>
@@ -94,8 +169,49 @@
 			<p>Import your liked tracks and playlists to get started.</p>
 			<button type="button" onclick={() => goto('/import')}>Go to Import</button>
 		{:else}
-			<p>Browse {tracksTotal.toLocaleString()} tracks, review duplicates, and run dry-run actions.</p>
-			<button type="button" onclick={() => goto('/library')}>Open Library</button>
+			<p>Browse {tracksTotal.toLocaleString()} tracks, enrich features, resolve previews, and run dry-run actions.</p>
+			<div class="row actions">
+				<button type="button" onclick={() => goto('/library')}>Open Library</button>
+				<button type="button" class="secondary" onclick={() => goto('/features')}>Enrich features</button>
+			</div>
 		{/if}
 	</section>
 {/if}
+
+<style>
+	.section-label {
+		font-size: 1rem;
+		font-weight: 600;
+		margin: var(--space-xl) 0 var(--space-md);
+		color: var(--color-muted);
+	}
+	.enrichment-grid {
+		margin-top: 0;
+	}
+	.stat-card-link {
+		text-align: left;
+		cursor: pointer;
+		width: 100%;
+		font: inherit;
+		color: inherit;
+		transition:
+			border-color 0.15s,
+			background 0.15s;
+	}
+	.stat-card-link:hover {
+		border-color: var(--color-accent);
+		background: var(--color-surface-elevated);
+	}
+	.stat-card-link .stat-value {
+		color: var(--color-accent);
+	}
+	.link-label {
+		font-size: 1.25rem !important;
+	}
+	.snapshot-id {
+		font-size: 1rem;
+	}
+	.ok {
+		color: var(--color-success);
+	}
+</style>

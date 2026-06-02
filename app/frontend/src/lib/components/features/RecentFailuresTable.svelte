@@ -55,7 +55,7 @@
 			</tr>
 		</thead>
 		<tbody>
-			{#each failures as f (f.source ? `${f.source}:${f.track_id}` : String(f.track_id))}
+			{#each failures as f (f.id)}
 				<tr>
 					<td class="when-col">{formatWhen(f.occurred_at)}</td>
 					<td class="source-col">{f.source ?? '—'}</td>

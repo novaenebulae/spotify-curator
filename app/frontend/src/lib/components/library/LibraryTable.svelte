@@ -67,11 +67,11 @@
 			<col class="col-cover" />
 			<col class="col-preview" />
 			<col class="col-track" />
-			<col class="col-features" />
 			<col class="col-duration" />
 			<col class="col-liked" />
 			<col class="col-playlists" />
 			<col class="col-isrc" />
+			<col class="col-features" />
 			<col class="col-status" />
 		</colgroup>
 		<thead>
@@ -90,7 +90,6 @@
 						>{sortLabel('title', 'Track')}</button
 					></th
 				>
-				<th class="col-features" title="ReccoBeats, Essentia, Preview">Features</th>
 				<th class="col-duration"
 					><button type="button" class="sort-btn" onclick={() => onSort('duration_ms')}
 						>{sortLabel('duration_ms', 'Duration')}</button
@@ -104,6 +103,7 @@
 				<th class="col-playlists" title="Playlist count">Playlists</th>
 				<th class="col-isrc">ISRC</th>
 				<th class="col-status">Status</th>
+				<th class="col-features" title="ReccoBeats, Essentia, Preview">Features</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -181,28 +181,6 @@
 							</div>
 						</div>
 					</td>
-					<td class="col-features">
-						<div class="features-badges" title="ReccoBeats / Essentia / Deezer preview">
-							<span
-								class="feat-pill"
-								class:feat-ok={featureVariant(track.reccobeats_status) === 'ok'}
-								title="ReccoBeats: {track.reccobeats_status ?? 'missing'}"
-								>RB {featureShort(track.reccobeats_status)}</span
-							>
-							<span
-								class="feat-pill"
-								class:feat-ok={featureVariant(track.essentia_status) === 'ok'}
-								title="Essentia: {track.essentia_status ?? 'missing'}"
-								>ES {featureShort(track.essentia_status)}</span
-							>
-							<span
-								class="feat-pill"
-								class:feat-ok={track.preview_available}
-								title={track.preview_available ? 'Deezer preview OK' : 'No Deezer preview'}
-								>PV {track.preview_available ? '✓' : '—'}</span
-							>
-						</div>
-					</td>
 					<td class="col-duration">{formatDuration(track.duration_ms)}</td>
 					<td class="col-liked liked-date"
 						>{track.liked_added_at ? track.liked_added_at.slice(0, 10) : '—'}</td
@@ -210,6 +188,28 @@
 					<td class="col-playlists num">{track.playlist_count}</td>
 					<td class="col-isrc"><code>{track.isrc ?? '—'}</code></td>
 					<td class="col-status">{track.availability_status}</td>
+					<td class="col-features">
+						<div class="features-badges" title="ReccoBeats / Essentia / Deezer preview">
+							<span
+								class="feat-pill"
+								class:feat-ok={featureVariant(track.reccobeats_status) === 'ok'}
+								title="ReccoBeats: {track.reccobeats_status ?? 'missing'}"
+								>ReccoBeats {featureShort(track.reccobeats_status)}</span
+							>
+							<span
+								class="feat-pill"
+								class:feat-ok={featureVariant(track.essentia_status) === 'ok'}
+								title="Essentia: {track.essentia_status ?? 'missing'}"
+								>Essentia {featureShort(track.essentia_status)}</span
+							>
+							<span
+								class="feat-pill"
+								class:feat-ok={track.preview_available}
+								title={track.preview_available ? 'Deezer preview OK' : 'No Deezer preview'}
+								>Preview {track.preview_available ? '✓' : '—'}</span
+							>
+						</div>
+					</td>
 				</tr>
 			{/each}
 		</tbody>

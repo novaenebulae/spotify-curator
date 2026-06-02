@@ -52,6 +52,7 @@ class CoverageSummaryOut(BaseModel):
 
 
 class RecentFailureOut(BaseModel):
+    id: str
     source: str | None = None
     track_id: int
     title: str

@@ -1,15 +1,30 @@
 <script lang="ts">
-	import EnrichJobResult from '$lib/components/features/EnrichJobResult.svelte';
-	import AudioJobResult from '$lib/components/features/AudioJobResult.svelte';
+	import CollapsibleSection from '$lib/components/common/CollapsibleSection.svelte';
+	import JobRunStatsBar from '$lib/components/features/JobRunStatsBar.svelte';
+	import { hasJobRunStats, jobRunStats } from '$lib/components/features/jobResultStats';
 	import type { Job } from '$lib/spotifyApi';
 	import { jobTracker } from '$lib/jobTracker';
+
+	const ITEM_JOB_TYPES = new Set([
+		'reccobeats_enrichment',
+		'audio_download',
+		'essentia_lowlevel_analysis',
+		'preview_resolve'
+	]);
 
 	type Props = {
 		job?: Job | null;
 		loading?: boolean;
+		collapsible?: boolean;
+		storageKey?: string;
 	};
 
-	let { job = null, loading = false }: Props = $props();
+	let {
+		job = null,
+		loading = false,
+		collapsible = true,
+		storageKey = 'features_last_runs_open'
+	}: Props = $props();
 
 	const isTerminal = (j: Job | null): boolean =>
 		j != null &&
@@ -33,14 +48,6 @@
 		return merged;
 	});
 
-	const latestLocalAnalysis = $derived.by(() => {
-		const dl = displayJobs['audio_download'];
-		const ess = displayJobs['essentia_lowlevel_analysis'];
-		const candidates = [dl, ess].filter((j): j is Job => j != null && !!j.finished_at);
-		if (candidates.length === 0) return null;
-		return candidates.sort((a, b) => (b.finished_at ?? '').localeCompare(a.finished_at ?? ''))[0];
-	});
-
 	function jobResult(j: Job): Record<string, unknown> {
 		return j.result_json && typeof j.result_json === 'object' ? j.result_json : {};
 	}
@@ -53,89 +60,114 @@
 		return jobType.replace(/_/g, ' ');
 	}
 
+	function formatFinished(iso: string | null | undefined): string {
+		if (!iso) return '';
+		try {
+			return new Date(iso).toLocaleString(undefined, {
+				month: 'short',
+				day: 'numeric',
+				hour: '2-digit',
+				minute: '2-digit'
+			});
+		} catch {
+			return iso.slice(0, 16);
+		}
+	}
+
 	const ORDER = [
 		'essentia_lowlevel_analysis',
 		'audio_download',
 		'reccobeats_enrichment',
 		'preview_resolve'
 	];
+
+	const hasAnyRun = $derived(
+		ORDER.some((t) => {
+			const j = displayJobs[t];
+			return j && isTerminal(j);
+		})
+	);
 </script>
 
-<section class="card last-runs">
-	<h3>Last runs</h3>
-
+{#snippet runsBody()}
 	{#if loading}
 		<p class="muted">Loading recent jobs…</p>
-	{:else if latestLocalAnalysis}
-		<div class="highlight-run">
-			<p class="run-meta">
-				<strong>Latest local analysis</strong> —
-				{titleFor(latestLocalAnalysis.job_type)}
-				· <span class="status-{latestLocalAnalysis.status}">{latestLocalAnalysis.status}</span>
-				{#if latestLocalAnalysis.finished_at}
-					<span class="muted"> · {new Date(latestLocalAnalysis.finished_at).toLocaleString()}</span>
-				{/if}
-			</p>
-			<AudioJobResult result={jobResult(latestLocalAnalysis)} status={latestLocalAnalysis.status} />
-		</div>
-	{/if}
-
-	{#if Object.keys(displayJobs).length === 0}
-		{#if !loading}
-			<p class="muted">No completed jobs yet. Run enrichment or local analysis to see results here.</p>
-		{/if}
+	{:else if !hasAnyRun}
+		<p class="muted">No completed jobs yet. Run enrichment or local analysis to see results here.</p>
 	{:else}
-		{#each ORDER as jobType}
-			{@const j = displayJobs[jobType]}
-			{#if j && isTerminal(j)}
-				<div class="run-block">
-					<p class="run-meta">
-						<span class="job-type">{titleFor(jobType)}</span>
-						— <strong class="status-{j.status}">{j.status}</strong>
-						{#if j.finished_at}
-							<span class="muted"> · {new Date(j.finished_at).toLocaleString()}</span>
+		<ul class="runs-list">
+			{#each ORDER as jobType}
+				{@const j = displayJobs[jobType]}
+				{#if j && isTerminal(j)}
+					<li class="run-item">
+						<div class="run-head">
+							<span class="run-title">{titleFor(jobType)}</span>
+							<span class="run-status status-{j.status}">{j.status}</span>
+							{#if j.finished_at}
+								<span class="run-when muted">{formatFinished(j.finished_at)}</span>
+							{/if}
+						</div>
+						{#if j.status === 'failed' || j.status === 'error'}
+							<p class="error-block">{j.last_error || 'Unknown error'}</p>
+						{:else if ITEM_JOB_TYPES.has(jobType) && hasJobRunStats(jobRunStats(jobResult(j)))}
+							<JobRunStatsBar jobType={jobType} stats={jobRunStats(jobResult(j))} status={j.status} />
+						{:else}
+							<p class="muted run-empty">No stats for this run.</p>
 						{/if}
-					</p>
-
-					{#if j.status === 'failed' || j.status === 'error'}
-						<p class="error-block">{j.last_error || 'Unknown error'}</p>
-					{:else if jobType === 'reccobeats_enrichment'}
-						<EnrichJobResult result={jobResult(j)} status={j.status} />
-					{:else if jobType === 'audio_download' || jobType === 'essentia_lowlevel_analysis'}
-						<AudioJobResult result={jobResult(j)} status={j.status} />
-					{:else if Object.keys(jobResult(j)).length > 0}
-						<details>
-							<summary>Result</summary>
-							<pre>{JSON.stringify(jobResult(j), null, 2)}</pre>
-						</details>
-					{:else}
-						<p class="muted">Completed with no result payload.</p>
-					{/if}
-				</div>
-			{/if}
-		{/each}
+					</li>
+				{/if}
+			{/each}
+		</ul>
 	{/if}
-</section>
+{/snippet}
+
+{#if collapsible}
+	<CollapsibleSection title="Last runs" collapsed={true} {storageKey}>
+		{@render runsBody()}
+	</CollapsibleSection>
+{:else}
+	<section class="card last-runs-flat">
+		<h3>Last runs</h3>
+		{@render runsBody()}
+	</section>
+{/if}
 
 <style>
-	.last-runs h3 {
-		margin-top: 0;
+	.runs-list {
+		list-style: none;
+		margin: 0;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: var(--space-sm);
 	}
-	.highlight-run {
-		margin-bottom: var(--space-md);
-		padding-bottom: var(--space-md);
+	.run-item {
+		padding: var(--space-sm) 0;
 		border-bottom: 1px solid var(--color-border);
 	}
-	.run-meta {
-		margin: 0 0 var(--space-md);
+	.run-item:last-child {
+		border-bottom: none;
+		padding-bottom: 0;
 	}
-	.run-block + .run-block {
-		margin-top: var(--space-md);
-		padding-top: var(--space-md);
-		border-top: 1px solid var(--color-border);
+	.run-head {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: baseline;
+		gap: 0.35rem 0.5rem;
+		margin-bottom: 0.35rem;
+		font-size: 0.85rem;
 	}
-	.job-type {
-		text-transform: capitalize;
+	.run-title {
+		font-weight: 600;
+	}
+	.run-status {
+		font-size: 0.8rem;
+		font-weight: 600;
+		text-transform: lowercase;
+	}
+	.run-when {
+		font-size: 0.75rem;
+		margin-left: auto;
 	}
 	.status-success,
 	.status-succeeded {
@@ -151,6 +183,14 @@
 	}
 	.error-block {
 		color: var(--color-danger);
+		margin: 0 0 0.25rem;
+		font-size: 0.8rem;
+	}
+	.run-empty {
 		margin: 0;
+		font-size: 0.8rem;
+	}
+	.last-runs-flat h3 {
+		margin-top: 0;
 	}
 </style>

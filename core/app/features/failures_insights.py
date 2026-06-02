@@ -16,6 +16,7 @@ from app.features.schemas import FailurePageOut, RecentFailureOut
 
 @dataclass(frozen=True)
 class _FailureRow:
+    id: str
     source: str
     track_id: int
     title: str
@@ -51,6 +52,7 @@ class FailureInsightsService:
         page_items = records[offset : offset + limit]
         items = [
             RecentFailureOut(
+                id=r.id,
                 source=r.source,
                 track_id=r.track_id,
                 title=r.title,
@@ -104,6 +106,7 @@ class FailureInsightsService:
                     continue
                 out.append(
                     _FailureRow(
+                        id=f"feature:{feature.id}",
                         source=src.name,
                         track_id=track.id,
                         title=track.name,
@@ -132,6 +135,7 @@ class FailureInsightsService:
                 continue
             out.append(
                 _FailureRow(
+                    id=f"deezer_preview:{preview.id}",
                     source="deezer_preview",
                     track_id=track.id,
                     title=track.name,
@@ -156,6 +160,7 @@ class FailureInsightsService:
                 continue
             out.append(
                 _FailureRow(
+                    id=f"audio_download:{dl.id}",
                     source="audio_download",
                     track_id=track.id,
                     title=track.name,

@@ -191,7 +191,7 @@
 		{/if}
 	</section>
 
-	<JobRunSummary job={lastImportJob} />
+	<JobRunSummary job={lastImportJob} collapsible={true} storageKey="import_last_runs_open" />
 
 	<SnapshotPanel
 		{snapshots}
