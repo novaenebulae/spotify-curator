@@ -88,7 +88,9 @@ def test_search_sql_query_count_bounded(tmp_path, monkeypatch) -> None:
     with track_search_perf_context():
         service.search(TrackSearchFilters(page=1, page_size=50))
 
-    assert query_count <= 8
+    # count + page ids + artists + albums + playlist counts + feature batch
+    # (2× source lookup, reccobeats, essentia, previews) — phase 4 library columns
+    assert query_count <= 11
 
 
 def test_large_library_page_latency(tmp_path, monkeypatch) -> None:

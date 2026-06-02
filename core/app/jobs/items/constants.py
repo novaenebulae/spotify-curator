@@ -21,3 +21,12 @@ WORKER_ITEM_TYPES: dict[str, tuple[str, ...]] = {
 TERMINAL_ITEM_STATUSES = frozenset(
     {"success", "failed", "cancelled", "skipped", "rate_limited"}
 )
+
+# Jobs executed by Docker workers (not in-process JobService threads).
+WORKER_MANAGED_JOB_TYPES = frozenset(
+    {
+        JOB_TYPE_PREVIEW_RESOLVE,
+        JOB_TYPE_AUDIO_DOWNLOAD,
+        JOB_TYPE_ESSENTIA_LOWLEVEL,
+    }
+)

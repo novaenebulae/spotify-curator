@@ -12,10 +12,17 @@ export type TrackPreview = {
 	track_id: number;
 	provider: string | null;
 	preview_url: string | null;
+	/** Same-origin stream URL for HTMLAudioElement (avoids CORB on Deezer CDN). */
+	playback_url: string | null;
 	match_confidence: number | null;
 	is_available: boolean;
 	resolve_job_id?: string | null;
 };
+
+/** Same-origin URL for HTMLAudioElement (never use Deezer CDN URLs in the browser). */
+export function previewStreamUrl(trackId: number): string {
+	return `${BASE_URL}/api/v1/tracks/${trackId}/preview/stream`;
+}
 
 export type PreviewCoverage = {
 	track_count: number;

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.database.engine import get_engine
 from app.database.models_jobs import Job
 from app.jobs.errors import JobCancelledError
+from app.jobs.items.constants import WORKER_MANAGED_JOB_TYPES
 from app.jobs.status_mapping import map_job_status
 from app.settings.config import settings
 from app.spotify.client import SpotifyRateLimited
@@ -48,6 +49,7 @@ class JobStatus:
             "next_retry_at": self.next_retry_at,
             "last_error": self.last_error or None,
             "result": self.result_json,
+            "result_json": self.result_json,
             "created_at": self.created_at,
             "started_at": self.started_at,
             "finished_at": self.finished_at,
@@ -106,6 +108,8 @@ class JobService:
             rows = list(session.scalars(stmt))
             for row in rows:
                 if self.is_active(row.id):
+                    continue
+                if row.job_type in WORKER_MANAGED_JOB_TYPES:
                     continue
                 row.status = "failed"
                 row.finished_at = now

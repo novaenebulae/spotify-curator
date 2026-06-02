@@ -33,6 +33,13 @@ async def lifespan(_app: FastAPI):
         stale_items = jobs_svc.reconcile_orphaned_job_items()
         if stale_items:
             logger.info("Released stale job item locks: %d", stale_items)
+        from app.jobs.items.service import JobItemService
+
+        stale_pending = JobItemService().cancel_pending_for_terminal_parent_jobs()
+        if stale_pending:
+            logger.info(
+                "Cancelled pending items for terminal parent jobs: %d", stale_pending
+            )
     except Exception:
         logger.exception("Database migration failed during startup")
         raise

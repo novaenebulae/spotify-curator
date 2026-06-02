@@ -40,6 +40,11 @@ class BaseWorker(ABC):
         logger.info("Worker %s starting", self._worker_id)
         try:
             while self._running:
+                self._heartbeat.register_or_update(
+                    worker_id=self._worker_id,
+                    worker_type=self.worker_type,
+                    status="idle",
+                )
                 self._items.release_stale_locks(worker_type=self.worker_type)
                 item = self._items.reserve_next(
                     worker_id=self._worker_id,

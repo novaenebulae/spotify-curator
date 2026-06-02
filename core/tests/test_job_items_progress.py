@@ -142,3 +142,48 @@ def test_recompute_job_progress_aggregates_terminal_result(tmp_path, monkeypatch
         assert result["not_found"] == 1
         assert result["skipped"] == 1
         assert result["track_count"] == 3
+
+
+def test_cancel_preview_resolve_aggregates_partial_results(tmp_path, monkeypatch) -> None:
+    from app.jobs.items.constants import (
+        ITEM_TYPE_PREVIEW_RESOLVE_TRACK,
+        JOB_TYPE_PREVIEW_RESOLVE,
+    )
+
+    db_path = tmp_path / "job_cancel_preview.sqlite"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
+    reset_engine()
+    init_db()
+
+    jobs = JobService()
+    items = JobItemService()
+    job_id = jobs.create(JOB_TYPE_PREVIEW_RESOLVE)
+    engine = get_engine()
+
+    with Session(engine) as session:
+        job = session.get(Job, job_id)
+        assert job is not None
+        job.result_json = '{"track_count": 2}'
+        items.create_items_for_job(
+            session,
+            job_id=job_id,
+            item_type=ITEM_TYPE_PREVIEW_RESOLVE_TRACK,
+            track_ids=[1, 2],
+            input_payload={},
+            max_attempts=1,
+        )
+        session.commit()
+
+    listed = items.list_items(job_id, limit=10)
+    items.mark_success(listed[0]["id"], result_json={"is_available": True})
+    items.cancel_pending_for_job(job_id)
+
+    with Session(engine) as session:
+        job = session.get(Job, job_id)
+        assert job is not None
+        assert job.status == "cancelled"
+        import json
+
+        result = json.loads(job.result_json or "{}")
+        assert result["succeeded"] == 1
+        assert result["track_count"] == 2

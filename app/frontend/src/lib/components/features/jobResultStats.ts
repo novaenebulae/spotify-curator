@@ -37,10 +37,6 @@ export function jobRunStats(result: Record<string, unknown>): JobRunStats {
 			track_count: result.track_count as number | undefined
 		};
 	}
-	const trackCount = Number(result.track_count ?? 0);
-	if (trackCount > 0) {
-		return { track_count: trackCount, succeeded: 0, failed: 0, not_found: 0, skipped: 0 };
-	}
 	return {};
 }
 
@@ -51,7 +47,7 @@ export function hasJobRunStats(stats: JobRunStats): boolean {
 			(stats.not_found ?? 0) +
 			(stats.skipped ?? 0) +
 			(stats.partial ?? 0) >
-			0 || (stats.track_count ?? 0) > 0
+			0
 	);
 }
 

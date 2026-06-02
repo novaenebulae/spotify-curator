@@ -6,6 +6,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.database.models_job_items import JobItem
+from app.database.models_jobs import Job
 
 
 class JobItemsRepository:
@@ -75,6 +76,20 @@ class JobItemsRepository:
             .where(
                 JobItem.job_id == job_id,
                 JobItem.status.in_(("pending", "rate_limited")),
+            )
+            .values(status="cancelled", finished_at=now, locked_by=None, locked_at=None)
+        )
+        return int(result.rowcount or 0)
+
+    def cancel_pending_for_terminal_parent_jobs(self, session: Session, *, now: datetime) -> int:
+        """Drop queued items left behind when a worker job was cancelled without item cleanup."""
+        terminal = ("cancelled", "failed", "succeeded", "partial")
+        subq = select(Job.id).where(Job.status.in_(terminal))
+        result = session.execute(
+            update(JobItem)
+            .where(
+                JobItem.status.in_(("pending", "rate_limited")),
+                JobItem.job_id.in_(subq),
             )
             .values(status="cancelled", finished_at=now, locked_by=None, locked_at=None)
         )

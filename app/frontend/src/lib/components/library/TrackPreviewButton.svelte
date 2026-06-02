@@ -1,24 +1,27 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import { getTrackPreview } from '$lib/previewApi';
-	import { getActivePreviewTrackId, playPreview, stopPreview } from '$lib/previewPlayer';
+	import {
+		activePreviewTrackId,
+		getActivePreviewTrackId,
+		playPreview,
+		stopPreview
+	} from '$lib/previewPlayer';
 
 	let { trackId }: { trackId: number } = $props();
 
 	let loading = $state(false);
 	let available = $state(false);
-	let previewUrl = $state<string | null>(null);
 	let error = $state<string | null>(null);
 
-	const isPlaying = $derived(getActivePreviewTrackId() === trackId);
+	const isPlaying = $derived($activePreviewTrackId === trackId);
 
 	async function loadPreview() {
 		loading = true;
 		error = null;
 		try {
 			const p = await getTrackPreview(trackId);
-			available = p.is_available && !!p.preview_url;
-			previewUrl = p.preview_url;
+			available = Boolean(p.is_available);
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 			available = false;
@@ -28,9 +31,9 @@
 	}
 
 	async function onClick() {
-		if (!available || !previewUrl) return;
+		if (!available) return;
 		try {
-			await playPreview(trackId, previewUrl);
+			await playPreview(trackId);
 		} catch (e) {
 			error = e instanceof Error ? e.message : String(e);
 		}
@@ -48,7 +51,7 @@
 
 {#if loading}
 	<span class="preview-btn muted" aria-busy="true">…</span>
-{:else if available && previewUrl}
+{:else if available}
 	<button
 		type="button"
 		class="preview-btn"

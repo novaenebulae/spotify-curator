@@ -657,11 +657,17 @@ Nettoie les fichiers temporaires.
 
 ### `GET /tracks/{track_id}/preview`
 
-Query : `resolve_if_missing` (bool). Retourne la meilleure preview disponible ou démarre un job resolve unitaire si demandé.
+Query : `resolve_if_missing` (bool). Retourne la meilleure preview disponible ou démarre un job resolve unitaire si demandé. Inclut `playback_url` (chemin same-origin vers le stream ci-dessous) pour l’UI.
+
+### `GET /tracks/{track_id}/preview/stream`
+
+Proxy audio **same-origin** (MP3) : le core télécharge la preview Deezer (URL rafraîchie si expirée) et la renvoie au player. Évite le blocage CORB/CORS du navigateur sur les URLs CDN Deezer.
 
 ### `POST /previews/resolve`
 
-Body : `{ "only_missing": true, "force_refresh": false, "limit": null }`. `limit` null = **tous** les titres sans preview Deezer valide (pas de plafond 5000 implicite). Job type `preview_resolve`.
+Body : `{ "only_missing": true, "force_refresh": false, "limit": null }`. `limit` null = **tous** les titres sans preview Deezer valide (pas de plafond 5000 implicite). Job type `preview_resolve` (worker Docker `preview-resolver-worker`, profil Compose `audio`).
+
+`POST /jobs/{id}/cancel` sur `preview_resolve` annule les `job_items` en attente et agrège `succeeded` / `not_found` dans `result` (comme `audio_download`).
 
 ### `GET /previews/coverage`
 

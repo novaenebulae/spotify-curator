@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -9,6 +10,7 @@ from app.database.repositories.track_previews import TrackPreviewsRepository
 from app.jobs.status_mapping import map_job_status
 from app.observability.errors import ApiError
 from app.previews.resolve_job_service import PreviewResolveJobService
+from app.previews.stream import fetch_track_preview_audio
 
 router = APIRouter()
 _resolve_jobs = PreviewResolveJobService()
@@ -30,6 +32,7 @@ class TrackPreviewResponse(BaseModel):
     track_id: int
     provider: str | None = None
     preview_url: str | None = None
+    playback_url: str | None = None
     match_confidence: float | None = None
     is_available: bool = False
     resolve_job_id: str | None = None
@@ -57,6 +60,7 @@ def get_track_preview(
                 track_id=track_id,
                 provider=row.provider,
                 preview_url=row.preview_url,
+                playback_url=f"/api/v1/tracks/{track_id}/preview/stream",
                 match_confidence=row.match_confidence,
                 is_available=bool(row.is_available),
             )
@@ -68,6 +72,15 @@ def get_track_preview(
                 resolve_job_id=job_id,
             )
     return TrackPreviewResponse(track_id=track_id, is_available=False)
+
+
+@router.get("/tracks/{track_id}/preview/stream")
+def stream_track_preview(track_id: int) -> Response:
+    """Same-origin audio stream for UI playback (avoids CORB on Deezer CDN URLs)."""
+    engine = get_engine()
+    with Session(engine) as session:
+        data, media_type = fetch_track_preview_audio(session, track_id)
+    return Response(content=data, media_type=media_type)
 
 
 @router.post("/previews/resolve", response_model=PreviewResolveResponse)

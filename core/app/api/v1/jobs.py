@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.database.engine import get_engine
 from app.database.models_jobs import Job as JobRow
 from app.jobs.insights import latest_jobs_by_type
-from app.jobs.items.constants import JOB_TYPE_AUDIO_DOWNLOAD, JOB_TYPE_ESSENTIA_LOWLEVEL
+from app.jobs.items.constants import WORKER_MANAGED_JOB_TYPES
 from app.jobs.items.service import JobItemService
 from app.jobs.service import JobService
 from app.jobs.status_mapping import map_job_status
@@ -18,9 +18,6 @@ from app.observability.errors import ApiError
 router = APIRouter(prefix="/jobs")
 _jobs = JobService()
 _items = JobItemService()
-
-_WORKER_JOB_TYPES = {JOB_TYPE_AUDIO_DOWNLOAD, JOB_TYPE_ESSENTIA_LOWLEVEL}
-
 
 @router.get("")
 def list_jobs(
@@ -92,7 +89,7 @@ def cancel_job(job_id: str) -> dict:
             message=f"Job is not running (status={job.status}).",
             status_code=409,
         )
-    if job.job_type in _WORKER_JOB_TYPES:
+    if job.job_type in WORKER_MANAGED_JOB_TYPES:
         _items.cancel_pending_for_job(job_id)
     elif not _jobs.request_cancel(job_id):
         engine = get_engine()

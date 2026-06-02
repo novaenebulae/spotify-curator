@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import time
+from pathlib import Path
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -17,6 +19,7 @@ from app.jobs.items.constants import (
     JOB_TYPE_PREVIEW_RESOLVE,
     TERMINAL_ITEM_STATUSES,
     WORKER_ITEM_TYPES,
+    WORKER_MANAGED_JOB_TYPES,
 )
 from app.jobs.items.events import JobEventsService
 from app.jobs.service import JobService
@@ -128,13 +131,16 @@ class JobItemService:
                 row = conn.execute(
                     text(
                         f"""
-                        SELECT id, job_id, item_type, track_id, segment_id, input_json, attempt_count
-                        FROM job_items
-                        WHERE status IN ('pending', 'rate_limited')
-                          AND item_type IN ({placeholders})
-                          AND (next_retry_at IS NULL OR next_retry_at <= :now)
-                          AND (locked_by IS NULL OR locked_at < :stale_before)
-                        ORDER BY priority DESC, created_at ASC
+                        SELECT i.id, i.job_id, i.item_type, i.track_id, i.segment_id,
+                               i.input_json, i.attempt_count
+                        FROM job_items i
+                        INNER JOIN jobs j ON j.id = i.job_id
+                        WHERE i.status IN ('pending', 'rate_limited')
+                          AND i.item_type IN ({placeholders})
+                          AND j.status IN ('queued', 'running')
+                          AND (i.next_retry_at IS NULL OR i.next_retry_at <= :now)
+                          AND (i.locked_by IS NULL OR i.locked_at < :stale_before)
+                        ORDER BY i.priority DESC, i.created_at ASC
                         LIMIT 1
                         """
                     ),
@@ -307,6 +313,14 @@ class JobItemService:
             )
             session.commit()
 
+    def cancel_pending_for_terminal_parent_jobs(self) -> int:
+        now = datetime.now(tz=UTC).replace(tzinfo=None)
+        engine = get_engine()
+        with Session(engine) as session:
+            count = self._items.cancel_pending_for_terminal_parent_jobs(session, now=now)
+            session.commit()
+            return count
+
     def release_stale_locks(self, *, worker_type: str | None = None) -> int:
         lock_timeout = (
             self.lock_timeout_for_worker(worker_type)
@@ -357,23 +371,32 @@ class JobItemService:
                 job.finished_at = None
             job.current_step = f"processing {terminal}/{total}"
         elif pending == 0 and total > 0:
-            failed = counts.get("failed", 0)
-            success = counts.get("success", 0)
+            self._apply_terminal_job_result(session, job, counts)
+        session.flush()
+
+    def _apply_terminal_job_result(
+        self, session: Session, job: Job, counts: dict[str, int]
+    ) -> None:
+        """Aggregate item outcomes into result_json; preserve cancelled status."""
+        preserve_cancelled = job.status == "cancelled"
+        failed = counts.get("failed", 0)
+        success = counts.get("success", 0)
+        if not preserve_cancelled:
             if failed > 0 and success > 0:
                 job.status = "partial"
             elif failed > 0 and success == 0:
                 job.status = "failed"
             else:
                 job.status = "succeeded"
+        if job.finished_at is None:
             job.finished_at = datetime.now(tz=UTC).replace(tzinfo=None)
-            if failed > 0 and not job.last_error:
-                sample = self._items.first_failed_for_job(session, job_id)
-                if sample and sample.error_message:
-                    job.last_error = sample.error_message[:2000]
-            job.result_json = json.dumps(
-                self._build_terminal_result_json(session, job, counts)
-            )
-        session.flush()
+        if failed > 0 and not job.last_error:
+            sample = self._items.first_failed_for_job(session, job.id)
+            if sample and sample.error_message:
+                job.last_error = sample.error_message[:2000]
+        job.result_json = json.dumps(
+            self._build_terminal_result_json(session, job, counts)
+        )
 
     def _build_terminal_result_json(
         self,
@@ -437,11 +460,30 @@ class JobItemService:
                 job.status = "cancelled"
                 job.finished_at = now
                 job.current_step = "cancelled"
+                counts = self._items.count_by_status(session, job_id)
+                total = sum(counts.values())
+                job.progress_total = total
+                job.progress_current = sum(
+                    counts.get(s, 0) for s in TERMINAL_ITEM_STATUSES
+                )
+                if total > 0:
+                    job.result_json = json.dumps(
+                        self._build_terminal_result_json(session, job, counts)
+                    )
             session.commit()
-            if count:
-                self.recompute_job_progress(session, job_id)
-                session.commit()
-            return count
+        with Session(engine) as session:
+            job = session.get(Job, job_id)
+            if job is not None and job.status == "cancelled":
+                counts = self._items.count_by_status(session, job_id)
+                pending = (
+                    counts.get("pending", 0)
+                    + counts.get("running", 0)
+                    + counts.get("rate_limited", 0)
+                )
+                if pending == 0 and sum(counts.values()) > 0:
+                    self._apply_terminal_job_result(session, job, counts)
+                    session.commit()
+        return count
 
     def list_items(self, job_id: str, *, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
         engine = get_engine()

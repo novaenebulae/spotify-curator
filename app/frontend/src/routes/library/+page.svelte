@@ -6,7 +6,7 @@
 	import LibraryTable from '$lib/components/library/LibraryTable.svelte';
 	import TrackFeaturesDrawer from '$lib/components/library/TrackFeaturesDrawer.svelte';
 	import { fetchPreviewCoverage, resolveDeezerPreviews, type PreviewCoverage } from '$lib/previewApi';
-	import { trackJob } from '$lib/jobTracker';
+	import { hydrateLastJobsFromApi, trackJob } from '$lib/jobTracker';
 	import {
 		dryRunAction,
 		fetchDuplicates,
@@ -183,6 +183,7 @@
 			const { job_id } = await resolveDeezerPreviews({ only_missing: true });
 			await trackJob(job_id, 'Resolve Deezer previews', {
 				onComplete: async () => {
+					await hydrateLastJobsFromApi();
 					await loadPreviewCoverage();
 				}
 			});
