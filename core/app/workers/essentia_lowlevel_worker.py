@@ -134,6 +134,7 @@ class EssentiaLowlevelWorker(BaseWorker):
             return
 
         analysis_decision = None
+        segments_planned: int | None = None
         with Session(engine) as session:
             from app.database.repositories.audio_download_jobs import AudioDownloadJobsRepository
 
@@ -142,10 +143,18 @@ class EssentiaLowlevelWorker(BaseWorker):
                 try:
                     data = json.loads(dl.result_json)
                     analysis_decision = data.get("analysis_decision")
+                    sp = data.get("segments_planned")
+                    if isinstance(sp, int):
+                        segments_planned = sp
                 except json.JSONDecodeError:
                     pass
         aggregated = aggregate_segment_features(
-            parsed_list, analysis_decision=analysis_decision
+            parsed_list,
+            analysis_decision=analysis_decision,
+            segments_planned=segments_planned,
+            segments_missing_reason="segment_download_or_file_missing"
+            if segments_planned is not None and segments_planned > len(parsed_list)
+            else None,
         )
         with Session(engine) as session:
             self._upsert.upsert_essentia_lowlevel(

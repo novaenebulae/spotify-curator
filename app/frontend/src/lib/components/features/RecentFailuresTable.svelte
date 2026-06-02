@@ -6,20 +6,19 @@
 		failures,
 		page = 1,
 		pageSize = 10,
+		total = failures.length,
 		onPageChange,
 		onInspect
 	}: {
 		failures: RecentFailure[];
 		page?: number;
 		pageSize?: number;
+		total?: number;
 		onPageChange?: (page: number) => void;
 		onInspect?: (failure: RecentFailure) => void;
 	} = $props();
 
-	const totalPages = $derived(Math.max(1, Math.ceil(failures.length / pageSize)));
-	const pageItems = $derived(
-		failures.slice((page - 1) * pageSize, page * pageSize)
-	);
+	const totalPages = $derived(Math.max(1, Math.ceil(total / pageSize)));
 
 	function failureStatusVariant(status: string): 'missing' | 'unavailable' | 'neutral' {
 		if (status === 'failed') return 'unavailable';
@@ -32,6 +31,7 @@
 	<table>
 		<thead>
 			<tr>
+				<th>Source</th>
 				<th>Track</th>
 				<th>Artists</th>
 				<th>Status</th>
@@ -39,8 +39,9 @@
 			</tr>
 		</thead>
 		<tbody>
-			{#each pageItems as f (f.track_id)}
+			{#each failures as f (f.source ? `${f.source}:${f.track_id}` : String(f.track_id))}
 				<tr>
+					<td class="source-col">{f.source ?? '—'}</td>
 					<td class="track-col">
 						{#if onInspect}
 							<button type="button" class="title-inspect" onclick={() => onInspect(f)}>
@@ -63,7 +64,7 @@
 	</table>
 </div>
 
-{#if failures.length > pageSize}
+{#if totalPages > 1}
 	<div class="row pagination">
 		<button
 			type="button"
@@ -84,6 +85,12 @@
 <style>
 	.failures-table {
 		max-height: min(50vh, 420px);
+	}
+	.source-col {
+		min-width: 7rem;
+		max-width: 10rem;
+		font-size: 0.85rem;
+		color: var(--color-muted);
 	}
 	.track-col {
 		min-width: 12rem;

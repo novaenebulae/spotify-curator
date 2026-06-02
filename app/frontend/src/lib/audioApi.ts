@@ -40,6 +40,7 @@ export function downloadMissingSegments(
 	opts: {
 		track_ids?: number[];
 		filter?: Record<string, unknown>;
+		analysis_mode?: 'fast' | 'precise';
 		limit?: number;
 		only_missing?: boolean;
 		retry_failed?: boolean;
@@ -53,6 +54,7 @@ export function downloadMissingSegments(
 			track_ids: opts.track_ids,
 			filter: opts.filter ?? null,
 			strategy: 'hybrid_deezer_youtube_representative',
+			analysis_mode: opts.analysis_mode ?? 'fast',
 			only_missing: opts.only_missing ?? true,
 			retry_failed: opts.retry_failed ?? false,
 			limit: opts.limit ?? null
@@ -65,6 +67,7 @@ export function runLowlevelAnalysis(
 	opts: {
 		track_ids?: number[];
 		filter?: Record<string, unknown>;
+		analysis_mode?: 'fast' | 'precise';
 		limit?: number;
 		only_missing?: boolean;
 		retry_failed?: boolean;
@@ -78,6 +81,7 @@ export function runLowlevelAnalysis(
 		body: JSON.stringify({
 			track_ids: opts.track_ids,
 			filter: opts.filter ?? null,
+			analysis_mode: opts.analysis_mode ?? 'fast',
 			only_missing: opts.only_missing ?? true,
 			retry_failed: opts.retry_failed ?? false,
 			limit: opts.limit ?? null,

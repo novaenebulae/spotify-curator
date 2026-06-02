@@ -25,6 +25,8 @@
 	let coreOk = $state(false);
 
 	let coverage = $state<FeatureCoverage | null>(null);
+	let failuresPage = $state(1);
+	const failuresPageSize = 20;
 
 	let batchSize = $state(50);
 	let limit = $state<number | null>(null);
@@ -45,7 +47,16 @@
 		try {
 			const [health, cov] = await Promise.all([
 				fetchHealth(controller.signal),
-				getFeatureCoverage({ include_fields: true, include_failed: true }, controller.signal)
+				getFeatureCoverage(
+					{
+						include_fields: true,
+						include_failed: true,
+						source: 'all',
+						failures_page: failuresPage,
+						failures_page_size: failuresPageSize
+					},
+					controller.signal
+				)
 			]);
 			coreOk = health.status === 'ok';
 			coverage = cov;
@@ -158,9 +169,12 @@
 
 	<FieldCoverageTable fields={coverage?.fields ?? []} {loading} />
 	<RecentFailuresList
-		failures={coverage?.recent_failures ?? []}
-		{busy}
-		onRetry={() => runEnrichment(retryFailedReccoBeats, 'Retry failed tracks')}
+		failures={coverage?.failures ?? null}
+		busy={loading}
+		onPageChange={(p) => {
+			failuresPage = p;
+			loadCoverage();
+		}}
 		onInspect={inspectFailure}
 	/>
 {/if}

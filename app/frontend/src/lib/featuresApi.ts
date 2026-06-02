@@ -41,6 +41,11 @@ export type CoverageSummary = {
 	with_reccobeats: number;
 	missing_reccobeats: number;
 	failed_reccobeats: number;
+	not_found_reccobeats?: number;
+	with_essentia_lowlevel?: number;
+	missing_essentia_lowlevel?: number;
+	failed_essentia_lowlevel?: number;
+	not_found_essentia_lowlevel?: number;
 	coverage_percent: number;
 };
 
@@ -52,6 +57,7 @@ export type CoverageSource = {
 	success_count: number;
 	missing_count: number;
 	failed_count: number;
+	not_found_count?: number;
 	partial_count: number;
 	coverage_percent: number;
 };
@@ -63,6 +69,7 @@ export type CoverageField = {
 };
 
 export type RecentFailure = {
+	source?: string | null;
 	track_id: number;
 	title: string;
 	artist_names: string[];
@@ -71,11 +78,19 @@ export type RecentFailure = {
 	error_message: string | null;
 };
 
+export type FailurePage = {
+	total: number;
+	page: number;
+	page_size: number;
+	items: RecentFailure[];
+};
+
 export type FeatureCoverage = {
 	summary: CoverageSummary;
 	sources: CoverageSource[];
 	fields: CoverageField[];
 	recent_failures: RecentFailure[];
+	failures?: FailurePage | null;
 };
 
 export type EnrichPayload = {
@@ -98,6 +113,8 @@ export async function getFeatureCoverage(
 		source?: string;
 		include_failed?: boolean;
 		include_fields?: boolean;
+		failures_page?: number;
+		failures_page_size?: number;
 	},
 	signal?: AbortSignal
 ): Promise<FeatureCoverage> {
@@ -105,6 +122,9 @@ export async function getFeatureCoverage(
 	if (params?.source) sp.set('source', params.source);
 	if (params?.include_failed !== undefined) sp.set('include_failed', String(params.include_failed));
 	if (params?.include_fields !== undefined) sp.set('include_fields', String(params.include_fields));
+	if (params?.failures_page !== undefined) sp.set('failures_page', String(params.failures_page));
+	if (params?.failures_page_size !== undefined)
+		sp.set('failures_page_size', String(params.failures_page_size));
 	const qs = sp.toString();
 	return apiFetch<FeatureCoverage>(`/api/v1/features/coverage${qs ? `?${qs}` : ''}`, { signal });
 }

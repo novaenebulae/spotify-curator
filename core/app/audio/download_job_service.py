@@ -32,6 +32,7 @@ class AudioDownloadJobService:
         track_ids: list[int] | None = None,
         filter_dict: dict[str, Any] | None = None,
         strategy: str = "abc_default",
+        analysis_mode: str = "fast",
         segment_duration_seconds: float | None = None,
         only_missing: bool = True,
         retry_failed: bool = False,
@@ -71,6 +72,7 @@ class AudioDownloadJobService:
         job_id = self._jobs.create(JOB_TYPE_AUDIO_DOWNLOAD)
         input_payload = {
             "strategy": strategy,
+            "analysis_mode": analysis_mode,
             "segment_duration_seconds": segment_duration_seconds,
             "provider": provider,
         }

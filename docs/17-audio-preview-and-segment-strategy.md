@@ -26,6 +26,8 @@ Décrire la stratégie nominale **Deezer preview (UI) + YouTube segments (analys
 
 Pas de binaire audio. Voir [`05-domain-model.md`](05-domain-model.md).
 
+Les URLs `preview` Deezer sur le CDN (`hdnea=exp=…`) sont **signées et expirent**. Avant un téléchargement de segment `DEEZER_PREVIEW`, `audio-downloader-worker` rafraîchit l’URL via `GET /track/{id}` si le token est expiré (ou proche de l’expiration), puis met à jour `track_previews.preview_url`.
+
 ### Segments (`track_segments`)
 
 **Sources** : `youtube`, `deezer_preview`, `test`, `cache`

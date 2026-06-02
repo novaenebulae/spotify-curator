@@ -6,9 +6,10 @@ from app.audio.provider import PlannedSegment
 from app.audio.segments import SegmentValidationError, validate_segment_duration
 from app.settings.config import settings
 
-ANALYSIS_DEEZER_PLUS_YT = "deezer_preview_plus_two_youtube_segments"
-ANALYSIS_YT_THREE = "youtube_three_segments_fallback"
-ANALYSIS_DEEZER_ONLY = "deezer_preview_only_fallback"
+ANALYSIS_DEEZER_PLUS_YT_2 = "deezer_plus_youtube_2_segments"
+ANALYSIS_YT_THREE = "youtube_3_segments"
+ANALYSIS_DEEZER_ONLY = "deezer_only"
+ANALYSIS_YT_ONE = "youtube_1_segment"
 ANALYSIS_UNAVAILABLE = "local_analysis_unavailable"
 
 SOURCE_QUALITY_REPRESENTATIVE = "youtube_representative"
@@ -59,6 +60,7 @@ def plan_hybrid_segments(
     deezer_preview_available: bool,
     youtube_confidence: float | None,
     youtube_available: bool,
+    analysis_mode: str = "fast",
     segment_duration_seconds: float | None = None,
     strategy: str = "hybrid_deezer_youtube_representative",
     deezer_match_confidence: float = 1.0,
@@ -71,9 +73,60 @@ def plan_hybrid_segments(
     validate_segment_duration(seg_dur)
 
     yt_conf = youtube_confidence if youtube_confidence is not None else 0.0
+    mode = (analysis_mode or "fast").lower()
 
+    if mode not in ("fast", "precise"):
+        mode = "fast"
+
+    if mode == "fast":
+        # Prefer Deezer preview when available & confident enough.
+        if deezer_preview_available:
+            preview_dur = min(seg_dur, settings.audio_segment_max_seconds, 30.0)
+            validate_segment_duration(preview_dur)
+            seg = PlannedSegment(
+                segment_type="DEEZER_PREVIEW",
+                start_seconds=0.0,
+                end_seconds=preview_dur,
+                duration_seconds=preview_dur,
+                strategy=strategy,
+                source="deezer_preview",
+                source_quality=SOURCE_QUALITY_DEEZER,
+                match_confidence=deezer_match_confidence,
+                analysis_decision=ANALYSIS_DEEZER_ONLY,
+            )
+            return HybridPlan(segments=[seg], analysis_decision=ANALYSIS_DEEZER_ONLY)
+        if youtube_available:
+            seg = _center_segment(
+                track_duration_s,
+                center_fraction=1 / 2,
+                segment_type="YOUTUBE_1_2",
+                seg_dur=seg_dur,
+                strategy=strategy,
+                source="youtube",
+                source_quality=SOURCE_QUALITY_REPRESENTATIVE,
+                analysis_decision=ANALYSIS_YT_ONE,
+                match_confidence=yt_conf,
+            )
+            return HybridPlan(segments=[seg], analysis_decision=ANALYSIS_YT_ONE)
+        return HybridPlan(segments=[], analysis_decision=ANALYSIS_UNAVAILABLE)
+
+    # precise
     if deezer_preview_available and youtube_available:
+        preview_dur = min(seg_dur, settings.audio_segment_max_seconds, 30.0)
+        validate_segment_duration(preview_dur)
+        deezer_seg = PlannedSegment(
+            segment_type="DEEZER_PREVIEW",
+            start_seconds=0.0,
+            end_seconds=preview_dur,
+            duration_seconds=preview_dur,
+            strategy=strategy,
+            source="deezer_preview",
+            source_quality=SOURCE_QUALITY_DEEZER,
+            match_confidence=deezer_match_confidence,
+            analysis_decision=ANALYSIS_DEEZER_PLUS_YT_2,
+        )
         segments = [
+            deezer_seg,
             _center_segment(
                 track_duration_s,
                 center_fraction=1 / 3,
@@ -82,7 +135,7 @@ def plan_hybrid_segments(
                 strategy=strategy,
                 source="youtube",
                 source_quality=SOURCE_QUALITY_REPRESENTATIVE,
-                analysis_decision=ANALYSIS_DEEZER_PLUS_YT,
+                analysis_decision=ANALYSIS_DEEZER_PLUS_YT_2,
                 match_confidence=yt_conf,
             ),
             _center_segment(
@@ -93,11 +146,11 @@ def plan_hybrid_segments(
                 strategy=strategy,
                 source="youtube",
                 source_quality=SOURCE_QUALITY_REPRESENTATIVE,
-                analysis_decision=ANALYSIS_DEEZER_PLUS_YT,
+                analysis_decision=ANALYSIS_DEEZER_PLUS_YT_2,
                 match_confidence=yt_conf,
             ),
         ]
-        return HybridPlan(segments=segments, analysis_decision=ANALYSIS_DEEZER_PLUS_YT)
+        return HybridPlan(segments=segments, analysis_decision=ANALYSIS_DEEZER_PLUS_YT_2)
 
     if youtube_available:
         fractions = ((1 / 4, "YOUTUBE_1_4"), (1 / 2, "YOUTUBE_1_2"), (3 / 4, "YOUTUBE_3_4"))

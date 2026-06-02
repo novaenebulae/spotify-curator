@@ -51,12 +51,18 @@ def _parse_essentia_extended(payload_json: str) -> dict[str, Any]:
         "onset_rate",
         "analysis_decision",
         "segment_count",
+        "segments_planned",
+        "segments_analyzed",
+        "segments_missing_reason",
     ):
         if key in aggregated and aggregated[key] is not None:
             extended[key] = aggregated[key]
     segments_used = data.get("segments_used")
     if segments_used is not None:
         extended["segments_used"] = segments_used
+    for key in ("segments_planned", "segments_analyzed", "segments_missing_reason"):
+        if key in data and data[key] is not None:
+            extended[key] = data[key]
     return extended
 
 
@@ -66,6 +72,15 @@ def _merged_from_row(row: AudioFeature, source: FeatureSource, *, extended: dict
         if source.name == "essentia_lowlevel"
         else None,
         segments_used=int(extended["segments_used"]) if extended.get("segments_used") is not None else None,
+        segments_planned=int(extended["segments_planned"])
+        if extended.get("segments_planned") is not None
+        else None,
+        segments_analyzed=int(extended["segments_analyzed"])
+        if extended.get("segments_analyzed") is not None
+        else None,
+        segments_missing_reason=str(extended["segments_missing_reason"])
+        if extended.get("segments_missing_reason")
+        else None,
         analysis_decision=str(extended["analysis_decision"])
         if extended.get("analysis_decision")
         else None,

@@ -11,6 +11,7 @@ from app.features.schemas import (
     CoverageResponse,
     CoverageSourceOut,
     CoverageSummaryOut,
+    FailurePageOut,
     RecentFailureOut,
 )
 
@@ -43,10 +44,12 @@ class FeatureCoverageService:
         self,
         session: Session,
         *,
-        source: str = "reccobeats",
+        source: str = "all",
         include_failed: bool = True,
         include_fields: bool = True,
         recent_failures_limit: int = 20,
+        failures_page: int = 1,
+        failures_page_size: int = 20,
     ) -> CoverageResponse:
         track_count = self._features.count_tracks_total(session)
         sources_out: list[CoverageSourceOut] = []
@@ -61,10 +64,17 @@ class FeatureCoverageService:
         with_reccobeats = 0
         missing_reccobeats = track_count
         failed_reccobeats = 0
+        not_found_reccobeats = 0
+        with_essentia = 0
+        missing_essentia = track_count
+        failed_essentia = 0
+        not_found_essentia = 0
 
         reccobeats_source = self._sources.get_by_name(session, "reccobeats")
+        essentia_source = self._sources.get_by_name(session, "essentia_lowlevel")
         fields_out: list[CoverageFieldOut] = []
         recent_failures: list[RecentFailureOut] = []
+        failures_page_out: FailurePageOut | None = None
 
         for src in source_rows:
             if src is None:
@@ -94,7 +104,8 @@ class FeatureCoverageService:
                     track_count=track_count,
                     success_count=success,
                     missing_count=missing,
-                    failed_count=failed + not_found if include_failed else failed,
+                    failed_count=failed,
+                    not_found_count=not_found,
                     partial_count=partial,
                     coverage_percent=round(coverage_pct, 2),
                 )
@@ -103,7 +114,8 @@ class FeatureCoverageService:
             if src.name == "reccobeats":
                 with_reccobeats = covered
                 missing_reccobeats = missing
-                failed_reccobeats = failed + not_found
+                failed_reccobeats = failed
+                not_found_reccobeats = not_found
                 if include_fields:
                     for field_name in COVERAGE_FIELDS:
                         available = self._features.count_field_available(
@@ -117,10 +129,47 @@ class FeatureCoverageService:
                                 coverage_percent=round(pct, 2),
                             )
                         )
-                if include_failed:
-                    recent_failures = self._build_recent_failures(
-                        session, feature_source_id=src.id, limit=recent_failures_limit
+            if src.name == "essentia_lowlevel":
+                with_essentia = covered
+                missing_essentia = missing
+                failed_essentia = failed
+                not_found_essentia = not_found
+
+        if include_failed:
+            failure_source_ids = [s.id for s in source_rows if s is not None]
+            if failure_source_ids:
+                recent_failures = self._build_recent_failures_multi(
+                    session, feature_source_ids=failure_source_ids, limit=recent_failures_limit
+                )
+                total = self._features.count_failures(
+                    session, feature_source_ids=failure_source_ids
+                )
+                page = max(1, int(failures_page))
+                page_size = max(1, min(int(failures_page_size), 200))
+                offset = (page - 1) * page_size
+                rows = self._features.list_failures_page(
+                    session,
+                    feature_source_ids=failure_source_ids,
+                    offset=offset,
+                    limit=page_size,
+                )
+                items: list[RecentFailureOut] = []
+                for feature, track, src in rows:
+                    artist_names = self._artist_names(session, track.id)
+                    items.append(
+                        RecentFailureOut(
+                            source=src.name,
+                            track_id=track.id,
+                            title=track.name,
+                            artist_names=artist_names,
+                            status=feature.status,
+                            error_code=feature.error_code,
+                            error_message=feature.error_message,
+                        )
                     )
+                failures_page_out = FailurePageOut(
+                    total=total, page=page, page_size=page_size, items=items
+                )
 
         if reccobeats_source:
             with_any = self._features.count_with_active_source(
@@ -136,6 +185,11 @@ class FeatureCoverageService:
             with_reccobeats=with_reccobeats,
             missing_reccobeats=missing_reccobeats,
             failed_reccobeats=failed_reccobeats,
+            not_found_reccobeats=not_found_reccobeats,
+            with_essentia_lowlevel=with_essentia,
+            missing_essentia_lowlevel=missing_essentia,
+            failed_essentia_lowlevel=failed_essentia,
+            not_found_essentia_lowlevel=not_found_essentia,
             coverage_percent=round(summary_pct, 2),
         )
 
@@ -144,6 +198,7 @@ class FeatureCoverageService:
             sources=sources_out,
             fields=fields_out,
             recent_failures=recent_failures,
+            failures=failures_page_out,
         )
 
     def _build_recent_failures(
@@ -157,6 +212,29 @@ class FeatureCoverageService:
             artist_names = self._artist_names(session, track.id)
             out.append(
                 RecentFailureOut(
+                    track_id=track.id,
+                    title=track.name,
+                    artist_names=artist_names,
+                    status=feature.status,
+                    error_code=feature.error_code,
+                    error_message=feature.error_message,
+                )
+            )
+        return out
+
+    def _build_recent_failures_multi(
+        self, session: Session, *, feature_source_ids: list[int], limit: int
+    ) -> list[RecentFailureOut]:
+        # Keep this "recent failures" list simple/short for header cards (legacy UI).
+        rows = self._features.list_failures_page(
+            session, feature_source_ids=feature_source_ids, offset=0, limit=limit
+        )
+        out: list[RecentFailureOut] = []
+        for feature, track, src in rows:
+            artist_names = self._artist_names(session, track.id)
+            out.append(
+                RecentFailureOut(
+                    source=src.name,
                     track_id=track.id,
                     title=track.name,
                     artist_names=artist_names,

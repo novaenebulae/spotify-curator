@@ -63,6 +63,7 @@ class TrackPreviewsRepository:
             .where(
                 TrackPreview.provider == provider,
                 TrackPreview.is_available.is_(True),
+                TrackPreview.preview_url.is_not(None),
             )
         )
         stmt = (
@@ -82,6 +83,7 @@ class TrackPreviewsRepository:
                 .where(
                     TrackPreview.provider == "deezer",
                     TrackPreview.is_available.is_(True),
+                    TrackPreview.preview_url.is_not(None),
                 )
             )
             or 0
@@ -89,7 +91,8 @@ class TrackPreviewsRepository:
         with_any = int(
             session.scalar(
                 select(func.count(func.distinct(TrackPreview.track_id))).where(
-                    TrackPreview.is_available.is_(True)
+                    TrackPreview.is_available.is_(True),
+                    TrackPreview.preview_url.is_not(None),
                 )
             )
             or 0

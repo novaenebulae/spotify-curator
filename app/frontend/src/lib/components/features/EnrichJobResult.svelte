@@ -44,7 +44,7 @@
 			<p class="muted">Features saved</p>
 		</div>
 		<div class="stat-card stat-warn">
-			<h3>Not on ReccoBeats</h3>
+			<h3>Not found</h3>
 			<p class="stat-value">{(stats.not_found ?? 0).toLocaleString()}</p>
 			<p class="muted">No match this run</p>
 		</div>
@@ -54,21 +54,10 @@
 			<p class="muted">API or network errors</p>
 		</div>
 		<div class="stat-card">
-			<h3>Partial</h3>
-			<p class="stat-value">{(stats.partial ?? 0).toLocaleString()}</p>
-		</div>
-		<div class="stat-card">
 			<h3>Skipped</h3>
 			<p class="stat-value">{(stats.skipped ?? 0).toLocaleString()}</p>
 			<p class="muted">No Spotify ID</p>
 		</div>
-		{#if stats.http_batches != null}
-			<div class="stat-card">
-				<h3>API batches</h3>
-				<p class="stat-value">{stats.http_batches.toLocaleString()}</p>
-				<p class="muted">Up to 40 tracks per request</p>
-			</div>
-		{/if}
 	</div>
 
 	{#if status === 'cancelled'}

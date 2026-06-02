@@ -23,17 +23,19 @@
 			<p class="muted">{coverage.summary.with_reccobeats.toLocaleString()} enriched</p>
 		</div>
 		<div class="stat-card">
-			<h3>Missing</h3>
+			<h3>ReccoBeats missing</h3>
 			<p class="stat-value">{coverage.summary.missing_reccobeats.toLocaleString()}</p>
 		</div>
-		<div class="stat-card">
-			<h3>Failed / not found</h3>
-			<p class="stat-value">{coverage.summary.failed_reccobeats.toLocaleString()}</p>
-		</div>
-		{#each coverage.sources.filter((s) => s.source === 'reccobeats') as src}
+
+		{#each coverage.sources.filter((s) => s.source === 'essentia_lowlevel') as src}
 			<div class="stat-card">
-				<h3>Partial</h3>
-				<p class="stat-value">{src.partial_count.toLocaleString()}</p>
+				<h3>Essentia coverage</h3>
+				<p class="stat-value">{src.coverage_percent.toFixed(1)}%</p>
+				<p class="muted">{(coverage.summary.with_essentia_lowlevel ?? 0).toLocaleString()} enriched</p>
+			</div>
+			<div class="stat-card">
+				<h3>Essentia missing</h3>
+				<p class="stat-value">{(coverage.summary.missing_essentia_lowlevel ?? 0).toLocaleString()}</p>
 			</div>
 		{/each}
 	</div>

@@ -3,6 +3,7 @@ import { fetchJob, type Job } from '$lib/spotifyApi';
 const TERMINAL_JOB_STATUSES = new Set([
 	'succeeded',
 	'success',
+	'partial',
 	'failed',
 	'cancelled',
 	'rate_limited',

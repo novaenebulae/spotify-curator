@@ -62,7 +62,7 @@ Statut : TODO
 - Happy/sad/aggressive/relaxed/party.
 - Arousal/valence.
 - Electronic/acoustic.
-- Genre/style si disponible.
+- Genre/style avec Discogs519 Genre
 
 ## 7.5 — Voice/instrumental
 

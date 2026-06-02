@@ -347,8 +347,10 @@ class JobItemService:
                 job.status = "running"
                 if job.started_at is None:
                     job.started_at = now
-            elif job.status not in ("cancelled", "failed", "succeeded", "partial"):
+            elif job.status not in ("cancelled",):
+                # If work is still pending, the job cannot be terminal.
                 job.status = "running"
+                job.finished_at = None
             job.current_step = f"processing {terminal}/{total}"
         elif pending == 0 and total > 0:
             failed = counts.get("failed", 0)

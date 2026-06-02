@@ -151,6 +151,22 @@ Champs candidat :
 
 ### Stratégie segments
 
+#### Modes Fast / Precise
+
+L’analyse locale supporte 2 modes explicites, propagés depuis l’UI jusqu’aux jobs audio (`analysis_mode`):
+
+- **Fast** (défaut) : **1 seul segment** représentatif.
+  - Deezer preview si disponible (et jugée utilisable), sinon 1 segment YouTube centré.
+- **Precise** : **3 segments**.
+  - Deezer preview + 2 segments YouTube si Deezer+YouTube sont disponibles, sinon 3 segments YouTube.
+
+Le code `analysis_decision` reflète désormais la réalité des segments planifiés/analy­sés :
+
+- `deezer_only`
+- `youtube_1_segment`
+- `deezer_plus_youtube_2_segments`
+- `youtube_3_segments`
+
 Segments recommandés :
 
 ```text
@@ -218,6 +234,19 @@ Features extraites :
 - mode ;
 - key confidence ;
 - MFCC ;
+- **Meta segments** (exposés dans le drawer Features / Sources) :
+  - `segments_planned`
+  - `segments_analyzed`
+  - `segments_missing_reason` (si < planned)
+
+#### Gating (éviter l’analyse locale inutile)
+
+Par défaut, l’analyse Essentia low-level est **filtrée** pour ne tourner que si elle apporte de la valeur vs ReccoBeats :
+
+- si ReccoBeats est absent / `failed` / `not_found` / `pending` → Essentia est autorisée (fallback),
+- sinon Essentia ne s’exécute que si ReccoBeats a des champs low-level manquants (actuellement : `bpm`, `loudness`, `key`, `mode`, `duration_ms`).
+
+Un override manuel existe via `force_refresh=true`.
 - HPCP ;
 - spectral centroid ;
 - spectral rolloff ;

@@ -61,7 +61,6 @@
 				Cancel
 			</button>
 		{/if}
-	</div>
 
 	<div class="row filters">
 		<label>
@@ -90,14 +89,21 @@
 			/>
 		</label>
 	</div>
+	</div>
+
 </section>
 
 <style>
+
+	.row .filters {
+		margin-left: auto;
+	}
 	.filters label {
 		display: flex;
-		flex-direction: column;
+		flex-direction: row;
 		gap: 0.25rem;
 		font-size: 0.85rem;
+		align-items: center;
 	}
 	.filters input {
 		width: 6rem;

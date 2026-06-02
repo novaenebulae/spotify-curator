@@ -47,6 +47,7 @@ def plan_segments(body: SegmentPlanRequest) -> SegmentPlanResponse:
             deezer_ok, deezer_conf = avail.deezer_for_analysis(session, body.track_id)
             planned, analysis_decision = plan_hybrid_for_track(
                 ctx,
+                analysis_mode=body.analysis_mode,
                 segment_duration_seconds=body.segment_duration_seconds,
                 deezer_preview_available=deezer_ok,
                 youtube_available=body.youtube_available if body.youtube_available is not None else True,
@@ -57,6 +58,7 @@ def plan_segments(body: SegmentPlanRequest) -> SegmentPlanResponse:
             planned = plan_segments_for_track(
                 ctx,
                 strategy,
+                analysis_mode=body.analysis_mode,
                 segment_duration_seconds=body.segment_duration_seconds,
             )
     return SegmentPlanResponse(
@@ -82,6 +84,7 @@ def start_segment_download(body: AudioDownloadRequest) -> AudioJobResponse:
         track_ids=body.track_ids,
         filter_dict=body.filter,
         strategy=body.strategy,
+        analysis_mode=body.analysis_mode,
         segment_duration_seconds=body.segment_duration_seconds,
         only_missing=body.only_missing,
         retry_failed=body.retry_failed,

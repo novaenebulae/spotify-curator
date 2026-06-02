@@ -116,6 +116,9 @@ class FeatureUpsertService:
                 "pipeline_version": settings.essentia_lowlevel_pipeline_version,
                 "aggregated": aggregated.detail_json,
                 "segments_used": aggregated.segments_used,
+                "segments_planned": aggregated.segments_planned,
+                "segments_analyzed": aggregated.segments_analyzed,
+                "segments_missing_reason": aggregated.segments_missing_reason,
             }
         )
         self._features.insert_raw_payload(

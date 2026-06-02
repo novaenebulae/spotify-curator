@@ -32,6 +32,7 @@ class CoverageSourceOut(BaseModel):
     success_count: int
     missing_count: int
     failed_count: int
+    not_found_count: int
     partial_count: int
     coverage_percent: float
 
@@ -42,10 +43,16 @@ class CoverageSummaryOut(BaseModel):
     with_reccobeats: int
     missing_reccobeats: int
     failed_reccobeats: int
+    not_found_reccobeats: int = 0
+    with_essentia_lowlevel: int = 0
+    missing_essentia_lowlevel: int = 0
+    failed_essentia_lowlevel: int = 0
+    not_found_essentia_lowlevel: int = 0
     coverage_percent: float
 
 
 class RecentFailureOut(BaseModel):
+    source: str | None = None
     track_id: int
     title: str
     artist_names: list[str]
@@ -54,16 +61,27 @@ class RecentFailureOut(BaseModel):
     error_message: str | None
 
 
+class FailurePageOut(BaseModel):
+    total: int
+    page: int
+    page_size: int
+    items: list[RecentFailureOut]
+
+
 class CoverageResponse(BaseModel):
     summary: CoverageSummaryOut
     sources: list[CoverageSourceOut]
     fields: list[CoverageFieldOut]
     recent_failures: list[RecentFailureOut]
+    failures: FailurePageOut | None = None
 
 
 class TrackFeatureMetaOut(BaseModel):
     pipeline_version: str | None = None
     segments_used: int | None = None
+    segments_planned: int | None = None
+    segments_analyzed: int | None = None
+    segments_missing_reason: str | None = None
     analysis_decision: str | None = None
     external_track_id: str | None = None
 

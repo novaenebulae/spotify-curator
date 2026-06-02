@@ -141,6 +141,48 @@ class AudioFeaturesRepository:
         )
         return list(session.execute(q).all())
 
+    def count_failures(
+        self,
+        session: Session,
+        *,
+        feature_source_ids: list[int],
+        statuses: tuple[str, ...] = ("failed", "not_found"),
+    ) -> int:
+        q = (
+            select(func.count())
+            .select_from(AudioFeature)
+            .where(
+                AudioFeature.is_active.is_(True),
+                AudioFeature.feature_source_id.in_(feature_source_ids),
+                AudioFeature.status.in_(statuses),
+            )
+        )
+        return int(session.execute(q).scalar_one())
+
+    def list_failures_page(
+        self,
+        session: Session,
+        *,
+        feature_source_ids: list[int],
+        offset: int,
+        limit: int,
+        statuses: tuple[str, ...] = ("failed", "not_found"),
+    ) -> list[tuple[AudioFeature, Track, FeatureSource]]:
+        q = (
+            select(AudioFeature, Track, FeatureSource)
+            .join(Track, Track.id == AudioFeature.track_id)
+            .join(FeatureSource, FeatureSource.id == AudioFeature.feature_source_id)
+            .where(
+                AudioFeature.is_active.is_(True),
+                AudioFeature.feature_source_id.in_(feature_source_ids),
+                AudioFeature.status.in_(statuses),
+            )
+            .order_by(AudioFeature.fetched_at.desc().nullslast(), AudioFeature.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return list(session.execute(q).all())
+
     def list_track_ids_missing_source(
         self, session: Session, *, feature_source_id: int, limit: int | None = None
     ) -> list[int]:

@@ -2,14 +2,12 @@
 	import { onMount } from 'svelte';
 	import StatusBadge from '$lib/components/common/StatusBadge.svelte';
 	import {
-		cleanupAudioCache,
 		downloadMissingSegments,
 		fetchWorkers,
 		runLowlevelAnalysis,
 		type WorkerInfo
 	} from '$lib/audioApi';
 	import { ApiClientError } from '$lib/apiErrors';
-	import { fetchPreviewCoverage, resolveDeezerPreviews, type PreviewCoverage } from '$lib/previewApi';
 	import { jobTracker, trackJob } from '$lib/jobTracker';
 
 	let {
@@ -21,13 +19,12 @@
 	let limit = $state<number | null>(10);
 	let workers = $state<WorkerInfo[]>([]);
 	let workersError = $state<string | null>(null);
-	let previewCoverage = $state<PreviewCoverage | null>(null);
-	let previewCoverageError = $state<string | null>(null);
 	let actionMessage = $state<string | null>(null);
 	let actionError = $state<string | null>(null);
 	let actionBusy = $state(false);
 	let onlyMissingSegments = $state(true);
 	let useRecentLiked = $state(true);
+	let analysisMode = $state<'fast' | 'precise'>('fast');
 
 	function groupWorkers(ws: WorkerInfo[]): { worker_type: string; instances: WorkerInfo[] }[] {
 		const map = new Map<string, WorkerInfo[]>();
@@ -68,30 +65,24 @@
 		}
 	}
 
-	async function loadPreviewCoverage() {
-		previewCoverageError = null;
-		try {
-			previewCoverage = await fetchPreviewCoverage();
-		} catch (e) {
-			previewCoverageError = e instanceof Error ? e.message : String(e);
-		}
-	}
-
 	function trackSelectionFilter(): Record<string, unknown> | undefined {
 		if (!useRecentLiked) return undefined;
 		return { liked: true, sort: 'liked_added_at', order: 'desc' };
 	}
 
 	function jobOpts(): {
+		analysis_mode: 'fast' | 'precise';
 		limit?: number;
 		only_missing?: boolean;
 		filter?: Record<string, unknown>;
 	} {
 		const opts: {
+			analysis_mode: 'fast' | 'precise';
 			limit?: number;
 			only_missing?: boolean;
 			filter?: Record<string, unknown>;
 		} = {
+			analysis_mode: analysisMode,
 			only_missing: onlyMissingSegments
 		};
 		const filter = trackSelectionFilter();
@@ -128,6 +119,7 @@
 	async function runJob(
 		label: string,
 		startFn: (opts: {
+			analysis_mode: 'fast' | 'precise';
 			limit?: number;
 			only_missing?: boolean;
 			filter?: Record<string, unknown>;
@@ -141,7 +133,6 @@
 			const finished = await trackJob(job_id, label, {
 				onComplete: async () => {
 					await loadWorkers();
-					await loadPreviewCoverage();
 					await onJobComplete?.();
 				}
 			});
@@ -170,7 +161,6 @@
 			const finished = await trackJob(an.job_id, 'Essentia low-level', {
 				onComplete: async () => {
 					await loadWorkers();
-					await loadPreviewCoverage();
 					await onJobComplete?.();
 				}
 			});
@@ -184,31 +174,14 @@
 		}
 	}
 
-	async function onCleanup(dryRun: boolean) {
-		actionBusy = true;
-		actionMessage = null;
-		try {
-			const res = await cleanupAudioCache({ dry_run: dryRun });
-			actionMessage = dryRun
-				? `Dry-run: ${res.matched_files} file(s) would be removed.`
-				: `Deleted ${res.deleted_files} file(s), freed ${res.freed_bytes} bytes.`;
-		} catch (e) {
-			actionMessage = e instanceof Error ? e.message : String(e);
-		} finally {
-			actionBusy = false;
-		}
-	}
-
 	onMount(() => {
 		loadWorkers();
-		loadPreviewCoverage();
 	});
 
 	$effect(() => {
 		const ms = trackerBusy ? 2000 : 15000;
 		const id = setInterval(() => {
 			loadWorkers();
-			loadPreviewCoverage();
 		}, ms);
 		return () => clearInterval(id);
 	});
@@ -223,25 +196,6 @@
 <section class="card local-audio">
 	<h2>Local low-level analysis</h2>
 
-	{#if previewCoverageError}
-		<p class="error">{previewCoverageError}</p>
-	{:else if previewCoverage}
-		<div class="preview-coverage card-inner">
-			<h3>Deezer previews (metadata)</h3>
-			<p>
-				{previewCoverage.with_deezer_preview} / {previewCoverage.track_count} tracks with Deezer preview
-				({previewCoverage.coverage_percent}%)
-			</p>
-			<button
-				type="button"
-				disabled={actionBusy || trackerBusy}
-				onclick={() => runJob('Resolve Deezer previews', (o) => resolveDeezerPreviews(o))}
-			>
-				Resolve Deezer previews
-			</button>
-		</div>
-	{/if}
-
 	<label class="limit-row">
 		<span>Limit (tracks)</span>
 		<input type="number" min="1" bind:value={limit} />
@@ -255,6 +209,14 @@
 		<input type="checkbox" bind:checked={onlyMissingSegments} />
 		<span>Only missing (skip tracks that already have segments / local analysis)</span>
 	</label>
+	<label class="checkbox-row">
+		<input
+			type="checkbox"
+			checked={analysisMode === 'precise'}
+			onchange={(e) => (analysisMode = (e.currentTarget as HTMLInputElement).checked ? 'precise' : 'fast')}
+		/>
+		<span>Mode: {analysisMode === 'fast' ? 'Fast (1 segment)' : 'Precise (3 segments)'}</span>
+	</label>
 
 	<div class="actions">
 		<button
@@ -263,21 +225,7 @@
 			disabled={actionBusy || trackerBusy}
 			onclick={runDownloadThenAnalyze}
 		>
-			Download then analyze
-		</button>
-		<button
-			type="button"
-			disabled={actionBusy || trackerBusy}
-			onclick={() => runJob('Audio download', downloadMissingSegments)}
-		>
-			Download missing segments
-		</button>
-		<button
-			type="button"
-			disabled={actionBusy || trackerBusy}
-			onclick={() => runJob('Essentia low-level', runLowlevelAnalysis)}
-		>
-			Run low-level analysis
+			Download and analyze
 		</button>
 		<button
 			type="button"
@@ -287,14 +235,8 @@
 					runLowlevelAnalysis({ ...o, only_missing: false, retry_failed: true })
 				)}
 		>
-			Retry failed local analysis
+			Retry failed
 		</button>
-		<button type="button" disabled={actionBusy || trackerBusy} onclick={() => onCleanup(true)}
-			>Cleanup audio cache (dry-run)</button
-		>
-		<button type="button" disabled={actionBusy || trackerBusy} onclick={() => onCleanup(false)}
-			>Cleanup audio cache</button
-		>
 	</div>
 
 	{#if actionError}
@@ -302,12 +244,6 @@
 	{:else if actionMessage}
 		<p class="message">{actionMessage}</p>
 	{/if}
-
-	<p class="hint">
-		If buttons return an error, use « Download then analyze » or disable « Only missing » when segments
-		already exist. Rebuild audio workers after code updates:
-		<code>docker compose --profile audio up -d --build</code>
-	</p>
 
 	<h3>Active workers</h3>
 	{#if workersError}
@@ -361,14 +297,6 @@
 	}
 	.checkbox-row input {
 		flex-shrink: 0;
-	}
-	.hint {
-		font-size: 0.85rem;
-		color: var(--color-muted);
-		margin-top: 0.75rem;
-	}
-	.hint code {
-		font-size: 0.8rem;
 	}
 	.action-error {
 		margin-top: 0.75rem;

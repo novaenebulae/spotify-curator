@@ -57,10 +57,12 @@ def get_track_features(track_id: int) -> TrackFeaturesResponse:
 
 @router.get("/coverage", response_model=CoverageResponse)
 def get_feature_coverage(
-    source: str = Query(default="reccobeats"),
+    source: str = Query(default="all"),
     include_failed: bool = Query(default=True),
     include_fields: bool = Query(default=True),
     recent_failures_limit: int = Query(default=20, ge=1, le=100),
+    failures_page: int = Query(default=1, ge=1),
+    failures_page_size: int = Query(default=20, ge=1, le=200),
 ) -> CoverageResponse:
     engine = get_engine()
     with Session(engine) as session:
@@ -70,6 +72,8 @@ def get_feature_coverage(
             include_failed=include_failed,
             include_fields=include_fields,
             recent_failures_limit=recent_failures_limit,
+            failures_page=failures_page,
+            failures_page_size=failures_page_size,
         )
 
 

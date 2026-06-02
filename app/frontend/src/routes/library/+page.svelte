@@ -5,6 +5,8 @@
 	import DuplicateGroupCard from '$lib/components/library/DuplicateGroupCard.svelte';
 	import LibraryTable from '$lib/components/library/LibraryTable.svelte';
 	import TrackFeaturesDrawer from '$lib/components/library/TrackFeaturesDrawer.svelte';
+	import { fetchPreviewCoverage, resolveDeezerPreviews, type PreviewCoverage } from '$lib/previewApi';
+	import { trackJob } from '$lib/jobTracker';
 	import {
 		dryRunAction,
 		fetchDuplicates,
@@ -53,6 +55,9 @@
 	let actionBusy = $state(false);
 	let tracksRefreshing = $state(false);
 	let inspectTrack: TrackItem | null = $state(null);
+	let previewCoverage = $state<PreviewCoverage | null>(null);
+	let previewCoverageError = $state<string | null>(null);
+	let previewBusy = $state(false);
 
 	const controller = new AbortController();
 	let tracksFetchController: AbortController | null = null;
@@ -162,6 +167,32 @@
 		else await loadHistory();
 	}
 
+	async function loadPreviewCoverage(): Promise<void> {
+		previewCoverageError = null;
+		try {
+			previewCoverage = await fetchPreviewCoverage();
+		} catch (e) {
+			previewCoverageError = e instanceof Error ? e.message : String(e);
+		}
+	}
+
+	async function resolvePreviews(): Promise<void> {
+		previewBusy = true;
+		previewCoverageError = null;
+		try {
+			const { job_id } = await resolveDeezerPreviews({ only_missing: true });
+			await trackJob(job_id, 'Resolve Deezer previews', {
+				onComplete: async () => {
+					await loadPreviewCoverage();
+				}
+			});
+		} catch (e) {
+			previewCoverageError = e instanceof Error ? e.message : String(e);
+		} finally {
+			previewBusy = false;
+		}
+	}
+
 	function toggleSelect(id: number): void {
 		const next = new Set(selectedIds);
 		if (next.has(id)) next.delete(id);
@@ -232,6 +263,7 @@
 
 	onMount(() => {
 		loadTracks();
+		loadPreviewCoverage();
 	});
 
 	onDestroy(() => {
@@ -246,21 +278,36 @@
 </div>
 
 	<div class="row tabs">
-		<button type="button" class:secondary={tab !== 'tracks'} onclick={() => switchTab('tracks')}
-			>Tracks</button
-		>
-		<button
-			type="button"
-			class:secondary={tab !== 'duplicates'}
-			onclick={() => switchTab('duplicates')}>Duplicates</button
-		>
-		<button type="button" class:secondary={tab !== 'missing'} onclick={() => switchTab('missing')}
-			>Missing</button
-		>
-		<button type="button" class:secondary={tab !== 'history'} onclick={() => switchTab('history')}
-			>History</button
-		>
-		<button type="button" class="secondary" onclick={refresh} disabled={loading}>Refresh</button>
+		<div class="tabs-left">
+			<button type="button" class:secondary={tab !== 'tracks'} onclick={() => switchTab('tracks')}
+				>Tracks</button
+			>
+			<button
+				type="button"
+				class:secondary={tab !== 'duplicates'}
+				onclick={() => switchTab('duplicates')}>Duplicates</button
+			>
+			<button type="button" class:secondary={tab !== 'missing'} onclick={() => switchTab('missing')}
+				>Missing</button
+			>
+			<button type="button" class:secondary={tab !== 'history'} onclick={() => switchTab('history')}
+				>History</button
+			>
+			<button type="button" class="secondary" onclick={refresh} disabled={loading}>Refresh</button>
+		</div>
+		<div class="tabs-right">
+			{#if previewCoverage}
+				<button type="button" class="preview-btn" disabled={previewBusy} onclick={resolvePreviews}>
+					<span class="preview-btn-title">Resolve Deezer previews</span>
+					<span class="preview-btn-sub">
+						{previewCoverage.with_deezer_preview} / {previewCoverage.track_count}
+						({previewCoverage.coverage_percent}%)
+					</span>
+				</button>
+			{:else if previewCoverageError}
+				<span class="muted">{previewCoverageError}</span>
+			{/if}
+		</div>
 	</div>
 
 	{#if offline}
@@ -490,9 +537,39 @@
 <style>
 	.tabs {
 		margin-bottom: 1.25rem;
+		justify-content: space-between;
+		align-items: center;
+		gap: 0.75rem;
+	}
+	.tabs-left {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+		align-items: center;
+	}
+	.tabs-right {
+		display: flex;
+		justify-content: flex-end;
+		align-items: center;
+		gap: 0.5rem;
+		min-width: 220px;
 	}
 	.tabs button {
 		margin-right: 0.25rem;
+	}
+	.preview-btn {
+		display: inline-flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.1rem;
+		padding: 0.45rem 0.6rem;
+	}
+	.preview-btn-title {
+		font-weight: 600;
+	}
+	.preview-btn-sub {
+		font-size: 0.8rem;
+		color: rgba(0, 0, 0, 0.72);
 	}
 	.search-row {
 		display: flex;

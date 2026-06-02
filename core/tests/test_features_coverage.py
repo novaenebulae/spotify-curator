@@ -130,5 +130,6 @@ def test_coverage_recent_failures(tmp_path, monkeypatch) -> None:
     assert res.status_code == 200
     failures = res.json()["recent_failures"]
     assert len(failures) >= 1
+    assert failures[0]["source"] == "reccobeats"
     assert failures[0]["status"] == "failed"
     assert failures[0]["title"] == "Track Two"

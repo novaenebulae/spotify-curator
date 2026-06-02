@@ -6,6 +6,7 @@ from pydantic import BaseModel
 class SegmentPlanRequest(BaseModel):
     track_id: int
     strategy: str = "hybrid_deezer_youtube_representative"
+    analysis_mode: str = "fast"
     segment_duration_seconds: float | None = None
     youtube_available: bool | None = None
     youtube_confidence: float | None = None
@@ -30,6 +31,7 @@ class AudioDownloadRequest(BaseModel):
     track_ids: list[int] | None = None
     filter: dict | None = None
     strategy: str = "hybrid_deezer_youtube_representative"
+    analysis_mode: str = "fast"
     segment_duration_seconds: float | None = None
     only_missing: bool = True
     retry_failed: bool = False
@@ -40,6 +42,7 @@ class AudioDownloadRequest(BaseModel):
 class AudioAnalysisRequest(BaseModel):
     track_ids: list[int] | None = None
     filter: dict | None = None
+    analysis_mode: str = "fast"
     only_missing: bool = True
     retry_failed: bool = False
     force_refresh: bool = False

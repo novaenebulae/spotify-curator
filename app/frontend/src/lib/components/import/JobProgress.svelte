@@ -21,9 +21,9 @@
 
 	const isActive = $derived(
 		job != null &&
-			(job.status === 'running' ||
-				job.status === 'queued' ||
-				job.status === 'pending')
+			!['succeeded', 'success', 'partial', 'failed', 'cancelled', 'rate_limited', 'error'].includes(
+				job.status
+			)
 	);
 </script>
 

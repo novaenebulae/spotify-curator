@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database.models_library import Track
+from app.database.models_features import AudioFeature
 from app.database.repositories.audio_features import AudioFeaturesRepository
 from app.database.repositories.feature_sources import FeatureSourcesRepository
 from app.database.repositories.track_segments import TrackSegmentsRepository
@@ -50,7 +51,20 @@ class AudioTrackSelectionService:
             ids = list(session.execute(select(Track.id).order_by(Track.id).limit(max_limit)).scalars())
 
         if only_missing and not retry_failed:
-            ids = [i for i in ids if not self._has_active_segments(session, i)]
+            # If a track already has a successful/partial Essentia low-level feature row, do not
+            # download segments again (segments may have been cleaned after analysis).
+            essentia = self._sources.get_by_name(session, "essentia_lowlevel")
+            analyzed: set[int] = set()
+            if essentia is not None:
+                analyzed = set(
+                    self._features.list_track_ids_with_status(
+                        session,
+                        feature_source_id=essentia.id,
+                        statuses=("success", "partial"),
+                        limit=max_limit,
+                    )
+                )
+            ids = [i for i in ids if i not in analyzed and not self._has_active_segments(session, i)]
         elif retry_failed:
             source = self._sources.get_by_name(session, "essentia_lowlevel")
             if source:
@@ -82,12 +96,46 @@ class AudioTrackSelectionService:
         else:
             ids = list(session.execute(select(Track.id).order_by(Track.id).limit(max_limit)).scalars())
 
-        source = self._sources.get_by_name(session, "essentia_lowlevel")
-        if source is None:
+        essentia = self._sources.get_by_name(session, "essentia_lowlevel")
+        reccobeats = self._sources.get_by_name(session, "reccobeats")
+        if essentia is None:
             raise ApiError(
                 code="INTERNAL_ERROR",
                 message="essentia_lowlevel source not seeded",
                 status_code=500,
+            )
+
+        by_track_source: dict[tuple[int, int], AudioFeature] = {}
+        rows = list(
+            session.execute(
+                select(AudioFeature).where(
+                    AudioFeature.is_active.is_(True),
+                    AudioFeature.track_id.in_(ids),
+                    AudioFeature.feature_source_id.in_(
+                        [x for x in (essentia.id, reccobeats.id if reccobeats else None) if x is not None]
+                    ),
+                )
+            ).scalars()
+        )
+        for r in rows:
+            by_track_source[(r.track_id, r.feature_source_id)] = r
+
+        def _needs_essentia_lowlevel(tid: int) -> bool:
+            rb = (
+                by_track_source.get((tid, reccobeats.id))
+                if reccobeats is not None
+                else None
+            )
+            # If ReccoBeats is missing/not usable, Essentia is our fallback.
+            if rb is None:
+                return True
+            if rb.status in ("failed", "not_found", "pending", "missing"):
+                return True
+            # Otherwise, only run Essentia if it can fill missing fields.
+            # (Low-level Essentia currently provides: bpm, loudness, key/mode, duration_ms.)
+            return any(
+                getattr(rb, field, None) is None
+                for field in ("bpm", "loudness", "key", "mode", "duration_ms")
             )
 
         out: list[int] = []
@@ -98,17 +146,15 @@ class AudioTrackSelectionService:
                 out.append(tid)
                 continue
             if retry_failed:
-                row = self._features.get_active_for_track_source(
-                    session, track_id=tid, feature_source_id=source.id
-                )
+                row = by_track_source.get((tid, essentia.id))
                 if row and row.status == "failed":
                     out.append(tid)
                     continue
             if only_missing:
-                row = self._features.get_active_for_track_source(
-                    session, track_id=tid, feature_source_id=source.id
-                )
-                if row and row.status in ("success", "partial"):
+                row = by_track_source.get((tid, essentia.id))
+                if row and row.status in ("success", "partial") and not force_refresh:
+                    continue
+                if not _needs_essentia_lowlevel(tid):
                     continue
             else:
                 out.append(tid)

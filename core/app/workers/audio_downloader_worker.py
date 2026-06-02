@@ -21,6 +21,7 @@ from app.database.repositories.track_segments import TrackSegmentsRepository
 from app.jobs.items.constants import WORKER_TYPE_AUDIO_DOWNLOADER
 from app.jobs.items.service import ReservedJobItem
 from app.observability.redact import redact_dict
+from app.previews.deezer_preview_refresh import ensure_fresh_deezer_preview_url
 from app.settings.config import settings
 from app.workers.base_worker import BaseWorker
 
@@ -68,6 +69,7 @@ class AudioDownloaderWorker(BaseWorker):
             ctx = load_track_context(session, item.track_id)
         inp = item.input_json
         strategy = inp.get("strategy", settings.audio_segment_strategy)
+        analysis_mode = inp.get("analysis_mode", "fast")
         seg_dur = inp.get("segment_duration_seconds")
 
         now = datetime.now(tz=UTC).replace(tzinfo=None)
@@ -102,7 +104,14 @@ class AudioDownloaderWorker(BaseWorker):
                         session, track_id=item.track_id, provider="deezer"
                     )
                     if preview_row and preview_row.preview_url:
-                        deezer_preview_url = preview_row.preview_url
+                        deezer_preview_url = ensure_fresh_deezer_preview_url(
+                            session,
+                            track_id=item.track_id,
+                            preview_url=preview_row.preview_url,
+                            provider_track_id=preview_row.provider_track_id,
+                            previews=self._previews,
+                        )
+                        session.commit()
 
                 if self._is_test:
                     candidates = self._provider.resolve(ctx)  # type: ignore[union-attr]
@@ -119,6 +128,7 @@ class AudioDownloaderWorker(BaseWorker):
 
                 segments, analysis_decision = plan_hybrid_for_track(
                     ctx,
+                    analysis_mode=analysis_mode,
                     segment_duration_seconds=seg_dur,
                     deezer_preview_available=deezer_ok,
                     youtube_available=yt_available,
@@ -134,7 +144,10 @@ class AudioDownloaderWorker(BaseWorker):
                 if selected is None:
                     raise RuntimeError("No suitable audio source found")
                 segments = plan_segments_for_track(
-                    ctx, strategy, segment_duration_seconds=seg_dur
+                    ctx,
+                    strategy,
+                    analysis_mode=analysis_mode,
+                    segment_duration_seconds=seg_dur,
                 )
                 analysis_decision = strategy
 
@@ -210,7 +223,9 @@ class AudioDownloaderWorker(BaseWorker):
 
             result = {
                 "segments_created": created,
+                "segments_planned": len(segments),
                 "analysis_decision": analysis_decision,
+                "analysis_mode": analysis_mode,
             }
             if selected:
                 result["source"] = selected.source

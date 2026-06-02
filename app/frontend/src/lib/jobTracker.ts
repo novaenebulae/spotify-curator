@@ -14,6 +14,7 @@ export type JobTrackerState = {
 	activeJob: Job | null;
 	activeJobId: string | null;
 	lastJob: Job | null;
+	lastJobsByType: Record<string, Job>;
 	busy: boolean;
 	label: string;
 	cancelBusy: boolean;
@@ -24,6 +25,7 @@ const initialState: JobTrackerState = {
 	activeJob: null,
 	activeJobId: null,
 	lastJob: null,
+	lastJobsByType: {},
 	busy: false,
 	label: '',
 	cancelBusy: false,
@@ -49,7 +51,15 @@ function clearPersisted(): void {
 	sessionStorage.removeItem(STORAGE_KEY);
 }
 
-const TERMINAL = new Set(['succeeded', 'success', 'failed', 'cancelled', 'rate_limited', 'error']);
+const TERMINAL = new Set([
+	'succeeded',
+	'success',
+	'partial',
+	'failed',
+	'cancelled',
+	'rate_limited',
+	'error'
+]);
 
 function isTerminal(status: string): boolean {
 	return TERMINAL.has(status);
@@ -88,6 +98,7 @@ export async function trackJob(
 		});
 		patch({
 			lastJob: job,
+			lastJobsByType: { ...get(jobTracker).lastJobsByType, [job.job_type]: job },
 			activeJob: null,
 			activeJobId: null,
 			busy: false
@@ -146,7 +157,13 @@ export async function resumeTrackedJobIfAny(): Promise<void> {
 	try {
 		const job = await fetchJob(stored.jobId);
 		if (isTerminal(job.status)) {
-			patch({ lastJob: job, busy: false, activeJob: null, activeJobId: null });
+			patch({
+				lastJob: job,
+				lastJobsByType: { ...get(jobTracker).lastJobsByType, [job.job_type]: job },
+				busy: false,
+				activeJob: null,
+				activeJobId: null
+			});
 			clearPersisted();
 			return;
 		}

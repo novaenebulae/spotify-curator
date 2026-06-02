@@ -26,6 +26,9 @@ class AggregatedFeatures:
     dynamic_complexity: float | None = None
     onset_rate: float | None = None
     segments_used: int = 0
+    segments_planned: int | None = None
+    segments_analyzed: int | None = None
+    segments_missing_reason: str | None = None
     detail_json: dict[str, Any] = field(default_factory=dict)
 
 
@@ -82,6 +85,8 @@ def aggregate_segment_features(
     parsed: list[ParsedSegmentFeatures],
     *,
     analysis_decision: str | None = None,
+    segments_planned: int | None = None,
+    segments_missing_reason: str | None = None,
 ) -> AggregatedFeatures:
     if not parsed:
         return AggregatedFeatures(segments_used=0)
@@ -105,12 +110,17 @@ def aggregate_segment_features(
 
     detail: dict = {
         "segment_count": len(parsed),
+        "segments_analyzed": len(parsed),
         "mfcc": _mean_vectors([p.mfcc for p in parsed if p.mfcc]),
         "hpcp": _mean_vectors([p.hpcp for p in parsed if p.hpcp]),
         "source_qualities": [p.source_quality for p in parsed],
         "source_quality_weights": weights,
         "match_confidences": match_confs,
     }
+    if segments_planned is not None:
+        detail["segments_planned"] = segments_planned
+        if segments_planned > len(parsed):
+            detail["segments_missing_reason"] = segments_missing_reason or "not_all_segments_available"
     if analysis_decision:
         detail["analysis_decision"] = analysis_decision
 
@@ -141,5 +151,8 @@ def aggregate_segment_features(
         ),
         onset_rate=_median([float(p.onset_rate) for p in parsed if p.onset_rate is not None]),
         segments_used=len(parsed),
+        segments_planned=segments_planned,
+        segments_analyzed=len(parsed),
+        segments_missing_reason=detail.get("segments_missing_reason"),
         detail_json=detail,
     )
