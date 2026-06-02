@@ -4,6 +4,7 @@
 	import DryRunModal from '$lib/components/library/DryRunModal.svelte';
 	import DuplicateGroupCard from '$lib/components/library/DuplicateGroupCard.svelte';
 	import LibraryTable from '$lib/components/library/LibraryTable.svelte';
+	import TrackFeaturesDrawer from '$lib/components/library/TrackFeaturesDrawer.svelte';
 	import {
 		dryRunAction,
 		fetchDuplicates,
@@ -51,6 +52,7 @@
 	let dryRunLabel = $state('');
 	let actionBusy = $state(false);
 	let tracksRefreshing = $state(false);
+	let inspectTrack: TrackItem | null = $state(null);
 
 	const controller = new AbortController();
 	let tracksFetchController: AbortController | null = null;
@@ -219,8 +221,13 @@
 	}
 
 	function switchTab(next: Tab): void {
+		inspectTrack = null;
 		tab = next;
 		refresh();
+	}
+
+	function closeFeaturesDrawer(): void {
+		inspectTrack = null;
 	}
 
 	onMount(() => {
@@ -329,6 +336,7 @@
 					onToggle={toggleSelect}
 					onTogglePage={togglePage}
 					{onSort}
+					onInspect={(t) => (inspectTrack = t)}
 				/>
 			{/if}
 
@@ -338,6 +346,7 @@
 					class="secondary"
 					disabled={page <= 1 || (loading && items.length === 0)}
 					onclick={() => {
+						inspectTrack = null;
 						page -= 1;
 						loadTracks();
 					}}>←</button
@@ -348,6 +357,7 @@
 					class="secondary"
 					disabled={page >= totalPages || (loading && items.length === 0)}
 					onclick={() => {
+						inspectTrack = null;
 						page += 1;
 						loadTracks();
 					}}>→</button
@@ -469,6 +479,12 @@
 	result={dryRunResult}
 	actionLabel={dryRunLabel}
 	onClose={() => (dryRunOpen = false)}
+/>
+
+<TrackFeaturesDrawer
+	track={inspectTrack}
+	open={inspectTrack !== null}
+	onClose={closeFeaturesDrawer}
 />
 
 <style>

@@ -56,9 +56,11 @@ class EssentiaLowlevelWorker(BaseWorker):
             self._items.mark_skipped(item.id, reason="No segments with audio files")
             return
 
+        self._heartbeat_running(current_job_id=item.job_id, current_item_id=item.id)
         parsed_list = []
         now = datetime.now(tz=UTC).replace(tzinfo=None)
         for seg in segments:
+            self._heartbeat_running(current_job_id=item.job_id, current_item_id=item.id)
             wav = segment_absolute_path(seg.temporary_path or "")
             if not wav.is_file():
                 continue

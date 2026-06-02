@@ -76,8 +76,15 @@ export async function trackJob(
 	});
 
 	try {
+		const initialJob = await fetchJob(jobId);
+		patch({ activeJob: initialJob });
+
 		const job = await pollJobUntilDone(jobId, (j) => {
-			patch({ activeJob: j });
+			jobTracker.update((state) => {
+				const prev = state.activeJob?.progress_current ?? 0;
+				const next = Math.max(prev, j.progress_current);
+				return { ...state, activeJob: { ...j, progress_current: next } };
+			});
 		});
 		patch({
 			lastJob: job,

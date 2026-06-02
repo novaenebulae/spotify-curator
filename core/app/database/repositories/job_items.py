@@ -43,6 +43,14 @@ class JobItemsRepository:
         ).all()
         return {str(status): int(count) for status, count in rows}
 
+    def first_failed_for_job(self, session: Session, job_id: str) -> JobItem | None:
+        return session.execute(
+            select(JobItem)
+            .where(JobItem.job_id == job_id, JobItem.status == "failed")
+            .order_by(JobItem.finished_at.desc().nullslast(), JobItem.id.asc())
+            .limit(1)
+        ).scalar_one_or_none()
+
     def insert(self, session: Session, item: JobItem) -> JobItem:
         session.add(item)
         session.flush()

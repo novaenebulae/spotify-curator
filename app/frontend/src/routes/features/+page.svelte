@@ -5,7 +5,10 @@
 	import FieldCoverageTable from '$lib/components/features/FieldCoverageTable.svelte';
 	import LocalAudioAnalysis from '$lib/components/features/LocalAudioAnalysis.svelte';
 	import RecentFailuresList from '$lib/components/features/RecentFailuresList.svelte';
+	import TrackFeaturesDrawer from '$lib/components/library/TrackFeaturesDrawer.svelte';
 	import JobRunSummary from '$lib/components/import/JobRunSummary.svelte';
+	import type { TrackItem } from '$lib/libraryApi';
+	import type { RecentFailure } from '$lib/featuresApi';
 	import {
 		enrichMissingReccoBeats,
 		forceRefreshReccoBeats,
@@ -25,6 +28,7 @@
 
 	let batchSize = $state(50);
 	let limit = $state<number | null>(null);
+	let inspectTrack: TrackItem | null = $state(null);
 
 	const controller = new AbortController();
 
@@ -75,6 +79,33 @@
 	onMount(() => {
 		loadCoverage();
 	});
+	function failureToTrackItem(f: RecentFailure): TrackItem {
+		return {
+			track_id: f.track_id,
+			spotify_track_id: '',
+			spotify_uri: '',
+			title: f.title || `Track #${f.track_id}`,
+			normalized_title: '',
+			artist_names: f.artist_names,
+			album: null,
+			duration_ms: 0,
+			isrc: null,
+			liked: false,
+			liked_added_at: null,
+			is_current_liked: false,
+			playlist_count: 0,
+			playlists: [],
+			availability_status: 'unknown',
+			market_status: 'unknown',
+			duplicate_status: 'none',
+			external_url: null
+		};
+	}
+
+	function inspectFailure(f: RecentFailure): void {
+		inspectTrack = failureToTrackItem(f);
+	}
+
 	onDestroy(() => controller.abort());
 </script>
 
@@ -115,6 +146,8 @@
 			onRetryFailed={() => runEnrichment(retryFailedReccoBeats, 'Retry failed tracks')}
 			onForceRefresh={() => runEnrichment(forceRefreshReccoBeats, 'Force refresh all')}
 		/>
+
+		<LocalAudioAnalysis onJobComplete={loadCoverage} />
 	{/if}
 
 	{#if actionError}
@@ -128,10 +161,15 @@
 		failures={coverage?.recent_failures ?? []}
 		{busy}
 		onRetry={() => runEnrichment(retryFailedReccoBeats, 'Retry failed tracks')}
+		onInspect={inspectFailure}
 	/>
-
-	<LocalAudioAnalysis />
 {/if}
+
+<TrackFeaturesDrawer
+	track={inspectTrack}
+	open={inspectTrack !== null}
+	onClose={() => (inspectTrack = null)}
+/>
 
 <style>
 	.ok {

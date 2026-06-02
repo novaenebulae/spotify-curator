@@ -150,3 +150,56 @@ export async function forceRefreshReccoBeats(
 		signal
 	);
 }
+
+export type TrackFeatureMeta = {
+	pipeline_version?: string | null;
+	segments_used?: number | null;
+	analysis_decision?: string | null;
+	external_track_id?: string | null;
+};
+
+export type TrackFeatureMerged = {
+	primary_source: string;
+	display_name: string;
+	is_active: boolean;
+	status: string;
+	feature_confidence?: number | null;
+	error_code?: string | null;
+	error_message?: string | null;
+	fields: Record<string, number>;
+	meta: TrackFeatureMeta;
+	fetched_at?: string | null;
+};
+
+export type TrackFeatureSource = {
+	source_name: string;
+	display_name: string;
+	is_active: boolean;
+	status: string;
+	feature_confidence?: number | null;
+	error_code?: string | null;
+	error_message?: string | null;
+	fields: Record<string, number>;
+	extended: Record<string, unknown>;
+	pipeline_version?: string | null;
+	fetched_at?: string | null;
+};
+
+export type TrackFeaturesResponse = {
+	track_id: number;
+	merged: TrackFeatureMerged | null;
+	sources: TrackFeatureSource[];
+	availability: {
+		has_any_features: boolean;
+		has_reccobeats: boolean;
+		has_essentia_lowlevel: boolean;
+		other_sources_count: number;
+	};
+};
+
+export function getTrackFeatures(
+	trackId: number,
+	signal?: AbortSignal
+): Promise<TrackFeaturesResponse> {
+	return apiFetch(`/api/v1/features/tracks/${trackId}`, { signal });
+}

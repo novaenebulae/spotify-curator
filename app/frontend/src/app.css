@@ -238,6 +238,21 @@ select,
 	color: var(--color-muted);
 }
 
+.badge-running {
+	background: rgba(29, 185, 84, 0.25);
+	color: var(--color-success);
+}
+
+.badge-idle {
+	background: var(--color-border);
+	color: var(--color-muted);
+}
+
+.badge-warning {
+	background: rgba(245, 166, 35, 0.25);
+	color: var(--color-warning);
+}
+
 .stat-grid {
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));

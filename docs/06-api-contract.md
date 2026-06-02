@@ -552,7 +552,48 @@ Réponse : `{ "job_id": "...", "status": "pending" }`.
 
 ### `GET /features/tracks/{track_id}`
 
-Retourne toutes les sources et la valeur active.
+Retourne la ligne fusionnée active (`is_active=true`) et **toutes** les sources ayant une ligne `audio_features` pour ce titre (y compris sources inactives après merge).
+
+Réponse (extrait) :
+
+```json
+{
+  "track_id": 1,
+  "merged": {
+    "primary_source": "essentia_lowlevel",
+    "display_name": "Essentia low-level",
+    "is_active": true,
+    "status": "success",
+    "feature_confidence": 0.85,
+    "fields": { "bpm": 127.2, "key": 7, "mode": 1, "loudness": -8.2 },
+    "meta": {
+      "pipeline_version": "essentia_lowlevel_v1",
+      "segments_used": 2,
+      "analysis_decision": "deezer_preview_plus_two_youtube_segments"
+    }
+  },
+  "sources": [
+    {
+      "source_name": "reccobeats",
+      "display_name": "ReccoBeats",
+      "is_active": false,
+      "status": "success",
+      "fields": { "bpm": 128, "energy": 0.71 },
+      "extended": {}
+    }
+  ],
+  "availability": {
+    "has_any_features": true,
+    "has_reccobeats": true,
+    "has_essentia_lowlevel": true,
+    "other_sources_count": 0
+  }
+}
+```
+
+- **404** si le `track_id` n’existe pas.
+- **200** avec `merged: null` et `sources: []` si aucune analyse.
+- `extended` (Essentia) : descripteurs issus du dernier `audio_feature_raw_payloads` (`mfcc`, `hpcp`, spectral, `analysis_decision`, `segments_used`).
 
 ### `POST /features/merge/recompute`
 

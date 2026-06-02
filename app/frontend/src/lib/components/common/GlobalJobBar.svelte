@@ -10,6 +10,7 @@
 		<JobProgress
 			job={$jobTracker.activeJob}
 			label={$jobTracker.label || 'Background job'}
+			waiting={$jobTracker.busy && $jobTracker.activeJob == null}
 			onCancel={$jobTracker.activeJobId ? cancelTrackedJob : undefined}
 			cancelBusy={$jobTracker.cancelBusy}
 		/>

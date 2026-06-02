@@ -23,7 +23,6 @@ from app.features.upsert import FeatureUpsertService
 from app.jobs.errors import JobCancelledError
 from app.jobs.service import JobService
 from app.library.job_progress import report_job_progress
-from app.observability.debug_session_log import debug_session_log
 from app.observability.errors import ApiError
 from app.reccobeats.client import ReccoBeatsClient
 from app.reccobeats.errors import ReccoBeatsError
@@ -59,27 +58,6 @@ class ReccoBeatsEnrichmentService:
                     Job.status.in_(("queued", "running")),
                 )
             ).first()
-            # #region agent log
-            debug_session_log(
-                location="features/enrichment.py:assert_no_running_job",
-                message="running job gate check",
-                data={
-                    "reconciled": reconciled,
-                    "blocking": (
-                        {
-                            "job_id": row[0],
-                            "status": row[1],
-                            "started_at": str(row[2]) if row else None,
-                            "progress_current": row[3] if row else None,
-                        }
-                        if row
-                        else None
-                    ),
-                    "active_in_memory": self._jobs.is_active(row[0]) if row else False,
-                },
-                hypothesis_id="H1-H3",
-            )
-            # #endregion
             if row is not None:
                 raise ApiError(
                     code="JOB_ALREADY_RUNNING",
@@ -190,19 +168,6 @@ class ReccoBeatsEnrichmentService:
         processed = skipped_count
 
         self._jobs.update(job_id, current_step="enriching_tracks")
-        # #region agent log
-        debug_session_log(
-            location="features/enrichment.py:run_enrichment",
-            message="enrichment http batch config",
-            data={
-                "job_id": job_id,
-                "http_chunk_size": http_chunk_size,
-                "work_count": len(work),
-                "pause_every_n_tracks": batch_size,
-            },
-            hypothesis_id="H-batch",
-        )
-        # #endregion
 
         for chunk in chunk_contexts(work, http_chunk_size):
             if self._jobs.is_cancel_requested(job_id):
@@ -210,14 +175,6 @@ class ReccoBeatsEnrichmentService:
                 raise JobCancelledError()
 
             request_ids = [req_id for _, req_id in chunk]
-            # #region agent log
-            debug_session_log(
-                location="features/enrichment.py:batch_chunk",
-                message="processing http chunk",
-                data={"job_id": job_id, "chunk_size": len(request_ids)},
-                hypothesis_id="H-batch",
-            )
-            # #endregion
             try:
                 batch_result = self._client.get_audio_features_batch(request_ids)
             except ReccoBeatsError as exc:

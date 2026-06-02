@@ -574,6 +574,9 @@ Exemple :
 | `DuplicateGroupCard` | affichage groupe doublons |
 | `MissingTracksPanel` | onglet absents/disparus |
 | `DryRunModal` | confirmation dry-run |
+| `TrackFeaturesDrawer` | panneau latéral features (Fusion + Sources) au clic titre |
+| `FeatureMetricGrid` | grille métriques BPM / tonalité / mood |
+| `SourceFeatureCard` | carte par provider (ReccoBeats, Essentia) |
 | `ActionsHistoryPanel` | historique actions |
 | `ActionDetailDrawer` | détail action si nécessaire |
 
@@ -788,8 +791,19 @@ Chaque onglet doit conserver son état local si possible : recherche, page, filt
 - Sélection multi-page non conservée par défaut.
 - Pas de bouton `Apply to Spotify`.
 - Dry-run obligatoire.
-- Pas de features audio dans la table principale.
+- Pas de features audio dans la table principale (détails via drawer, pas de colonnes BPM/energy en table).
 - Pas de clustering.
+
+### 11.5 Drawer features par titre (implémenté)
+
+- **Ouverture** : clic sur le titre dans l’onglet Tracks (`LibraryTable` → `TrackFeaturesDrawer`).
+- **Fermeture** : Escape, clic overlay, changement d’onglet ou de page bibliothèque.
+- **Onglets** :
+  - **Fusion** : ligne `audio_features` active (`is_active=true`) — source gagnante après merge (priorité Essentia > ReccoBeats).
+  - **Sources** : une carte par provider (`SourceFeatureCard`), y compris sources inactives.
+- **États** : loading, empty (« Not analysed yet » + lien `/features`), error, offline core.
+- **Données** : `GET /api/v1/features/tracks/{track_id}` via `featuresApi.getTrackFeatures`.
+- Checkbox, preview play et tri de colonnes **n’ouvrent pas** le drawer.
 
 ---
 

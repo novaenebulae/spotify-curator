@@ -3,7 +3,15 @@
 		variant = 'neutral',
 		label
 	}: {
-		variant?: 'liked' | 'unavailable' | 'duplicate' | 'missing' | 'neutral';
+		variant?:
+			| 'liked'
+			| 'unavailable'
+			| 'duplicate'
+			| 'missing'
+			| 'neutral'
+			| 'running'
+			| 'idle'
+			| 'warning';
 		label: string;
 	} = $props();
 </script>

@@ -106,7 +106,7 @@ curl http://127.0.0.1:8765/api/v1/library/duplicates?strategy=isrc
 curl http://127.0.0.1:8765/api/v1/library/missing-tracks
 ```
 
-UI manuelle : `/library` (table, filtres, dry-run modal, historique).
+UI manuelle : `/library` (table, filtres, dry-run modal, historique, **drawer features** sur titre analysé — onglets Fusion/Sources).
 
 ### Phase 3 (implémenté)
 
@@ -117,11 +117,22 @@ UI manuelle : `/library` (table, filtres, dry-run modal, historique).
 - upsert idempotent + raw payload ;
 - job `reccobeats_enrichment` ;
 - coverage API ;
-- UI `/features`.
+- `GET /features/tracks/{track_id}` — `tests/test_track_features_api.py` (404, vide, ReccoBeats seul, RB + Essentia avec merge) ;
+- UI `/features` ;
+- UI `/library` : drawer features au clic titre (manuel).
 
 ```bash
 cd core && uv run pytest tests/test_reccobeats_client.py tests/test_reccobeats_mapper.py \
-  tests/test_feature_upsert.py tests/test_reccobeats_enrich_job.py tests/test_features_coverage.py -q
+  tests/test_feature_upsert.py tests/test_reccobeats_enrich_job.py tests/test_features_coverage.py \
+  tests/test_track_features_api.py tests/test_openapi_track_features_route.py \
+  tests/test_job_items_progress.py -q
+
+Après ajout de routes API (ex. drawer features), reconstruire le conteneur :
+
+```bash
+docker compose up -d --build core-api
+curl http://127.0.0.1:8765/api/v1/features/tracks/1
+```
 curl http://127.0.0.1:8765/api/v1/features/coverage
 ```
 

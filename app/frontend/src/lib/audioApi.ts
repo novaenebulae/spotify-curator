@@ -1,16 +1,6 @@
-const BASE_URL = 'http://127.0.0.1:8765';
+import { ApiClientError, parseApiErrorBody } from '$lib/apiErrors';
 
-function parseApiError(body: unknown, fallback: string): string {
-	if (body && typeof body === 'object') {
-		const record = body as Record<string, unknown>;
-		const err = record.error;
-		if (err && typeof err === 'object') {
-			const msg = (err as { message?: string }).message;
-			if (msg) return msg;
-		}
-	}
-	return fallback;
-}
+const BASE_URL = 'http://127.0.0.1:8765';
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 	let res: Response;
@@ -23,14 +13,14 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 		throw e;
 	}
 	if (!res.ok) {
-		let detail = res.statusText;
+		let parsed = parseApiErrorBody(null, res.statusText, res.status);
 		try {
 			const body = await res.json();
-			detail = parseApiError(body, detail);
+			parsed = parseApiErrorBody(body, res.statusText, res.status);
 		} catch {
 			/* ignore */
 		}
-		throw new Error(`${detail} (${res.status})`);
+		throw new ApiClientError(parsed);
 	}
 	return (await res.json()) as T;
 }
@@ -41,12 +31,15 @@ export type WorkerInfo = {
 	worker_id: string;
 	worker_type: string;
 	status: string;
+	current_job_id?: string | null;
+	current_item_id?: string | null;
 	last_seen_at: string | null;
 };
 
 export function downloadMissingSegments(
 	opts: {
 		track_ids?: number[];
+		filter?: Record<string, unknown>;
 		limit?: number;
 		only_missing?: boolean;
 		retry_failed?: boolean;
@@ -58,6 +51,7 @@ export function downloadMissingSegments(
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
 			track_ids: opts.track_ids,
+			filter: opts.filter ?? null,
 			strategy: 'hybrid_deezer_youtube_representative',
 			only_missing: opts.only_missing ?? true,
 			retry_failed: opts.retry_failed ?? false,
@@ -70,6 +64,7 @@ export function downloadMissingSegments(
 export function runLowlevelAnalysis(
 	opts: {
 		track_ids?: number[];
+		filter?: Record<string, unknown>;
 		limit?: number;
 		only_missing?: boolean;
 		retry_failed?: boolean;
@@ -82,6 +77,7 @@ export function runLowlevelAnalysis(
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
 			track_ids: opts.track_ids,
+			filter: opts.filter ?? null,
 			only_missing: opts.only_missing ?? true,
 			retry_failed: opts.retry_failed ?? false,
 			limit: opts.limit ?? null,

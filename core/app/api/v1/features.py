@@ -8,13 +8,20 @@ from app.database.engine import get_engine
 from app.features.coverage import FeatureCoverageService
 from app.features.enrichment import ReccoBeatsEnrichmentService
 from app.features.merge import FeatureMergeService
-from app.features.schemas import CoverageResponse, EnrichJobResponse, ReccoBeatsEnrichRequest
+from app.features.schemas import (
+    CoverageResponse,
+    EnrichJobResponse,
+    ReccoBeatsEnrichRequest,
+    TrackFeaturesResponse,
+)
+from app.features.track_detail import TrackFeaturesService
 from app.jobs.status_mapping import map_job_status
 
 router = APIRouter(prefix="/features")
 _enrichment = ReccoBeatsEnrichmentService()
 _coverage = FeatureCoverageService()
 _merge = FeatureMergeService()
+_track_features = TrackFeaturesService()
 
 
 class MergeRecomputeRequest(BaseModel):
@@ -39,6 +46,13 @@ def start_reccobeats_enrichment(body: ReccoBeatsEnrichRequest) -> EnrichJobRespo
         limit=body.limit,
     )
     return EnrichJobResponse(job_id=job_id, status=map_job_status("queued"))
+
+
+@router.get("/tracks/{track_id}", response_model=TrackFeaturesResponse)
+def get_track_features(track_id: int) -> TrackFeaturesResponse:
+    engine = get_engine()
+    with Session(engine) as session:
+        return _track_features.get_track_features(session, track_id)
 
 
 @router.get("/coverage", response_model=CoverageResponse)

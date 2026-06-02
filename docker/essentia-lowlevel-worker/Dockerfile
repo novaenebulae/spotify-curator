@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends python3 python3-pip curl \
+    && apt-get install -y --no-install-recommends python3 python3-pip curl ffmpeg \
     && rm -rf /var/lib/apt/lists/* \
     && pip3 install --no-cache-dir uv \
     && ln -sf /usr/bin/python3 /usr/local/bin/python

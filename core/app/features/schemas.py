@@ -59,3 +59,51 @@ class CoverageResponse(BaseModel):
     sources: list[CoverageSourceOut]
     fields: list[CoverageFieldOut]
     recent_failures: list[RecentFailureOut]
+
+
+class TrackFeatureMetaOut(BaseModel):
+    pipeline_version: str | None = None
+    segments_used: int | None = None
+    analysis_decision: str | None = None
+    external_track_id: str | None = None
+
+
+class TrackFeatureMergedOut(BaseModel):
+    primary_source: str
+    display_name: str
+    is_active: bool
+    status: str
+    feature_confidence: float | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    fields: dict[str, float | int] = Field(default_factory=dict)
+    meta: TrackFeatureMetaOut = Field(default_factory=TrackFeatureMetaOut)
+    fetched_at: str | None = None
+
+
+class TrackFeatureSourceOut(BaseModel):
+    source_name: str
+    display_name: str
+    is_active: bool
+    status: str
+    feature_confidence: float | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    fields: dict[str, float | int] = Field(default_factory=dict)
+    extended: dict = Field(default_factory=dict)
+    pipeline_version: str | None = None
+    fetched_at: str | None = None
+
+
+class TrackFeatureAvailabilityOut(BaseModel):
+    has_any_features: bool
+    has_reccobeats: bool
+    has_essentia_lowlevel: bool
+    other_sources_count: int = 0
+
+
+class TrackFeaturesResponse(BaseModel):
+    track_id: int
+    merged: TrackFeatureMergedOut | None = None
+    sources: list[TrackFeatureSourceOut] = Field(default_factory=list)
+    availability: TrackFeatureAvailabilityOut

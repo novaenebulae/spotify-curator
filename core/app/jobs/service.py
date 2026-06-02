@@ -14,7 +14,6 @@ from app.database.engine import get_engine
 from app.database.models_jobs import Job
 from app.jobs.errors import JobCancelledError
 from app.jobs.status_mapping import map_job_status
-from app.observability.debug_session_log import debug_session_log
 from app.settings.config import settings
 from app.spotify.client import SpotifyRateLimited
 
@@ -117,14 +116,6 @@ class JobService:
                 reconciled.append(row.id)
             if reconciled:
                 session.commit()
-        # #region agent log
-        debug_session_log(
-            location="jobs/service.py:reconcile_orphaned_jobs",
-            message="orphan job reconciliation",
-            data={"job_type": job_type, "reconciled": reconciled},
-            hypothesis_id="H1",
-        )
-        # #endregion
         return reconciled
 
     def create(self, job_type: str) -> str:

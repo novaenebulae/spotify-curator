@@ -207,6 +207,8 @@ Commande type :
 essentia_streaming_extractor_music input.wav output.json profile.yaml
 ```
 
+Le fichier `profiles/essentia_lowlevel_basic.yaml` suit le format **AcousticBrainz** (`outputFormat`, `lowlevel`/`rhythm`/`tonal`, `startTime`/`endTime`). Il ne doit pas utiliser une liste `algorithms:` (format d’un autre outil Essentia) — cela provoque l’erreur `YamlInput: invalid StereoSample format`.
+
 Features extraites :
 
 - BPM ;

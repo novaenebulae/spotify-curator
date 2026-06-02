@@ -82,6 +82,13 @@ def _parse_key_mode(tonal: dict[str, Any]) -> tuple[int | None, int | None, floa
     key_name = tonal.get("key_key") or tonal.get("key")
     scale = tonal.get("key_scale") or tonal.get("scale")
     strength = tonal.get("key_strength") or tonal.get("key_confidence")
+    for profile in ("key_edma", "key_krumhansl", "key_temperley"):
+        block = tonal.get(profile)
+        if isinstance(block, dict):
+            key_name = key_name or block.get("key")
+            scale = scale or block.get("scale")
+            strength = strength or block.get("strength")
+            break
     if isinstance(key_name, str):
         k = _KEY_MAP.get(key_name.lower().strip())
     elif isinstance(key_name, int):
@@ -109,19 +116,20 @@ def parse_essentia_json(payload: dict[str, Any]) -> ParsedSegmentFeatures:
     bpm = rhythm.get("bpm")
     if bpm is None:
         bpm = _dig(payload, "rhythm", "bpm")
-    bpm_f = float(bpm) if isinstance(bpm, (int, float)) else None
+    bpm_f = float(bpm) if isinstance(bpm, (int, float)) else _mean_value(bpm)
 
-    loudness = low.get("loudness")
+    loudness = low.get("loudness") or low.get("average_loudness")
     if loudness is None:
-        loudness = _dig(payload, "lowlevel", "loudness")
+        loudness = _dig(payload, "lowlevel", "loudness") or _dig(payload, "lowlevel", "average_loudness")
     loudness_f = float(loudness) if isinstance(loudness, (int, float)) else _mean_value(loudness)
 
     key, mode, key_conf = _parse_key_mode(tonal)
     length = _dig(payload, "metadata", "audio_properties", "length")
     duration_ms = int(float(length) * 1000) if isinstance(length, (int, float)) else None
 
+    tonal_hpcp = tonal.get("hpcp") if isinstance(tonal.get("hpcp"), dict) else None
     mfcc_node = low.get("mfcc") or _dig(payload, "lowlevel", "mfcc")
-    hpcp_node = low.get("hpcp") or _dig(payload, "lowlevel", "hpcp")
+    hpcp_node = low.get("hpcp") or tonal_hpcp or _dig(payload, "tonal", "hpcp") or _dig(payload, "lowlevel", "hpcp")
     mfcc_mean = _mean_value(mfcc_node)
     mfcc_list: list[float] = []
     if isinstance(mfcc_node, dict) and isinstance(mfcc_node.get("mean"), list):
@@ -151,9 +159,13 @@ def parse_essentia_json(payload: dict[str, Any]) -> ParsedSegmentFeatures:
         spectral_centroid=_mean_value(low.get("spectral_centroid") or _dig(payload, "lowlevel", "spectral_centroid")),
         spectral_rolloff=_mean_value(low.get("spectral_rolloff") or _dig(payload, "lowlevel", "spectral_rolloff")),
         spectral_contrast=contrast_list,
-        dynamic_complexity=_mean_value(low.get("dynamic_complexity")),
-        onset_rate=_mean_value(low.get("onset_rate")),
-        beats_count=int(rhythm["beats_count"]) if isinstance(rhythm.get("beats_count"), int) else None,
+        dynamic_complexity=_mean_value(
+            low.get("dynamic_complexity") or _dig(payload, "lowlevel", "dynamic_complexity")
+        ),
+        onset_rate=_mean_value(low.get("onset_rate") or rhythm.get("onset_rate")),
+        beats_count=int(rhythm["beats_count"])
+        if isinstance(rhythm.get("beats_count"), (int, float))
+        else None,
         raw_summary={
             "bpm": bpm_f,
             "key": key,

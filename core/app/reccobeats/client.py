@@ -121,25 +121,9 @@ class ReccoBeatsClient:
                 self._sleep(min(2**attempt, 30))
                 continue
 
-            # #region agent log
-            from app.observability.debug_session_log import debug_session_log
-
             path = urlparse(url).path
             ids_param = (params or {}).get("ids", "")
             id_count = len([p for p in str(ids_param).split(",") if p.strip()]) if ids_param else 0
-            debug_session_log(
-                location="reccobeats/client.py:_request",
-                message="reccobeats http response",
-                data={
-                    "method": method,
-                    "path": path,
-                    "status": resp.status_code,
-                    "id_count": id_count,
-                    "attempt": attempt,
-                },
-                hypothesis_id="H-batch",
-            )
-            # #endregion
             if path.endswith("/audio-features") and "ids" in (params or {}):
                 _logger.info(
                     "ReccoBeats batch HTTP %s %s ids_count=%s status=%s",

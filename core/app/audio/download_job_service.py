@@ -55,10 +55,17 @@ class AudioDownloadJobService:
                 limit=limit,
             )
             if not ids:
+                hint = (
+                    "All candidate tracks already have downloaded segments. "
+                    "Run with only_missing=false to re-download, or pick tracks without segments."
+                    if only_missing and not retry_failed
+                    else "No tracks matched the download criteria."
+                )
                 raise ApiError(
                     code="NO_TRACKS",
-                    message="No tracks matched the download criteria",
+                    message=hint,
                     status_code=400,
+                    details={"reason": "no_eligible_tracks", "only_missing": only_missing},
                 )
 
         job_id = self._jobs.create(JOB_TYPE_AUDIO_DOWNLOAD)

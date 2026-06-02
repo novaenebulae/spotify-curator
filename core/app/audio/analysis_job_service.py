@@ -58,10 +58,22 @@ class EssentiaLowlevelJobService:
                 require_existing_segments=require_existing_segments,
             )
             if not ids:
+                if require_existing_segments:
+                    hint = (
+                        "No eligible tracks for local analysis. Download 30s segments first "
+                        "(use « Download then analyze »), or disable « Only missing » if tracks "
+                        "already have segments but need re-analysis."
+                    )
+                else:
+                    hint = "No tracks matched the analysis criteria."
                 raise ApiError(
                     code="NO_TRACKS",
-                    message="No tracks matched the analysis criteria",
+                    message=hint,
                     status_code=400,
+                    details={
+                        "reason": "no_segments" if require_existing_segments else "no_eligible_tracks",
+                        "require_existing_segments": require_existing_segments,
+                    },
                 )
 
         job_id = self._jobs.create(JOB_TYPE_ESSENTIA_LOWLEVEL)

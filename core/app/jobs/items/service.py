@@ -169,6 +169,8 @@ class JobItemService:
 
                 conn.execute(text("COMMIT"))
                 session.commit()
+                self.recompute_job_progress(session, row[1])
+                session.commit()
             except Exception:
                 conn.execute(text("ROLLBACK"))
                 raise
@@ -332,13 +334,23 @@ class JobItemService:
         counts = self._items.count_by_status(session, job_id)
         total = sum(counts.values())
         terminal = sum(counts.get(s, 0) for s in TERMINAL_ITEM_STATUSES)
+        running = counts.get("running", 0)
         job = session.get(Job, job_id)
         if job is None:
             return
         job.progress_total = total
         job.progress_current = terminal
-        pending = counts.get("pending", 0) + counts.get("running", 0) + counts.get("rate_limited", 0)
-        if pending == 0 and total > 0:
+        pending = counts.get("pending", 0) + running + counts.get("rate_limited", 0)
+        if pending > 0 and total > 0:
+            now = datetime.now(tz=UTC).replace(tzinfo=None)
+            if job.status == "queued":
+                job.status = "running"
+                if job.started_at is None:
+                    job.started_at = now
+            elif job.status not in ("cancelled", "failed", "succeeded", "partial"):
+                job.status = "running"
+            job.current_step = f"processing {terminal}/{total}"
+        elif pending == 0 and total > 0:
             failed = counts.get("failed", 0)
             success = counts.get("success", 0)
             if failed > 0 and success > 0:
@@ -348,6 +360,10 @@ class JobItemService:
             else:
                 job.status = "succeeded"
             job.finished_at = datetime.now(tz=UTC).replace(tzinfo=None)
+            if failed > 0 and not job.last_error:
+                sample = self._items.first_failed_for_job(session, job_id)
+                if sample and sample.error_message:
+                    job.last_error = sample.error_message[:2000]
         session.flush()
 
     def cancel_pending_for_job(self, job_id: str) -> int:
