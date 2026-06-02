@@ -33,21 +33,6 @@ export async function playPreview(trackId: number): Promise<void> {
 	stopPreview();
 	audioEl.src = url;
 	activePreviewTrackId.set(trackId);
-	// #region agent log
-	fetch('http://127.0.0.1:7620/ingest/6a9de88f-eb8b-4142-bcaa-afef6d0d7d9b', {
-		method: 'POST',
-		headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '8df333' },
-		body: JSON.stringify({
-			sessionId: '8df333',
-			runId: 'post-fix',
-			hypothesisId: 'H2',
-			location: 'previewPlayer.ts:playPreview',
-			message: 'play via proxy',
-			data: { trackId, urlHost: new URL(url).host },
-			timestamp: Date.now()
-		})
-	}).catch(() => {});
-	// #endregion
 	try {
 		await audioEl.play();
 	} catch (e) {

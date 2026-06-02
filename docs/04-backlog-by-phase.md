@@ -78,7 +78,7 @@ Avant phase 4 :
 - previews Deezer (metadata) + stratégie hybride ;
 - UI library/features (coverage, failures, last runs).
 
-Avant phase 5 : playlist engine et clustering restent hors scope.
+**Validation 4V (juin 2026) : GO phase 5** — voir [`backlog/phase-4-validation.md`](../backlog/phase-4-validation.md) section 4V.9 (171 pytest, workers `audio`, proxy preview stream, merge features).
 
 ### Gate phase 5
 

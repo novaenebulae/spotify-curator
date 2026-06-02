@@ -1,0 +1,2 @@
+spotify_track_id,added_at,name,duration_ms,explicit,popularity,spotify_uri,is_playable
+t1,,Track A,1000,False,,spotify:track:t1,True

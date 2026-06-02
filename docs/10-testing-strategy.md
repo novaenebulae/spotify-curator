@@ -143,18 +143,27 @@ curl http://127.0.0.1:8765/api/v1/features/coverage
 cd core && uv run pytest \
   tests/test_job_items_preview_resolve.py \
   tests/test_preview_resolve_selection.py \
+  tests/test_preview_stream.py \
+  tests/test_jobs_cancel_preview_resolve.py \
   tests/test_failures_insights.py \
   tests/test_jobs_insights.py \
   tests/test_track_feature_status.py \
   tests/test_hybrid_segment_strategy.py \
   tests/test_essentia_gating_selection.py \
-  tests/test_audio_confidence_weights.py -q
+  tests/test_audio_confidence_weights.py \
+  tests/test_job_items_progress.py -q
 
-docker compose --profile audio up -d --build
+docker compose --profile audio up -d --build \
+  --scale audio-downloader=2 --scale essentia-lowlevel-worker=2 \
+  --scale preview-resolver-worker=1
 curl http://127.0.0.1:8765/api/v1/workers
 curl http://127.0.0.1:8765/api/v1/previews/coverage
+curl -o NUL -w "%{http_code}" http://127.0.0.1:8765/api/v1/tracks/1/preview/stream
+curl -X POST http://127.0.0.1:8765/api/v1/features/merge/recompute -H "Content-Type: application/json" -d "{}"
 curl http://127.0.0.1:8765/api/v1/jobs/insights/latest
 ```
+
+Smoke library (volume Docker vide) : `docker exec -e PYTHONPATH=/app spotify-curator-core-api-1 uv run python scripts/seed_smoke_library.py`
 
 UI manuelle : `/features` (Last runs repliable, failures multi-sources, Clear list), `/library` (colonnes Features, resolve Deezer previews).
 

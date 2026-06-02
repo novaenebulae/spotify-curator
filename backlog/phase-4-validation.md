@@ -56,7 +56,9 @@ Statut : DONE (sync docs juin 2026 — re-vérifier si le code change)
 
 ## 4V.2 — Validation migrations et DB
 
-Statut : PARTIAL (pytest local OK ; smoke Docker non exécuté ici)
+Statut : **DONE** (juin 2026)
+
+Preuve : `uv run alembic upgrade head` + `171 passed` pytest local ; `core-api` Docker démarre avec `SQLiteImpl` Alembic au boot ; tables phase 4 couvertes par `tests/test_migrations.py` / contrainte 30s (`tests/test_audio_segments.py`).
 
 ### À vérifier
 
@@ -79,7 +81,9 @@ uv run pytest -q
 
 ## 4V.3 — Validation workers Docker
 
-Statut : TODO
+Statut : **DONE** (juin 2026)
+
+Preuve : `docker compose ps` — `core-api` + profil `audio` (2× `audio-downloader`, 2× `essentia-lowlevel-worker`, 1× `preview-resolver-worker`) ; `GET /workers` → 5 workers (`preview_resolver`, `audio_downloader`×2, `essentia_lowlevel`×2) heartbeats < 30s ; `POST /previews/resolve` `limit=5` → 5/5 items traités (~6s). Scaling = réplicas Compose, pas de conteneur par piste.
 
 ### À vérifier
 
@@ -103,7 +107,9 @@ curl http://127.0.0.1:8765/api/v1/workers
 
 ## 4V.4 — Validation previews Deezer
 
-Statut : TODO
+Statut : **DONE** (juin 2026 — signé utilisateur pour GO phase 5)
+
+Preuve : pytest `test_preview_stream`, `test_preview_resolve_selection`, `test_job_items_preview_resolve`, `test_jobs_cancel_preview_resolve`, `test_deezer_preview_*`, `test_preview_api` ; proxy `GET /tracks/{id}/preview/stream` (CORB) ; cancel `preview_resolve` via `WORKER_MANAGED_JOB_TYPES` + stats partielles ; smoke API OK. Validation manuelle bibliothèque réelle : **acceptée par le porteur produit** (lecture ▶ via proxy local, resolve / Last runs).
 
 ### À vérifier
 
@@ -118,7 +124,9 @@ Statut : TODO
 
 ## 4V.5 — Validation stratégie segments
 
-Statut : TODO
+Statut : **DONE** (juin 2026)
+
+Preuve : `tests/test_hybrid_segment_strategy.py` (5 décisions documentées) ; `tests/test_audio_segments.py` — `duration_seconds <= 30` en DB.
 
 ### Cas à tester
 
@@ -134,7 +142,9 @@ Statut : TODO
 
 ## 4V.6 — Validation analyse Essentia low-level
 
-Statut : TODO
+Statut : **DONE** (juin 2026 — GO avec risque résiduel documenté en 4V.9)
+
+Preuve : `tests/test_essentia_parser.py`, `test_essentia_aggregate.py`, `test_essentia_gating_selection.py`, `test_audio_confidence_weights.py`, `test_job_items_progress.py` verts ; workers `essentia_lowlevel` opérationnels (4V.3). Smoke E2E Docker sur 1–3 titres réels : non bloquant pour phase 5 si ReccoBeats déjà présent sur la majorité des titres cibles playlists.
 
 ### À vérifier
 
@@ -153,7 +163,9 @@ Statut : TODO
 
 ## 4V.7 — Validation merge features
 
-Statut : TODO
+Statut : **DONE** (juin 2026)
+
+Preuve : `tests/test_track_features_api.py`, `test_features_coverage.py`, `test_feature_upsert.py` ; smoke `POST /features/merge/recompute` body `{}` → `tracks_processed=10` (seed smoke) ; `GET /features/coverage`, `/jobs/insights/latest` OK.
 
 ### À vérifier
 
@@ -168,7 +180,9 @@ Statut : TODO
 
 ## 4V.8 — Validation UI
 
-Statut : TODO
+Statut : **DONE** (juin 2026 — signé utilisateur pour GO phase 5)
+
+Preuve : `npm run check` (0 erreurs, 2 warnings a11y CollapsibleSection/DryRunModal) ; `npm run build` OK (~11s). Checklist manuelle Home / Library / Features / Settings : **acceptée par le porteur produit**.
 
 ### Pages à tester
 
@@ -191,19 +205,84 @@ npm run build
 
 ## 4V.9 — Décision fin phase 4
 
-À la fin de cette validation, produire :
+Statut : **DONE** — **GO phase 5** (juin 2026, validation porteur produit)
 
-```text
-- résumé des écarts trouvés ;
-- corrections appliquées ;
-- commandes exécutées ;
-- tests passés/échoués ;
-- risques restants ;
-- recommandation GO / NO-GO phase 5.
+### Synthèse par section
+
+| Section | Statut | Commentaire |
+|---------|--------|-------------|
+| 4V.1 Documentation | DONE | Docs phase 4 alignées avec code et Compose |
+| 4V.2 Migrations / DB | DONE | `0006`–`0007`, contrainte 30s, 171 pytest |
+| 4V.3 Workers Docker | DONE | Profil `audio`, 5 heartbeats, jobs `preview_resolve` consommés |
+| 4V.4 Previews Deezer | DONE | Proxy stream, cancel stats, tests + validation manuelle |
+| 4V.5 Stratégie hybride | DONE | 5 `analysis_decision`, segments ≤ 30s |
+| 4V.6 Essentia low-level | DONE | Chaîne testée ; E2E réel optionnel accepté en risque |
+| 4V.7 Merge features | DONE | Recompute, coverage, track detail API |
+| 4V.8 UI | DONE | `check` + `build` ; parcours utilisateur validé |
+
+### Écarts détectés pendant la validation
+
+| Écart | Gravité | Résolution |
+|-------|---------|------------|
+| CORB navigateur sur URLs Deezer CDN directes | Bloquant UI | `GET /tracks/{id}/preview/stream` + lecteur via API locale |
+| Job `preview_resolve` bloqué `queued` 0% | Bloquant jobs | `reserve_next` joint jobs actifs ; cleanup `job_items` orphelins au boot |
+| Cancel `preview_resolve` → stats nulles / « no active worker » | Bloquant UX | `WORKER_MANAGED_JOB_TYPES` + `cancel_pending_for_job` |
+| Workers absents de `/workers` pendant charge DB | Bloquant observabilité | Heartbeat idle avant `reserve_next` |
+| `POST /features/merge/recompute` sans body → 422 | Mineur smoke | Body `{}` requis (documenté) |
+| `ruff check` sur périmètre audio (E501, etc.) | Non bloquant | Dette style préexistante ; hors gate GO |
+| 2 warnings a11y Svelte (`CollapsibleSection`, `DryRunModal`) | Mineur | À traiter en polish UI phase 5+ |
+
+### Corrections appliquées (code)
+
+- `core/app/previews/stream.py` + route API preview stream
+- `app/frontend/src/lib/previewApi.ts`, `previewPlayer.ts` — lecture via proxy
+- `core/app/jobs/items/constants.py` — `WORKER_MANAGED_JOB_TYPES`
+- `core/app/jobs/items/service.py` — `reserve_next` + cancel pending
+- `core/app/main.py` — `cancel_pending_for_terminal_parent_jobs` au démarrage
+- `core/app/workers/base_worker.py` — heartbeat avant réservation file
+- Tests : `test_preview_stream`, `test_jobs_cancel_preview_resolve`, `test_job_items_progress`, etc.
+- Docs : `06-api-contract`, `10-testing-strategy`, `prompts/phase-4-validation`
+
+### Commandes exécutées
+
+```bash
+cd core && uv run alembic upgrade head && uv run pytest -q          # 171 passed
+cd core && uv run pytest tests/test_preview_stream.py ...            # sous-ensembles 4V.4–4V.7
+cd app/frontend && npm run check && npm run build
+
+docker compose up -d --build core-api
+docker compose --profile audio up -d --build \
+  --scale audio-downloader=2 --scale essentia-lowlevel-worker=2 \
+  --scale preview-resolver-worker=1
+curl http://127.0.0.1:8765/api/v1/health
+curl http://127.0.0.1:8765/api/v1/workers
+curl http://127.0.0.1:8765/api/v1/previews/coverage
+curl -X POST http://127.0.0.1:8765/api/v1/previews/resolve -H "Content-Type: application/json" -d '{"limit":5}'
+curl -X POST http://127.0.0.1:8765/api/v1/features/merge/recompute -H "Content-Type: application/json" -d "{}"
 ```
 
-Critère GO phase 5 :
+### Tests
 
-```text
-Le moteur de playlists peut consommer les données tracks/features/previews sans dépendre d'un traitement phase 4 instable.
-```
+| Suite | Résultat |
+|-------|----------|
+| `pytest` complet (`core`) | **171 passed** |
+| `npm run check` | **0 errors** (2 warnings a11y) |
+| `npm run build` | **OK** |
+| `ruff check` (périmètre phase 4) | Échecs style préexistants — non retenus comme gate |
+
+### Risques restants (acceptés pour phase 5)
+
+1. **`preview_resolve` sur toute la bibliothèque (~5k titres)** — long ; lancer avec `limit` petit puis run complet ; surveiller SQLite sous 5 workers.
+2. **Essentia E2E non rejoué sur échantillon réel** dans la passe automatisée — mitigé par tests unitaires/intégration et workers up ; enrichir au fil de l’eau si besoin clustering.
+3. **ReccoBeats encore in-process** — hors scope workers 4V.3 ; suffisant pour moteur playlists si données RB déjà importées (phase 3).
+4. **Volume Docker** — s’assurer que prod utilise le volume `spotify_curator_data` habituel (ne pas confondre avec DB seed smoke vide).
+
+### Décision
+
+**Recommandation : GO phase 5**
+
+**Critère satisfait :** le moteur de playlists peut consommer `tracks`, `audio_features` (merged + sources), `track_previews` et métadonnées segments sans dépendre d’un pipeline phase 4 instable.
+
+**Signataire :** porteur produit — GO explicite juin 2026.
+
+**Prochaine étape :** démarrer [`backlog/phase-5.md`](phase-5.md) (règles playlists, scoring, dry-run sync Spotify).

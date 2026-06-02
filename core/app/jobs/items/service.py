@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import json
-import time
-from pathlib import Path
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -19,7 +17,6 @@ from app.jobs.items.constants import (
     JOB_TYPE_PREVIEW_RESOLVE,
     TERMINAL_ITEM_STATUSES,
     WORKER_ITEM_TYPES,
-    WORKER_MANAGED_JOB_TYPES,
 )
 from app.jobs.items.events import JobEventsService
 from app.jobs.service import JobService

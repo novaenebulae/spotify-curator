@@ -68,7 +68,8 @@ Checklist détaillée : sections **4V.1** à **4V.9** dans [`backlog/phase-4-val
 - `POST /previews/resolve` : `only_missing=true`, `limit=null` = tous les manquants ;
 - pas de re-fetch des previews déjà valides ;
 - refresh URL signée avant download segment Deezer ;
-- `GET /tracks/{id}/preview`, `GET /previews/coverage`.
+- `GET /tracks/{id}/preview`, `GET /tracks/{id}/preview/stream` (proxy navigateur, évite CORB Deezer), `GET /previews/coverage` ;
+- cancel `preview_resolve` : stats partielles (`tests/test_jobs_cancel_preview_resolve.py`).
 
 ### 4V.5 — Stratégie hybride
 
@@ -132,10 +133,14 @@ Docker :
 
 ```bash
 docker compose up -d --build core-api
-docker compose --profile audio up -d --build --scale audio-downloader=2 --scale essentia-lowlevel-worker=2
+docker compose --profile audio up -d --build \
+  --scale audio-downloader=2 --scale essentia-lowlevel-worker=2 \
+  --scale preview-resolver-worker=1
 curl http://127.0.0.1:8765/api/v1/health
 curl http://127.0.0.1:8765/api/v1/workers
 curl http://127.0.0.1:8765/api/v1/previews/coverage
+curl -o NUL -w "%{http_code}" http://127.0.0.1:8765/api/v1/tracks/1/preview/stream
+curl -X POST http://127.0.0.1:8765/api/v1/features/merge/recompute -H "Content-Type: application/json" -d "{}"
 curl http://127.0.0.1:8765/api/v1/jobs/insights/latest
 curl "http://127.0.0.1:8765/api/v1/features/coverage?include_failed=true&failures_page=1"
 ```

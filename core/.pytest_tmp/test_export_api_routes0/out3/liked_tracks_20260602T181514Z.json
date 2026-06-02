@@ -1,0 +1,12 @@
+[
+  {
+    "spotify_track_id": "t1",
+    "added_at": "",
+    "name": "Track A",
+    "duration_ms": 1000,
+    "explicit": false,
+    "popularity": null,
+    "spotify_uri": "spotify:track:t1",
+    "is_playable": true
+  }
+]
