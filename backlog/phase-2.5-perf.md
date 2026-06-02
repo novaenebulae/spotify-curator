@@ -39,6 +39,7 @@ uv run python scripts/benchmark_tracks.py --base-url http://127.0.0.1:8765 --run
 5. **Index** `0003_perf_tracks` : `liked_tracks(added_at)`, `track_artists(track_id, position)`.
 6. **Frontend** : stale-while-revalidate, `AbortController` par fetch, marques `performance`.
 7. **Infra** : SQLite dans le volume Docker nommé `spotify_curator_data` + `SQLITE_JOURNAL_MODE=WAL` (plus de bind mount `./data` par défaut).
+8. **Liste tracks** : segment perf `feature_status_ms` (batch statuts RB/Essentia/preview sur la page courante).
 
 ## Stockage SQLite
 

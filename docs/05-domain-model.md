@@ -105,6 +105,8 @@ La base SQLite est la source locale de vérité. Elle doit permettre :
 | created_at | datetime | |
 | updated_at | datetime | |
 
+**Réponse `GET /api/v1/tracks`** (enrichissement batch, pas colonnes SQL) : `reccobeats_status`, `essentia_status`, `preview_available` — voir [`core/app/library/track_feature_status.py`](../core/app/library/track_feature_status.py).
+
 ### track_artists
 
 | Champ | Type | Notes |
@@ -283,7 +285,7 @@ Table générique recommandée pour liked/playlists/full.
 |---|---|---|
 | id | PK | |
 | job_type | text indexed | import, enrichment, analysis, clustering... |
-| status | text indexed | DB : `queued`, `running`, `succeeded`, `failed`, `rate_limited`, `cancelled` — API : `pending`, `running`, `success`, `failed`, `rate_limited`, `cancelled` (voir [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §3) |
+| status | text indexed | DB : `queued`, `running`, `succeeded`, `failed`, `partial`, `rate_limited`, `cancelled` — API : `pending`, `running`, `success`, `failed`, `partial`, `rate_limited`, `cancelled` (voir [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §3) |
 | progress_current | int | |
 | progress_total | int nullable | |
 | current_step | text nullable | |
@@ -296,7 +298,9 @@ Table générique recommandée pour liked/playlists/full.
 | started_at | datetime nullable | |
 | finished_at | datetime nullable | |
 
-Tables **cibles** (non migrées) pour le parallélisme batch : `job_items`, `worker_heartbeats`, `job_events` — schémas dans [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §4.2–4.4.
+Tables batch (migration **`0006_phase4_audio_local`**) : `job_items`, `worker_heartbeats`, `job_events` — détail [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §4.2–4.4.
+
+**Types `job_type` implémentés** : `spotify_import_*`, `docker_runtime_checks`, `reccobeats_enrichment`, `preview_resolve`, `audio_download`, `essentia_lowlevel_analysis`.
 
 ## Tables phase 2 — Gestion bibliothèque
 
@@ -396,6 +400,31 @@ Index partiel : `UNIQUE(track_id, feature_source_id) WHERE is_active = 1`.
 
 ## Tables phase 4 — Audio local
 
+Migrations : **`0006_phase4_audio_local`** (jobs items, audio), **`0007_track_previews_hybrid`** (`track_previews`, `track_segments.source_quality`).
+
+### track_previews
+
+Metadata Deezer (et futurs providers) — **pas de fichier audio persisté** pour l’UI.
+
+| Champ | Type | Notes |
+|---|---|---|
+| id | PK | |
+| track_id | FK tracks indexed | |
+| provider | text | ex. `deezer` |
+| provider_track_id | text nullable | |
+| provider_url | text nullable | |
+| preview_url | text nullable | URL signée CDN (expiration) |
+| duration_seconds | float nullable | souvent 30 pour preview |
+| match_score / match_confidence | float nullable | matching titre/artiste/durée |
+| is_available | bool indexed | preview utilisable |
+| last_error | text nullable | échec resolve |
+| resolved_at / last_checked_at | datetime nullable | |
+| created_at / updated_at | datetime | |
+
+Contrainte : `UNIQUE(track_id, provider)`.
+
+Job `preview_resolve` : sélection des `track_id` sans preview valide (`is_available` + `preview_url`), `limit` null = pas de plafond.
+
 ### audio_download_jobs
 
 | Champ | Type | Notes |
@@ -427,7 +456,8 @@ Index partiel : `UNIQUE(track_id, feature_source_id) WHERE is_active = 1`.
 | end_seconds | float | |
 | duration_seconds | float | CHECK <= 30 |
 | segment_type | text | A/B/C/manual |
-| source | text | youtube/cache/test |
+| source | text | `youtube`, `deezer_preview`, `test`, … |
+| source_quality | text nullable | ex. `youtube_representative`, `deezer_preview_30s` |
 | source_url_hash | text nullable indexed | pas forcément URL brute |
 | temporary_path | text nullable | |
 | file_hash | text nullable | |

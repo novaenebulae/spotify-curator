@@ -63,7 +63,7 @@ Statut : **DONE**
 ### Livrables
 
 - `GET /api/v1/features/coverage`
-- Summary, sources, fields, recent_failures
+- Summary, sources, fields, `fields_by_source`, `recent_failures`, `failures` (page + `failures_after`)
 
 ## 3.6 — UI enrichment
 
@@ -118,7 +118,8 @@ uv run pytest tests/test_reccobeats_client.py tests/test_reccobeats_batch_parsin
 ## Limites restantes
 
 - Pas de recherche ReccoBeats par ISRC/title (API non documentée) — résolution batch via Spotify ID ou ISRC local.
-- Pas de merge multi-source actif (`POST /features/merge/recompute`) — phase 4+.
+- Merge multi-source : **`POST /features/merge/recompute`** implémenté (phase 4) ; fusion automatique après Essentia.
 - Pas de tests frontend automatisés (Vitest absent).
-- Job worker in-process (thread) — un seul job `reccobeats_enrichment` (`queued`/`running`) à la fois.
-- Pas de `job_items` ni concurrence HTTP parallèle entre chunks (phase ultérieure).
+- **ReccoBeats** : job in-process (thread) — un seul `reccobeats_enrichment` actif ; pas de `job_items` pour ce type.
+- Pas de concurrence HTTP parallèle entre chunks ReccoBeats (`RECCOBEATS_CONCURRENCY` non câblé).
+- Coverage : pagination `failures`, `failures_after`, union échecs (`reccobeats`, `deezer_preview`, `audio_download`) — voir phase 4 UI.

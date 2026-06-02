@@ -82,9 +82,14 @@ Responsabilités :
 
 Pour le MVP, `job-worker` peut être un module/processus du core. L’architecture doit toutefois rester compatible avec une séparation future.
 
-**État actuel (phase 3)** : seul le service `core-api` est déclaré dans `docker-compose.yml`. Les jobs longs tournent en **threads daemon in-process** (`JobService.start_background`), pas en conteneurs `job-worker` séparés. Le schéma Compose ci-dessus (workers audio, Essentia, clustering) est la **cible** des phases 4+.
+**État actuel (2026-06, phases 0–4)** :
 
-Référence détaillée : [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) (état actuel vs cible, parallélisme ReccoBeats batch, workers Essentia persistants).
+- **Compose** : `core-api` toujours actif ; profil **`audio`** optionnel : `audio-downloader`, `preview-resolver-worker`, `essentia-lowlevel-worker` ([`docker-compose.yml`](../docker-compose.yml)).
+- **Jobs in-process** (thread dans `core-api`) : imports Spotify, `reccobeats_enrichment`, `docker_runtime_checks`.
+- **Jobs workers** : `preview_resolve`, `audio_download`, `essentia_lowlevel_analysis` via `job_items` + workers Docker.
+- **Non implémenté** : service `job-worker` centralisé, `essentia-tensorflow`, `clustering-worker`.
+
+Référence : [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md).
 
 ### audio-downloader
 

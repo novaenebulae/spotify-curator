@@ -95,7 +95,7 @@
 				{/each}
 			</select>
 		</label>
-		<button type="button" disabled={busy || exporting} onclick={runExport}>Export</button>
+		<button type="button" disabled={busy || exporting} onclick={runExport} style="align-self: end;">Export</button>
 	</div>
 
 	{#if exporting}

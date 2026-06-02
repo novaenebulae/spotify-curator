@@ -101,6 +101,10 @@ Alias DB : `tempo` → `bpm`.
 
 ## Phase 4 — Analyse locale low-level
 
+**État** : workers Docker profil Compose **`audio`** (`audio-downloader`, `preview-resolver-worker`, `essentia-lowlevel-worker`). Jobs via **`job_items`** ([`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md)).
+
+À la complétion d’un job audio/preview, `JobItemService.recompute_job_progress` met à jour `jobs.result_json` avec `succeeded`, `failed`, `skipped`, `not_found` (previews).
+
 ### AudioProvider
 
 Interface :

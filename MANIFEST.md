@@ -44,6 +44,7 @@
 - `docs/14-configuration.md`
 - `docs/15-cursor-rules.md`
 - `docs/16-job-execution-model-and-worker-parallelism.md`
+- `docs/17-audio-preview-and-segment-strategy.md`
 - `docs/references-to-add.md`
 - `logs/.gitkeep`
 - `models/.gitkeep`

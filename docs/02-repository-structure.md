@@ -2,7 +2,44 @@
 
 Tags: #repo #monorepo #structure #cursor
 
-## Structure cible
+## Structure implémentée (phases 0–4, 2026-06)
+
+Extraits significatifs (l’arbre complet évolue) :
+
+```text
+core/app/
+  api/v1/
+    health.py, runtime.py, diagnostics.py
+    jobs.py, workers.py
+    spotify_auth.py, spotify_import.py
+    library.py, tracks.py, snapshots.py, exports.py
+    features.py, audio.py, previews.py
+  audio/          # providers, segments, hybrid, essentia_*
+  previews/       # deezer, resolve_job_service
+  features/       # enrichment, coverage, failures_insights, merge
+  jobs/
+    service.py
+    items/        # JobItemService, workers constants
+  workers/        # preview_resolver, audio_downloader, essentia_lowlevel
+  library/        # search, track_feature_status, duplicates, …
+  database/
+    models_*.py, repositories/
+    alembic/versions/0001 … 0007
+
+app/frontend/src/
+  routes/         # +page, import, library, features, settings
+  lib/components/
+    library/      # LibraryTable, TrackFeaturesDrawer, TrackPreviewButton
+    features/     # CoverageCards, JobRunStatsBar, RecentFailures*, …
+    import/       # JobRunSummary, ExportPanel
+
+docker/
+  core/, audio-downloader/, preview-resolver/, essentia-lowlevel-worker/
+```
+
+**Non présent** (cible phases 5+) : `routes_playlists.py`, `clustering/`, `playlist_engine/` applicatif, `essentia-tensorflow-worker/` buildable.
+
+## Structure cible (roadmap)
 
 ```text
 spotify-curator/
@@ -163,6 +200,8 @@ spotify-curator/
     13-error-handling-and-observability.md
     14-configuration.md
     15-cursor-rules.md
+    16-job-execution-model-and-worker-parallelism.md
+    17-audio-preview-and-segment-strategy.md
 
   backlog/
     phase-0.md

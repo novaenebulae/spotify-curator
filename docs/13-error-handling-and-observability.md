@@ -56,7 +56,11 @@ rate_limited
 
 Mapping depuis SQLite : `queued` → `pending`, `succeeded` → `success` ([`core/app/jobs/status_mapping.py`](../core/app/jobs/status_mapping.py)).
 
-**Cible** : `partial_success` pour jobs batch avec échecs partiels ; historique `job_events` et heartbeats workers — [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §3 et §17.
+**Implémenté** : statut job DB **`partial`** (succès + échecs items) pour jobs workers ; API expose souvent `partial` tel quel (mapping `partial_success` encore incomplet).
+
+**Cible** : `partial_success` uniforme ; endpoint `GET /jobs/{id}/events` ; heartbeats exposés — [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §3 et §17.
+
+**Liste tracks** : en-têtes perf optionnels si `TRACKS_PERF_LOG=1` (`X-Tracks-Perf-Ms`, etc.) — voir [`backlog/phase-2.5-perf.md`](../backlog/phase-2.5-perf.md).
 
 ## Retry
 

@@ -12,6 +12,9 @@ exports/*
 !exports/.gitkeep
 models/*
 !models/.gitkeep
+.log
+exports/*.json
+exports/*.csv
 
 *.sqlite
 *.sqlite-shm

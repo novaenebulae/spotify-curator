@@ -1,5 +1,7 @@
 # Spécification projet — Spotify Library Curator & Playlist Engine
 
+> **Archive / spec initiale** — document source historique. Pour l’état **actuel** du dépôt, privilégier [`docs/00-project-brief.md`](../00-project-brief.md), [`docs/01-architecture.md`](../01-architecture.md), [`docs/06-api-contract.md`](../06-api-contract.md), [`docs/16-job-execution-model-and-worker-parallelism.md`](../16-job-execution-model-and-worker-parallelism.md) et les backlogs `backlog/phase-*.md`.
+
 Tags: #projet #spotify #tauri #svelte #python #sqlite #docker #docker-compose #wsl2 #audio-analysis #music-information-retrieval #playlist-generation #yt-dlp #ffmpeg #essentia #tensorflow
 
 ## 1. Vision du projet

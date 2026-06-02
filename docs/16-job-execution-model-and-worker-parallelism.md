@@ -30,20 +30,21 @@ Ce document complète :
 
 ---
 
-## État actuel vs cible (2026-05)
+## État actuel vs cible (2026-06)
 
-Ce document décrit la **cible** d'exécution. L'implémentation du dépôt (fin phase 3) est plus limitée :
+Ce document décrit la **cible** d'exécution et l'**état réel** du dépôt (phases 0–4 livrées).
 
 | Élément | Actuel (repo) | Cible (ce document) |
 |---|---|---|
-| Services Docker | `core-api` seul ([`docker-compose.yml`](../docker-compose.yml)) | + `job-worker`, `audio-downloader`, workers Essentia, clustering (profils Compose) |
-| Exécution des jobs | Thread daemon in-process dans `core-api` ([`core/app/jobs/service.py`](../core/app/jobs/service.py)) | `job_items` + workers dédiés (async ou Docker) |
-| Tables `job_items`, `worker_heartbeats`, `job_events` | Absentes | Recommandées phase 3.5+ / 4+ |
-| ReccoBeats HTTP | Batch `GET /v1/audio-features?ids=` par chunks ≤40 ([`core/app/reccobeats/client.py`](../core/app/reccobeats/client.py)) | `job_items` + concurrence HTTP parallèle entre chunks |
-| API jobs | `GET /api/v1/jobs/{job_id}` uniquement | + liste, cancel, items, workers |
-| Reprise après crash | Non (jobs `running` orphelins possibles) | Locks expirés + remise en `pending` |
+| Services Docker | `core-api` + profil **`audio`** : `audio-downloader`, `preview-resolver-worker`, `essentia-lowlevel-worker` ([`docker-compose.yml`](../docker-compose.yml)) | + `job-worker` centralisé, `essentia-tensorflow`, `clustering-worker` |
+| Exécution imports / ReccoBeats | Thread daemon in-process ([`core/app/jobs/service.py`](../core/app/jobs/service.py)) | Optionnel : `job_items` + worker API dédié |
+| Exécution audio / previews | `job_items` + workers Docker ([`core/app/workers/`](../core/app/workers/), [`JobItemService`](../core/app/jobs/items/service.py)) | Idem + scaling / `job-worker` |
+| Tables `job_items`, `worker_heartbeats`, `job_events` | **Présentes** (migration `0006_phase4_audio_local`) | Enrichissement events HTTP, reprise `pending` après crash |
+| ReccoBeats HTTP | Batch `GET /v1/audio-features?ids=` par chunks ≤40, **séquentiel** entre chunks | Concurrence HTTP parallèle entre chunks (`RECCOBEATS_CONCURRENCY`) |
+| API jobs | `GET /jobs`, `GET /jobs/{id}`, `POST .../cancel`, `GET .../items`, `GET /jobs/insights/latest`, `GET /workers` | + `GET /jobs/{id}/events`, payload enrichi avec compteurs items |
+| Reprise après crash | Locks items expirés → `pending` ; jobs `running` orphelins → `failed` au démarrage API | Reprise automatique des items orphelins en `pending` |
 
-Voir aussi [`backlog/phase-3.md`](../backlog/phase-3.md) (limites phase 3) et la phase **3.5** optionnelle (batch ReccoBeats) en §21.2.
+Voir [`backlog/phase-3.md`](../backlog/phase-3.md) (dette ReccoBeats) et [`backlog/phase-4.md`](../backlog/phase-4.md) (audio livré).
 
 ---
 
@@ -99,17 +100,18 @@ L'UI ne parle jamais directement à Docker, SQLite ou Essentia.
 
 Un **job** représente une opération utilisateur ou système suivie par l'application.
 
-**Types implémentés aujourd'hui** (phase 0–3) :
+**Types implémentés aujourd'hui** (phase 0–4) :
 
 - `spotify_import_liked_tracks` ;
 - `spotify_import_playlists` ;
 - `docker_runtime_checks` ;
-- `reccobeats_enrichment`.
+- `reccobeats_enrichment` (in-process) ;
+- `preview_resolve` (worker `preview_resolver`) ;
+- `audio_download` (worker `audio_downloader`) ;
+- `essentia_lowlevel_analysis` (worker `essentia_lowlevel`).
 
 **Types cibles** (phases ultérieures — non implémentés) :
 
-- `audio_download` ;
-- `essentia_lowlevel_analysis` ;
 - `essentia_tensorflow_analysis` ;
 - `embedding_generation` ;
 - `clustering_run` ;
@@ -246,11 +248,11 @@ started_at
 finished_at
 ```
 
-### 4.2 Table optionnelle `job_items`
+### 4.2 Table `job_items`
 
-> **Non présent en base** — schéma cible (phase 3.5+).
+> **Implémentée** — migration `0006_phase4_audio_local`, modèle [`core/app/database/models_job_items.py`](../core/app/database/models_job_items.py).
 
-Pour les traitements batch lourds, ajouter une table `job_items` est recommandé.
+Pour les traitements batch lourds (audio, previews, essentia), la table `job_items` est utilisée.
 
 Objectifs :
 
@@ -292,11 +294,9 @@ CREATE INDEX ix_job_items_available ON job_items(status, next_retry_at, priority
 CREATE INDEX ix_job_items_locked_by ON job_items(locked_by);
 ```
 
-### 4.3 Table optionnelle `worker_heartbeats`
+### 4.3 Table `worker_heartbeats`
 
-> **Non présent en base** — schéma cible (phase 4+ / 9).
-
-Pour les workers persistants, ajouter une table `worker_heartbeats` peut aider l'observabilité.
+> **Implémentée** — même migration `0006`. API `GET /api/v1/workers`. Heartbeats rafraîchis par [`BaseWorker`](../core/app/workers/base_worker.py).
 
 | Champ | Type | Notes |
 |---|---|---|
@@ -314,11 +314,9 @@ Pour les workers persistants, ajouter une table `worker_heartbeats` peut aider l
 
 Cette table est utile en phase 4+ et phase 9, notamment pour le rapport système.
 
-### 4.4 Table optionnelle `job_events`
+### 4.4 Table `job_events`
 
-> **Non présent en base** — schéma cible (phase 4+).
-
-Pour debug et observabilité, une table `job_events` peut stocker un historique append-only.
+> **Implémentée** en base si `JOB_EVENTS_ENABLED=true` ([`JobEventsService`](../core/app/jobs/items/events.py)). **Pas d’endpoint HTTP** `GET /jobs/{id}/events` (cible).
 
 | Champ | Type | Notes |
 |---|---|---|
@@ -1254,18 +1252,23 @@ Essentia TensorFlow workers: 1-2 selon RAM
 
 Préfixe API : `/api/v1/jobs`.
 
-### 15.0 État d'implémentation (phase 3)
+### 15.0 État d'implémentation (2026-06)
 
 | Endpoint | Statut |
 |---|---|
-| `GET /api/v1/jobs/{job_id}` | **Implémenté** ([`core/app/api/v1/jobs.py`](../core/app/api/v1/jobs.py)) |
-| `GET /api/v1/jobs` | Documenté dans [`06-api-contract.md`](06-api-contract.md), **non implémenté** |
-| `POST /api/v1/jobs/{job_id}/cancel` | Idem, **non implémenté** |
-| `GET /api/v1/jobs/{job_id}/items` | Cible phase 3.5+ |
-| `GET /api/v1/jobs/{job_id}/events` | Cible phase 4+ |
-| `GET /api/v1/workers` | Cible phase 4+ |
+| `GET /api/v1/jobs/{job_id}` | **Implémenté** |
+| `GET /api/v1/jobs` | **Implémenté** (`limit`, filtres `job_type` / `status`) |
+| `POST /api/v1/jobs/{job_id}/cancel` | **Implémenté** (items pending pour audio/essentia) |
+| `GET /api/v1/jobs/{job_id}/items` | **Implémenté** |
+| `GET /api/v1/jobs/insights/latest` | **Implémenté** (derniers jobs par type enrichissement/audio) |
+| `GET /api/v1/workers` | **Implémenté** |
+| `GET /api/v1/jobs/{job_id}/events` | **Cible** (events en DB seulement) |
 
-La réponse actuelle de `GET /jobs/{id}` correspond à `JobStatus.to_api_dict()` (pas de champs `workers` ni `items`).
+La réponse de `GET /jobs/{id}` correspond à `JobStatus.to_api_dict()` (pas encore de champs `workers` / `items` embarqués — voir §15.3 cible).
+
+**Échecs UI** : agrégation multi-sources via `GET /features/coverage` (`failures`, `failures_after`), pas via les jobs — [`FailureInsightsService`](../core/app/features/failures_insights.py).
+
+**Résultats jobs workers** : à la fin d’un job, `result_json` agrège `succeeded`, `failed`, `skipped`, `not_found` (preview) via `JobItemService.recompute_job_progress`.
 
 ## 15.1 Endpoints minimum (cible complète)
 

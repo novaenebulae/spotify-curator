@@ -57,7 +57,9 @@ LOG_REDACT_SECRETS=true
 
 **Lues par le core aujourd'hui** : `JOB_DEFAULT_MAX_ATTEMPTS`, `RECCOBEATS_*`, et (phase 4) `JOB_*`, `WORKER_*`, `AUDIO_*`, `YTDLP_*`, `FFMPEG_*`, `ESSENTIA_LOWLEVEL_*` — voir [`.env.example`](../.env.example).
 
-Profil Compose **`audio`** : `audio-downloader`, `essentia-lowlevel-worker` (voir [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md)).
+Profil Compose **`audio`** : `audio-downloader`, `preview-resolver-worker`, `essentia-lowlevel-worker` (voir [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md)).
+
+Variables utiles : `JOB_EVENTS_ENABLED`, `WORKER_HEARTBEATS_ENABLED`, `TRACKS_PERF_LOG`, `DEEZER_PREVIEW_UI_MIN_CONFIDENCE`, `DEEZER_PREVIEW_ANALYSIS_MIN_CONFIDENCE`, `YOUTUBE_MIN_CONFIDENCE` — voir [`.env.example`](../.env.example) et [`core/app/settings/config.py`](../core/app/settings/config.py).
 
 ## Profils Docker Compose
 
@@ -69,12 +71,17 @@ Services :
 - SQLite volume ;
 - diagnostics.
 
-### Audio local
+### Audio local (profil `audio`)
 
 Services supplémentaires :
 
-- audio-downloader ;
-- essentia-lowlevel.
+- `audio-downloader` ;
+- `preview-resolver-worker` ;
+- `essentia-lowlevel-worker`.
+
+```bash
+docker compose --profile audio up -d --build
+```
 
 ### Advanced analysis
 
@@ -89,7 +96,17 @@ Aucune variable sensible ne doit être commitée. `SPOTIFY_CLIENT_ID` n’est pa
 
 ## Migrations Alembic
 
-Révisions : `0001_initial` … `0005_phase3_features` (schéma phase 3 features multi-source).
+Révisions Alembic (ordre) :
+
+| Révision | Contenu |
+|----------|---------|
+| `0001_initial` | Schéma phase 0–1 |
+| `0002_phase2_library` | Library actions, etc. |
+| `0003_perf_tracks` | Index perf liste tracks |
+| `0004_album_covers` | Covers albums |
+| `0005_phase3_features` | Features multi-source |
+| `0006_phase4_audio_local` | Audio, `job_items`, heartbeats |
+| `0007_track_previews_hybrid` | `track_previews`, hybrid metadata |
 
 ```bash
 cd core

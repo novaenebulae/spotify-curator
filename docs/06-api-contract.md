@@ -17,6 +17,15 @@ http://127.0.0.1:8765/api/v1
 - Aucun endpoint ne doit exposer de secret ou token.
 - Les routes sont versionnées sous `/api/v1`.
 
+## Périmètre implémenté (2026-06)
+
+| Zone | Statut |
+|---|---|
+| Phases 0–4 (runtime, Spotify, library, features, audio, previews, workers) | **Implémenté** — voir sections ci-dessous |
+| Phases 5–9 (playlists, clustering, TensorFlow, maintenance avancée) | **Non implémenté** — contrats de cible conservés en fin de document |
+
+Exécution des jobs : [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md). Previews Deezer : [`17-audio-preview-and-segment-strategy.md`](17-audio-preview-and-segment-strategy.md).
+
 ## Format d’erreur commun
 
 ```json
@@ -73,11 +82,47 @@ Réponse standard :
 
 ## Jobs
 
-> **Implémentation phase 3** : seul `GET /api/v1/jobs/{job_id}` est exposé ([`core/app/api/v1/jobs.py`](../core/app/api/v1/jobs.py)). `GET /jobs` (liste) et `POST /jobs/{id}/cancel` sont documentés ci-dessous comme **cible**. Modèle d'exécution et endpoints futurs (`/items`, `/workers`) : [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §15.
+Implémenté dans [`core/app/api/v1/jobs.py`](../core/app/api/v1/jobs.py). Workers : [`core/app/api/v1/workers.py`](../core/app/api/v1/workers.py). Modèle d'exécution : [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md).
 
-### `POST /jobs/{job_id}/cancel`
+### `GET /jobs`
 
-Annule un job si possible.
+Query : `job_type`, `status`, `limit` (défaut 20, max 100). Pas de pagination `page`/`page_size`.
+
+Réponse :
+
+```json
+{
+  "jobs": [
+    {
+      "id": "job_123",
+      "job_type": "reccobeats_enrichment",
+      "status": "running",
+      "progress_current": 120,
+      "progress_total": 5000,
+      "current_step": "enriching_tracks",
+      "created_at": "2026-05-29T10:00:00Z"
+    }
+  ]
+}
+```
+
+### `GET /jobs/insights/latest`
+
+Dernier job terminal par type (`essentia_lowlevel_analysis`, `audio_download`, `reccobeats_enrichment`, `preview_resolve`). Utilisé par l’UI « Last runs ».
+
+```json
+{
+  "jobs": [
+    {
+      "job_id": "...",
+      "job_type": "reccobeats_enrichment",
+      "status": "succeeded",
+      "finished_at": "...",
+      "result_json": { "succeeded": 100, "failed": 2, "skipped": 50 }
+    }
+  ]
+}
+```
 
 ### `GET /jobs/{job_id}`
 
@@ -100,14 +145,17 @@ Annule un job si possible.
 }
 ```
 
-### `GET /jobs`
+Statuts API : `pending`, `running`, `success`, `failed`, `partial`, `rate_limited`, `cancelled` (mapping depuis statuts DB — voir doc 16 §3).
 
-Filtres :
+### `GET /jobs/{job_id}/items`
 
-- `job_type`
-- `status`
-- `page`
-- `page_size`
+Query : `limit` (défaut 100, max 500), `offset`. Liste les `job_items` du job (audio / preview / essentia).
+
+### `POST /jobs/{job_id}/cancel`
+
+Annule un job `queued` ou `running`. Pour `audio_download` et `essentia_lowlevel_analysis`, annule aussi les items `pending`. `preview_resolve` : annulation job en base sans `cancel_pending_for_job` sur les items (comportement partiel).
+
+Erreur `409 JOB_NOT_CANCELLABLE` si le job n’est plus actif.
 
 ## Phase 0 — Runtime
 
@@ -153,6 +201,10 @@ Réponse :
   "status": "pending"
 }
 ```
+
+### `GET /diagnostics`
+
+Alias enrichi (health + config non sensible + derniers checks Docker). Implémenté dans [`core/app/api/v1/diagnostics.py`](../core/app/api/v1/diagnostics.py).
 
 ## Phase 1 — Spotify Auth
 
@@ -207,16 +259,7 @@ Supprime les tokens locaux.
 
 ### `POST /spotify/import/liked-tracks`
 
-Crée un job d’import des titres likés.
-
-Body :
-
-```json
-{
-  "force_refresh": false,
-  "create_snapshot": true
-}
-```
+Crée un job d’import des titres likés. **Pas de body** (comportement fixe côté service).
 
 Réponse :
 
@@ -229,29 +272,11 @@ Réponse :
 
 ### `POST /spotify/import/playlists`
 
-Crée un job d’import playlists/items.
-
-Body :
-
-```json
-{
-  "include_items": true,
-  "create_snapshot": true
-}
-```
+Crée un job d’import playlists/items. **Pas de body**.
 
 ### `POST /spotify/import/full-library`
 
-Importe liked + playlists + snapshots.
-
-Body :
-
-```json
-{
-  "force_refresh": false,
-  "create_snapshot": true
-}
-```
+> **Non implémenté** — pas de route dans [`spotify_import.py`](../core/app/api/v1/spotify_import.py). Utiliser liked + playlists séparément.
 
 ## Phase 1 — Snapshots
 
@@ -272,13 +297,13 @@ Réponse :
 ```json
 {
   "snapshot_id": "snap_...",
-  "status": "complete"
+  "status": "completed"
 }
 ```
 
 ### `GET /library/snapshots`
 
-Liste les snapshots.
+Retourne une **liste** de snapshots (pas d’enveloppe `{ items, page, total }`).
 
 ### `GET /library/snapshots/{snapshot_id}`
 
@@ -494,9 +519,9 @@ Job type : `reccobeats_enrichment`. Erreur `409 JOB_ALREADY_RUNNING` si un job e
 
 ### `GET /features/coverage`
 
-Query : `source=reccobeats|all`, `include_failed`, `include_fields`, `recent_failures_limit`.
+Query : `source=reccobeats|all`, `include_failed`, `include_fields`, `recent_failures_limit`, `failures_page`, `failures_page_size`, `failures_after` (ISO — masque les échecs antérieurs à cette date, ex. après « Clear list » UI).
 
-Réponse :
+Réponse (extrait) :
 
 ```json
 {
@@ -506,49 +531,38 @@ Réponse :
     "with_reccobeats": 4100,
     "missing_reccobeats": 900,
     "failed_reccobeats": 50,
+    "with_essentia_lowlevel": 800,
     "coverage_percent": 82.0
   },
   "sources": [],
   "fields": [{ "field": "bpm", "available_count": 4000, "coverage_percent": 80.0 }],
-  "recent_failures": []
-}
-```
-
-### Endpoints différés
-
-- `GET /features/tracks/{track_id}` — phase 3+ / fusion
-- `POST /features/merge/recompute` — phase 4+
-
-## Phase 3 — Features / ReccoBeats (doc historique)
-
-### `POST /features/reccobeats/enrich`
-
-Body :
-
-```json
-{
-  "track_ids": ["trk_1"],
-  "only_missing": true,
-  "force_refresh": false
-}
-```
-
-Réponse : `{ "job_id": "...", "status": "pending" }`.
-
-### `GET /features/coverage`
-
-```json
-{
-  "total_tracks": 5000,
-  "reccobeats_complete": 4200,
-  "local_required": 800,
-  "failed": 50,
-  "fields": {
-    "tempo": { "count": 4200, "coverage": 0.84 },
-    "energy": { "count": 4200, "coverage": 0.84 }
+  "fields_by_source": {
+    "reccobeats": [],
+    "essentia_lowlevel": []
+  },
+  "recent_failures": [],
+  "failures": {
+    "total": 12,
+    "page": 1,
+    "page_size": 20,
+    "items": [
+      {
+        "id": "audio_download:42",
+        "source": "audio_download",
+        "track_id": 25,
+        "title": "...",
+        "artist_names": [],
+        "status": "failed",
+        "error_code": "DOWNLOAD_FAILED",
+        "error_message": "...",
+        "occurred_at": "2026-06-01T12:00:00"
+      }
+    ]
   }
 }
 ```
+
+Sources d’échecs agrégées (`FailureInsightsService`) : `reccobeats`, `essentia_lowlevel`, `deezer_preview`, `audio_download`.
 
 ### `GET /features/tracks/{track_id}`
 
@@ -597,38 +611,73 @@ Réponse (extrait) :
 
 ### `POST /features/merge/recompute`
 
-Recalcule les valeurs actives multi-source.
+Body : `{ "track_ids": [1, 2], "limit": 5000 }`. Recalcule la ligne fusionnée active par piste.
+
+Réponse : `{ "tracks_processed": 10, "deactivated_rows": 5 }`.
 
 ## Phase 4 — Audio local
 
+Implémenté dans [`core/app/api/v1/audio.py`](../core/app/api/v1/audio.py). Jobs types : `audio_download`, `essentia_lowlevel_analysis` (workers profil Compose `audio`).
+
 ### `POST /audio/segments/plan`
 
-Planifie les segments A/B/C sans télécharger.
+Planifie les segments sans télécharger. `track_id` : **entier** (ID SQLite).
 
-Body :
+Body (extrait) :
 
 ```json
 {
-  "track_id": "trk_1",
-  "strategy": "abc_default"
+  "track_id": 1,
+  "strategy": "hybrid_deezer_youtube_representative",
+  "analysis_mode": "fast"
 }
 ```
 
+Stratégies : `hybrid_deezer_youtube_representative` (défaut), `abc_default`. Modes : `fast` (défaut), `precise`.
+
 ### `POST /audio/segments/download`
 
-Crée un job yt-dlp/FFmpeg.
+Crée un job `audio_download` (items `job_items`). Body : `track_ids`, `filter`, `only_missing`, `retry_failed`, `limit`, `strategy`, `analysis_mode`, etc.
 
 ### `GET /audio/segments/{track_id}`
 
-Liste les segments et statut cleanup.
+`track_id` : entier. Liste les segments et statut cleanup.
 
 ### `POST /audio/analysis/lowlevel`
 
-Crée un job Essentia low-level.
+Crée un job `essentia_lowlevel_analysis`.
 
 ### `POST /audio/cache/cleanup`
 
 Nettoie les fichiers temporaires.
+
+## Phase 4 — Previews Deezer
+
+[`core/app/api/v1/previews.py`](../core/app/api/v1/previews.py). Détail stratégie : [`17-audio-preview-and-segment-strategy.md`](17-audio-preview-and-segment-strategy.md).
+
+### `GET /tracks/{track_id}/preview`
+
+Query : `resolve_if_missing` (bool). Retourne la meilleure preview disponible ou démarre un job resolve unitaire si demandé.
+
+### `POST /previews/resolve`
+
+Body : `{ "only_missing": true, "force_refresh": false, "limit": null }`. `limit` null = **tous** les titres sans preview Deezer valide (pas de plafond 5000 implicite). Job type `preview_resolve`.
+
+### `GET /previews/coverage`
+
+Résumé couverture previews (Deezer / any).
+
+## Workers
+
+### `GET /workers`
+
+Liste les heartbeats workers (`preview_resolver`, `audio_downloader`, `essentia_lowlevel`, …). Nécessite workers Docker profil `audio` démarrés.
+
+---
+
+## Phases 5–9 — Non implémentées (contrats cibles)
+
+Les endpoints ci-dessous sont **spécification future** ; aucune route correspondante dans le core actuel.
 
 ## Phase 5 — Playlist generator v1
 

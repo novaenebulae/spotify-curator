@@ -9,7 +9,7 @@ Ce dossier remplace et enrichit les documents Markdown précédents afin que Cur
 La documentation est structurée pour être utilisée ainsi :
 
 1. Cursor lit `AGENTS.md`.
-2. Cursor lit les documents `docs/00` à `docs/15`.
+2. Cursor lit les documents `docs/00` à `docs/17` (dont `16` jobs/workers, `17` previews/segments).
 3. Cursor lit uniquement le backlog de la phase en cours.
 4. Cursor propose un plan sans coder.
 5. L’utilisateur valide.
@@ -41,12 +41,14 @@ La documentation est structurée pour être utilisée ainsi :
 | `docs/13-error-handling-and-observability.md` | Erreurs API, logs, jobs, diagnostics. |
 | `docs/14-configuration.md` | Variables d’environnement, volumes, profils. |
 | `docs/15-cursor-rules.md` | Règles spécifiques à Cursor pour ce projet. |
+| `docs/16-job-execution-model-and-worker-parallelism.md` | Jobs, workers, parallélisme. |
+| `docs/17-audio-preview-and-segment-strategy.md` | Previews Deezer, segments hybrides. |
 | `backlog/phase-0.md` à `backlog/phase-9.md` | Backlogs détaillés. |
 | `backlog/phase-1.5.md` | Consolidation schéma / API / migrations (avant phase 2). |
 
 ## Migrations SQLite (Alembic)
 
-Le core applique une migration initiale unique (`0001_initial`) au démarrage (`alembic upgrade head`).
+Le core applique les migrations Alembic jusqu’à **`0007_track_previews_hybrid`** au démarrage (`alembic upgrade head`). Détail : [`docs/14-configuration.md`](docs/14-configuration.md).
 
 **Nouvelle installation** : la base est créée automatiquement dans le volume Docker `spotify_curator_data` (monté sur `/app/data` dans le conteneur).
 

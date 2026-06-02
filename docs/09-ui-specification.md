@@ -568,7 +568,11 @@ Exemple :
 |---|---|
 | `LibraryToolbar` | recherche, refresh, compteurs |
 | `LibraryFilters` | filtres tracks |
-| `LibraryTable` | table bibliothèque |
+| `LibraryTable` | table bibliothèque (preview ▶, colonne Features RB/ES/PV, badge Liked) |
+| `TrackPreviewButton` | lecture preview Deezer (streaming) |
+| `JobRunStatsBar` | tuiles compactes résultat job (Processed / Succeeded / Failed + extra selon type) |
+| `CollapsibleSection` | sections repliables (Field coverage, Recent failures, Last runs) |
+| `JobRunSummary` | Last runs (hydrate `GET /jobs/insights/latest`) |
 | `LibrarySelectionBar` | sélection page et actions |
 | `DuplicatesPanel` | onglet doublons |
 | `DuplicateGroupCard` | affichage groupe doublons |
@@ -635,6 +639,19 @@ Cards :
 - Feature coverage.
 
 Si les features ne sont pas encore disponibles : afficher `Not available yet` plutôt qu’une valeur vide.
+
+### 8.5.1 Implémenté — enrichissement & audio (2026-06)
+
+Section **Enrichment & audio** (si `tracks_total > 0`) :
+
+- tuile **ReccoBeats** — % couverture + lien `/features` ;
+- tuile **Essentia (local)** — % pistes analysées ;
+- tuile **Deezer previews** — % + lien `/library` (bouton resolve) ;
+- tuile **Feature enrichment** — raccourci `/features`.
+
+Quick actions : **Features** ajouté à côté Library / Import / Settings.
+
+Nav shell : route **`/features`**.
 
 ### 8.6 Recent activity
 

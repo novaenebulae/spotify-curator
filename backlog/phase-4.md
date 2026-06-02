@@ -8,12 +8,12 @@ Analyser des segments audio temporaires pour compléter les features locales low
 
 ## Definition of Done phase
 
-- Les livrables de phase sont présents.
-- Les tests minimum passent.
-- Les commandes de validation sont documentées.
-- La documentation est à jour.
-- Aucun secret, cache, modèle lourd ou fichier audio n’est commité.
-- Aucune régression sur les phases précédentes.
+- [x] Les livrables de phase sont présents.
+- [x] Les tests minimum passent.
+- [x] Les commandes de validation sont documentées.
+- [x] La documentation est à jour.
+- [x] Aucun secret, cache, modèle lourd ou fichier audio n’est commité.
+- [x] Aucune régression sur les phases précédentes.
 
 ## 4.1 — AudioProvider
 
@@ -70,7 +70,19 @@ Statut : DONE
 Statut : DONE
 
 - Tables `job_items`, `worker_heartbeats`, `job_events`.
-- Services `audio-downloader` et `essentia-lowlevel-worker` (profil Compose `audio`).
+- Services `audio-downloader`, `preview-resolver-worker`, `essentia-lowlevel-worker` (profil Compose `audio`).
+- Agrégation `result_json` terminal (`succeeded`, `failed`, `skipped`, `not_found`).
+- `GET /api/v1/jobs/insights/latest` pour l’UI Last runs.
+
+## 4.10 — UI & insights bibliothèque / features
+
+Statut : DONE
+
+- **Library** : colonnes Features (ReccoBeats / Essentia / Preview), preview play Deezer, `TrackFeaturesDrawer`.
+- **Features** : `JobRunSummary` + `JobRunStatsBar`, sections repliables (Field coverage, Recent failures, Last runs).
+- **Failures** : union multi-sources, `id` unique par ligne, Clear list (`failures_after`).
+- **Accueil** : tuiles couverture ReccoBeats / Essentia / Deezer previews.
+- **Resolve previews** : `only_missing` sans re-fetch des previews valides ; `limit` null = toute la bibliothèque manquante.
 
 ## Validation
 

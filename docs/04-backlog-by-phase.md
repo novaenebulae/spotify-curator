@@ -11,7 +11,7 @@ Tags: #backlog #roadmap #phases
 | 2 | Gestion bibliothèque | recherche, table, doublons, absents, dry-run actions, historique | phase 1 |
 | 3 | ReccoBeats | tables features, client, normalisation, jobs, coverage, UI enrichment | phase 2 |
 | 3.5 | ReccoBeats batch | `GET /v1/audio-features?ids=` (≤40), enrichissement par chunks, tests mock | phase 3 **DONE** |
-| 4 | Analyse locale | AudioProvider, segments yt-dlp, FFmpeg, Essentia low-level, cleanup | phase 3 partielle |
+| 4 | Analyse locale | AudioProvider, hybrid Deezer+YT, previews resolve, workers, Essentia low-level, merge, UI features/library | phase 3 **DONE** |
 | 5 | Playlist v1 | règles simples, filtres, scoring, diversité, preview, sync dry-run | phase 3, phase 2 |
 | 6 | Clustering visuel | feature profiles, matrice, UMAP, HDBSCAN, carte 2D | phase 3/4/5 |
 | 7 | Analyse avancée | Essentia TF, embeddings, moods, voice/instrumental | phase 4 |
@@ -66,14 +66,19 @@ Avant phase 4 :
 
 ### Gate phase 4
 
-Avant phase 5/6/7 :
+**Livré (2026-06)** pour le périmètre MVP local :
 
 - segments <= 30 s ;
 - aucun téléchargement complet standard ;
 - Essentia low-level produit JSON ;
 - parser testé ;
-- merge features testé ;
-- cleanup audio vérifié.
+- merge features testé (`POST /features/merge/recompute`) ;
+- cleanup audio vérifié ;
+- workers profil `audio` + `job_items` ;
+- previews Deezer (metadata) + stratégie hybride ;
+- UI library/features (coverage, failures, last runs).
+
+Avant phase 5 : playlist engine et clustering restent hors scope.
 
 ### Gate phase 5
 

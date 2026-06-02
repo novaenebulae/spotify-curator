@@ -127,12 +127,8 @@ cd core && uv run pytest tests/test_reccobeats_client.py tests/test_reccobeats_m
   tests/test_track_features_api.py tests/test_openapi_track_features_route.py \
   tests/test_job_items_progress.py -q
 
-Après ajout de routes API (ex. drawer features), reconstruire le conteneur :
-
-```bash
 docker compose up -d --build core-api
 curl http://127.0.0.1:8765/api/v1/features/tracks/1
-```
 curl http://127.0.0.1:8765/api/v1/features/coverage
 ```
 
@@ -141,7 +137,28 @@ curl http://127.0.0.1:8765/api/v1/features/coverage
 - batch `GET /v1/audio-features?ids=` — `tests/test_reccobeats_client.py`, `tests/test_reccobeats_batch_parsing.py`
 - enrichissement par chunks — `tests/test_reccobeats_enrich_job.py` (assert `http_batches`)
 
-Jobs / workers (cible) : [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §20.
+### Phase 4 — audio, previews, UI (implémenté)
+
+```bash
+cd core && uv run pytest \
+  tests/test_job_items_preview_resolve.py \
+  tests/test_preview_resolve_selection.py \
+  tests/test_failures_insights.py \
+  tests/test_jobs_insights.py \
+  tests/test_track_feature_status.py \
+  tests/test_hybrid_segment_strategy.py \
+  tests/test_essentia_gating_selection.py \
+  tests/test_audio_confidence_weights.py -q
+
+docker compose --profile audio up -d --build
+curl http://127.0.0.1:8765/api/v1/workers
+curl http://127.0.0.1:8765/api/v1/previews/coverage
+curl http://127.0.0.1:8765/api/v1/jobs/insights/latest
+```
+
+UI manuelle : `/features` (Last runs repliable, failures multi-sources, Clear list), `/library` (colonnes Features, resolve Deezer previews).
+
+Jobs / workers : [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md).
 
 ### Phase 3
 

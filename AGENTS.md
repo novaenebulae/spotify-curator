@@ -29,12 +29,9 @@ Windows
           ↓ HTTP localhost
 Docker Desktop + WSL2
   └── Docker Compose
-          ├── core-api FastAPI / Python
-          ├── job-worker
-          ├── audio-downloader yt-dlp + FFmpeg
-          ├── essentia-lowlevel
-          ├── essentia-tensorflow
-          └── clustering-worker
+          ├── core-api FastAPI / Python (toujours)
+          ├── [profil audio] audio-downloader, preview-resolver-worker, essentia-lowlevel-worker
+          ├── [cible] job-worker, essentia-tensorflow, clustering-worker
 ```
 
 ## Exécution des tâches longues

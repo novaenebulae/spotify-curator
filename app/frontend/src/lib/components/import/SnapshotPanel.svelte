@@ -134,7 +134,7 @@
 				{/each}
 			</select>
 		</label>
-		<button type="button" onclick={onCompare} disabled={!fromId || !toId || busy || diffLoading}>
+		<button type="button" onclick={onCompare} disabled={!fromId || !toId || busy || diffLoading} style="align-self: end;">
 			{diffLoading ? 'Comparing…' : 'Compare'}
 		</button>
 	</div>
