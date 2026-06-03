@@ -8,6 +8,7 @@ from sqlalchemy import inspect, text
 
 from alembic import command
 from app.database.engine import get_engine, reset_engine
+from app.database.url import resolve_database_url
 
 _PHASE1_HEAD_REVISION = "0001_initial"
 _HEAD_REVISION = "0004_album_covers"
@@ -39,7 +40,7 @@ _REQUIRED_TABLES = frozenset(
 
 
 def _database_url() -> str:
-    return os.getenv("DATABASE_URL", "sqlite:////app/data/spotify_curator.sqlite")
+    return resolve_database_url()
 
 
 def _sqlite_path(database_url: str) -> Path | None:

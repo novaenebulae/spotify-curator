@@ -12,6 +12,9 @@ from app.api.v1.runtime import router as runtime_router
 from app.api.v1.snapshots import router as snapshots_router
 from app.api.v1.spotify_auth import router as spotify_auth_router
 from app.api.v1.spotify_import import router as spotify_import_router
+from app.api.v1.generated_playlists import router as generated_playlists_router
+from app.api.v1.playlist_rules import router as playlist_rules_router
+from app.api.v1.sync import router as sync_router
 from app.api.v1.tracks import router as tracks_router
 from app.api.v1.workers import router as workers_router
 
@@ -29,4 +32,7 @@ router.include_router(features_router, tags=["features"])
 router.include_router(audio_router, tags=["audio"])
 router.include_router(previews_router, tags=["previews"])
 router.include_router(workers_router, tags=["workers"])
+router.include_router(playlist_rules_router)
+router.include_router(generated_playlists_router)
+router.include_router(sync_router)
 router.include_router(tracks_router, tags=["tracks"])

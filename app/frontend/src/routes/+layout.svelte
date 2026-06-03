@@ -24,6 +24,7 @@
 		<a href="/import" class:active={$page.url.pathname.startsWith('/import')}>Import</a>
 		<a href="/library" class:active={$page.url.pathname.startsWith('/library')}>Library</a>
 		<a href="/features" class:active={$page.url.pathname.startsWith('/features')}>Features</a>
+		<a href="/playlists" class:active={$page.url.pathname.startsWith('/playlists')}>Playlists</a>
 		<a href="/settings" class:active={$page.url.pathname.startsWith('/settings')}>Settings</a>
 	</nav>
 	<div class="layout-main">

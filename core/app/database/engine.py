@@ -6,6 +6,8 @@ from typing import Any
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 
+from app.database.url import resolve_database_url
+
 _engine: Engine | None = None
 
 _ALLOWED_JOURNAL_MODES = frozenset({"WAL", "DELETE", "TRUNCATE", "PERSIST", "MEMORY"})
@@ -46,7 +48,7 @@ def get_engine() -> Engine:
     if _engine is not None:
         return _engine
 
-    database_url = os.getenv("DATABASE_URL", "sqlite:////app/data/spotify_curator.sqlite")
+    database_url = resolve_database_url()
     connect_args = _sqlite_connect_args(database_url)
     _engine = create_engine(database_url, future=True, connect_args=connect_args)
 

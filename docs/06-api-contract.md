@@ -704,11 +704,15 @@ Liste les heartbeats workers (`preview_resolver`, `audio_downloader`, `essentia_
 
 ---
 
-## Phases 5–9 — Non implémentées (contrats cibles)
+## Phase 5 — Playlist generator v1 (implémenté)
 
-Les endpoints ci-dessous sont **spécification future** ; aucune route correspondante dans le core actuel.
+Les endpoints ci-dessous sont disponibles dans le core. Aucune écriture Spotify réelle en phase 5.
 
-## Phase 5 — Playlist generator v1
+### `GET /playlist-rules/presets`
+
+Presets initiaux (JSON embarqué côté core).
+
+## Phase 6–9 — Non implémentées (contrats cibles)
 
 ### `POST /playlist-rules/validate`
 

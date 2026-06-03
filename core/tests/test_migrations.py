@@ -44,7 +44,7 @@ def test_migrations_upgrade_head_on_empty_db(tmp_path, monkeypatch) -> None:
     with engine.connect() as conn:
         row = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
     assert row is not None
-    assert row[0] == "0007_track_previews_hybrid"
+    assert row[0] == "0008_phase5_playlist_engine"
 
     assert "library_actions" in tables
     sp_cols = {c["name"] for c in inspector.get_columns("spotify_tracks")}
@@ -88,6 +88,17 @@ def test_migrations_upgrade_head_on_empty_db(tmp_path, monkeypatch) -> None:
     assert "job_items" in tables
     assert "track_segments" in tables
     assert "worker_heartbeats" in tables
+
+    assert "playlist_rules" in tables
+    assert "generated_playlists" in tables
+    assert "generated_playlist_items" in tables
+    assert "sync_jobs" in tables
+    assert "sync_logs" in tables
+    gp_cols = {c["name"] for c in inspector.get_columns("generated_playlists")}
+    assert "engine_version" in gp_cols
+    assert "warning_json" in gp_cols
+    gpi_cols = {c["name"] for c in inspector.get_columns("generated_playlist_items")}
+    assert "exclusion_details_json" in gpi_cols
 
     with engine.connect() as conn:
         ess = conn.execute(

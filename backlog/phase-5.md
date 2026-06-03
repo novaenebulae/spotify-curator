@@ -30,7 +30,15 @@ La phase 5 doit être conçue pour rester compatible avec :
 
 ## 5.0 — Préparation architecture features
 
-Statut : TODO
+Statut : DONE
+
+### Audit juin 2026 (socle phases 0–4)
+
+- Alembic head `0007` : `audio_features`, `track_previews`, jobs audio OK.
+- Merge features : source gagnante par piste (`FeatureMergeService`), pas merge champ à champ.
+- Priorité resolver phase 5 : BPM/key/mode/loudness → Essentia si actif + confidence ; energy/valence/danceability → ReccoBeats ; métadonnées → `tracks` / `spotify_tracks` / `liked_tracks` / `playlist_tracks`.
+- Dry-run pattern existant : `library/actions.py`, `POST /library/actions/dry-run`.
+- Tables phase 5 (`playlist_rules`, `generated_*`, `sync_*`) : absentes avant migration `0008`.
 
 ### Sous-tâches
 
@@ -53,7 +61,7 @@ Statut : TODO
 
 ## 5.1 — Schéma PlaylistRule
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
@@ -78,7 +86,7 @@ Statut : TODO
 
 ## 5.2 — CRUD minimal règles
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
@@ -104,7 +112,7 @@ Statut : TODO
 
 ## 5.3 — Source selection
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
@@ -126,7 +134,7 @@ Statut : TODO
 
 ## 5.4 — Filtres stricts
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
@@ -154,7 +162,7 @@ Statut : TODO
 
 ## 5.5 — Scoring v1
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
@@ -177,7 +185,7 @@ Statut : TODO
 
 ## 5.6 — Diversité
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
@@ -199,7 +207,7 @@ Statut : TODO
 
 ## 5.7 — Preview persistée
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
@@ -225,7 +233,7 @@ Statut : TODO
 
 ## 5.8 — Dry-run sync
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
@@ -249,7 +257,7 @@ Statut : TODO
 
 ## 5.9 — UI Playlist Builder
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
@@ -276,7 +284,7 @@ Statut : TODO
 
 ## 5.10 — Tests et documentation
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 

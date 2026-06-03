@@ -6,7 +6,8 @@ services:
     ports:
       - "127.0.0.1:8765:8765"
     environment:
-      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/spotify_curator.sqlite}
+      # Never interpolate host DATABASE_URL (Windows Alembic paths break the named volume).
+      - DATABASE_URL=sqlite:////app/data/spotify_curator.sqlite
       - SQLITE_JOURNAL_MODE=${SQLITE_JOURNAL_MODE:-WAL}
       - CACHE_DIR=${CACHE_DIR:-/app/cache}
       - MODELS_DIR=${MODELS_DIR:-/app/models}
@@ -55,7 +56,8 @@ services:
       dockerfile: docker/audio-downloader/Dockerfile
     environment:
       - PYTHONPATH=/app
-      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/spotify_curator.sqlite}
+      # Never interpolate host DATABASE_URL (Windows Alembic paths break the named volume).
+      - DATABASE_URL=sqlite:////app/data/spotify_curator.sqlite
       - SQLITE_JOURNAL_MODE=${SQLITE_JOURNAL_MODE:-WAL}
       - CACHE_DIR=${CACHE_DIR:-/app/cache}
       - AUDIO_USE_TEST_PROVIDER=${AUDIO_USE_TEST_PROVIDER:-}
@@ -78,7 +80,8 @@ services:
       dockerfile: docker/preview-resolver/Dockerfile
     environment:
       - PYTHONPATH=/app
-      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/spotify_curator.sqlite}
+      # Never interpolate host DATABASE_URL (Windows Alembic paths break the named volume).
+      - DATABASE_URL=sqlite:////app/data/spotify_curator.sqlite
       - SQLITE_JOURNAL_MODE=${SQLITE_JOURNAL_MODE:-WAL}
       - DEEZER_API_BASE_URL=${DEEZER_API_BASE_URL:-https://api.deezer.com}
       - DEEZER_TIMEOUT_SECONDS=${DEEZER_TIMEOUT_SECONDS:-15}
@@ -96,7 +99,8 @@ services:
       dockerfile: docker/essentia-lowlevel-worker/Dockerfile
     environment:
       - PYTHONPATH=/app
-      - DATABASE_URL=${DATABASE_URL:-sqlite:////app/data/spotify_curator.sqlite}
+      # Never interpolate host DATABASE_URL (Windows Alembic paths break the named volume).
+      - DATABASE_URL=sqlite:////app/data/spotify_curator.sqlite
       - SQLITE_JOURNAL_MODE=${SQLITE_JOURNAL_MODE:-WAL}
       - CACHE_DIR=${CACHE_DIR:-/app/cache}
       - ESSENTIA_LOWLEVEL_PROFILE=${ESSENTIA_LOWLEVEL_PROFILE:-/app/profiles/essentia_lowlevel_basic.yaml}

@@ -117,6 +117,8 @@ Au démarrage du core, `init_db()` exécute `upgrade head` automatiquement sur u
 
 Variable optionnelle pour tests locaux : `DATABASE_URL=sqlite:///./data/test.sqlite`
 
+**Docker Compose** : `docker-compose.yml` fixe `DATABASE_URL` sur le volume nommé (`/app/data/…`). Ne pas exporter une URL Windows (`sqlite:///c:/…`) dans la session PowerShell avant `docker compose up` : Compose l’injectait dans les conteneurs et vidait la bibliothèque (base vide sous `/app/c:/…`). Migrations Alembic **dans Docker** : `docker compose exec core-api uv run alembic upgrade head`. Alembic **sur l’hôte** : `DATABASE_URL=sqlite:///./data/spotify_curator.sqlite` (fichier local, distinct du volume Docker).
+
 `SQLITE_JOURNAL_MODE` : `WAL` (défaut Docker Compose) avec le volume nommé `spotify_curator_data`. Utiliser `DELETE` seulement si vous remontez `./data:/app/data` (bind mount Windows, plus lent).
 
 ### Volume SQLite (recommandé)

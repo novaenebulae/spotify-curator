@@ -7,6 +7,7 @@ from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 from app.database.models import Base
+from app.database.url import resolve_database_url
 from app.database.models_features import (  # noqa: F401
     AudioFeature,
     AudioFeatureRawPayload,
@@ -52,10 +53,14 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
+    """Resolve DB URL: DATABASE_URL wins; ignore alembic.ini template placeholders."""
+    env_url = os.getenv("DATABASE_URL")
+    if env_url:
+        return resolve_database_url()
     configured = config.get_main_option("sqlalchemy.url")
-    if configured:
+    if configured and not configured.startswith("driver://"):
         return configured
-    return os.getenv("DATABASE_URL", "sqlite:////app/data/spotify_curator.sqlite")
+    return "sqlite:////app/data/spotify_curator.sqlite"
 
 
 def run_migrations_offline() -> None:

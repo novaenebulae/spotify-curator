@@ -1,0 +1,310 @@
+[
+  {
+    "id": "dark_intense",
+    "label": "Dark / Intense",
+    "description": "High energy, lower valence. Needs ReccoBeats features on candidates.",
+    "rule": {
+      "name": "Dark / Intense",
+      "target_size": 80,
+      "engine_version": "playlist_engine_v1",
+      "source": { "liked_tracks": true },
+      "filters": {
+        "features": {
+          "energy": { "min": 0.5, "required": true },
+          "valence": { "max": 0.65, "required": false },
+          "danceability": { "min": 0.35, "required": false },
+          "feature_confidence": { "min": 0.35, "required": false }
+        }
+      },
+      "weights": {
+        "missing_component_behavior": "skip_and_renormalize",
+        "components": {
+          "energy": { "weight": 0.3 },
+          "valence_inverse": { "weight": 0.2 },
+          "danceability": { "weight": 0.15 },
+          "freshness_score": { "weight": 0.1 },
+          "playlist_fit_score": { "weight": 0.15 },
+          "diversity_bonus": { "weight": 0.1 }
+        }
+      },
+      "constraints": {
+        "max_tracks_per_artist": 3,
+        "max_tracks_per_album": 2,
+        "avoid_duplicate_isrc": true
+      },
+      "ordering": { "mode": "score_desc", "random_seed": 42 },
+      "spotify": {
+        "playlist_name": "Dark / Intense",
+        "visibility": "private",
+        "sync_mode": "replace_after_dry_run"
+      }
+    }
+  },
+  {
+    "id": "calm_focus",
+    "label": "Calm / Focus",
+    "description": "Low energy, moderate valence. Works with energy filter only.",
+    "rule": {
+      "name": "Calm / Focus",
+      "target_size": 60,
+      "engine_version": "playlist_engine_v1",
+      "source": { "liked_tracks": true },
+      "filters": {
+        "features": {
+          "energy": { "max": 0.45, "required": true },
+          "valence": { "min": 0.25, "max": 0.75, "required": false },
+          "acousticness": { "min": 0.2, "required": false }
+        }
+      },
+      "weights": {
+        "missing_component_behavior": "skip_and_renormalize",
+        "components": {
+          "energy": { "weight": 0.35 },
+          "valence": { "weight": 0.25 },
+          "acousticness": { "weight": 0.2 },
+          "freshness_score": { "weight": 0.2 }
+        }
+      },
+      "constraints": { "max_tracks_per_artist": 4, "avoid_duplicate_isrc": true },
+      "ordering": { "mode": "score_desc" },
+      "spotify": { "playlist_name": "Calm / Focus", "sync_mode": "replace_after_dry_run" }
+    }
+  },
+  {
+    "id": "high_energy",
+    "label": "High Energy",
+    "description": "Danceable, energetic tracks from likes.",
+    "rule": {
+      "name": "High Energy",
+      "target_size": 70,
+      "engine_version": "playlist_engine_v1",
+      "source": { "liked_tracks": true },
+      "filters": {
+        "features": {
+          "energy": { "min": 0.65, "required": true },
+          "danceability": { "min": 0.5, "required": false }
+        }
+      },
+      "weights": {
+        "components": {
+          "energy": { "weight": 0.4 },
+          "danceability": { "weight": 0.35 },
+          "freshness_score": { "weight": 0.25 }
+        }
+      },
+      "constraints": { "max_tracks_per_artist": 4 },
+      "ordering": { "mode": "score_desc" },
+      "spotify": { "playlist_name": "High Energy", "sync_mode": "replace_after_dry_run" }
+    }
+  },
+  {
+    "id": "danceable_likes",
+    "label": "Danceable Likes",
+    "description": "Permissive: danceability-focused, minimal strict filters.",
+    "rule": {
+      "name": "Danceable Likes",
+      "target_size": 80,
+      "engine_version": "playlist_engine_v1",
+      "source": { "liked_tracks": true },
+      "filters": {
+        "features": {
+          "danceability": { "min": 0.45, "required": false },
+          "energy": { "min": 0.35, "required": false }
+        }
+      },
+      "weights": {
+        "components": {
+          "danceability": { "weight": 0.4 },
+          "energy": { "weight": 0.3 },
+          "valence": { "weight": 0.3 }
+        }
+      },
+      "constraints": { "max_tracks_per_artist": 5 },
+      "ordering": { "mode": "score_desc" },
+      "spotify": { "playlist_name": "Danceable Likes", "sync_mode": "replace_after_dry_run" }
+    }
+  },
+  {
+    "id": "acoustic_organic",
+    "label": "Acoustic / Organic",
+    "description": "Acousticness and low instrumentalness bias.",
+    "rule": {
+      "name": "Acoustic / Organic",
+      "target_size": 50,
+      "engine_version": "playlist_engine_v1",
+      "source": { "liked_tracks": true },
+      "filters": {
+        "features": {
+          "acousticness": { "min": 0.4, "required": false },
+          "energy": { "max": 0.6, "required": false }
+        }
+      },
+      "weights": {
+        "components": {
+          "acousticness": { "weight": 0.45 },
+          "energy": { "weight": 0.25 },
+          "valence": { "weight": 0.3 }
+        }
+      },
+      "constraints": { "max_tracks_per_artist": 3 },
+      "ordering": { "mode": "score_desc" },
+      "spotify": { "playlist_name": "Acoustic / Organic", "sync_mode": "replace_after_dry_run" }
+    }
+  },
+  {
+    "id": "instrumental_bias",
+    "label": "Instrumental Focus",
+    "description": "Favors instrumentalness (ReccoBeats proxy until phase 7).",
+    "rule": {
+      "name": "Instrumental Focus",
+      "target_size": 50,
+      "engine_version": "playlist_engine_v1",
+      "source": { "liked_tracks": true },
+      "filters": {
+        "features": {
+          "instrumentalness": { "min": 0.5, "required": false },
+          "speechiness": { "max": 0.15, "required": false }
+        }
+      },
+      "weights": {
+        "components": {
+          "instrumentalness": { "weight": 0.5 },
+          "energy": { "weight": 0.25 },
+          "danceability": { "weight": 0.25 }
+        }
+      },
+      "constraints": { "max_tracks_per_artist": 4 },
+      "ordering": { "mode": "score_desc" },
+      "spotify": { "playlist_name": "Instrumental Focus", "sync_mode": "replace_after_dry_run" }
+    }
+  },
+  {
+    "id": "recently_added",
+    "label": "Recently Added",
+    "description": "Latest liked tracks with light feature gates.",
+    "rule": {
+      "name": "Recently Added",
+      "target_size": 40,
+      "engine_version": "playlist_engine_v1",
+      "source": { "liked_tracks": true },
+      "filters": {
+        "features": {
+          "energy": { "min": 0.2, "required": false }
+        }
+      },
+      "weights": {
+        "components": {
+          "freshness_score": { "weight": 0.6 },
+          "energy": { "weight": 0.2 },
+          "danceability": { "weight": 0.2 }
+        }
+      },
+      "constraints": { "max_tracks_per_artist": 2 },
+      "ordering": { "mode": "recently_added_desc" },
+      "spotify": { "playlist_name": "Recently Added", "sync_mode": "add_only" }
+    }
+  },
+  {
+    "id": "discover_forgotten",
+    "label": "Discover Forgotten Likes",
+    "description": "Older likes via freshness heuristic; permissive filters.",
+    "rule": {
+      "name": "Discover Forgotten Likes",
+      "target_size": 60,
+      "engine_version": "playlist_engine_v1",
+      "source": { "liked_tracks": true },
+      "filters": {
+        "features": {}
+      },
+      "weights": {
+        "components": {
+          "freshness_score": { "weight": 0.5 },
+          "diversity_bonus": { "weight": 0.25 },
+          "playlist_fit_score": { "weight": 0.25 }
+        }
+      },
+      "constraints": {
+        "max_tracks_per_artist": 2,
+        "avoid_same_artist_consecutive": true
+      },
+      "ordering": { "mode": "random_seeded", "random_seed": 7 },
+      "spotify": { "playlist_name": "Discover Forgotten", "sync_mode": "replace_after_dry_run" }
+    }
+  },
+  {
+    "id": "wide_explore",
+    "label": "Wide Explore",
+    "description": "No feature filters — scores all liked tracks with features.",
+    "rule": {
+      "name": "Wide Explore",
+      "target_size": 100,
+      "engine_version": "playlist_engine_v1",
+      "source": { "liked_tracks": true },
+      "filters": { "features": {} },
+      "weights": {
+        "components": {
+          "energy": { "weight": 0.25 },
+          "valence": { "weight": 0.25 },
+          "danceability": { "weight": 0.25 },
+          "freshness_score": { "weight": 0.25 }
+        }
+      },
+      "constraints": { "max_tracks_per_artist": 6 },
+      "ordering": { "mode": "score_desc" },
+      "spotify": { "playlist_name": "Wide Explore", "sync_mode": "replace_after_dry_run" }
+    }
+  },
+  {
+    "id": "bpm_workout",
+    "label": "BPM Workout",
+    "description": "Tempo window for workout-style selection.",
+    "rule": {
+      "name": "BPM Workout",
+      "target_size": 50,
+      "engine_version": "playlist_engine_v1",
+      "source": { "liked_tracks": true },
+      "filters": {
+        "features": {
+          "bpm": { "min": 120, "max": 150, "required": false },
+          "energy": { "min": 0.55, "required": false }
+        }
+      },
+      "weights": {
+        "components": {
+          "energy": { "weight": 0.4 },
+          "danceability": { "weight": 0.35 },
+          "freshness_score": { "weight": 0.25 }
+        }
+      },
+      "constraints": { "max_tracks_per_artist": 3 },
+      "ordering": { "mode": "score_desc" },
+      "spotify": { "playlist_name": "BPM Workout", "sync_mode": "replace_after_dry_run" }
+    }
+  },
+  {
+    "id": "low_vocal_phase7",
+    "label": "Low Vocal (phase 7 preview)",
+    "warnings": ["FEATURE_NOT_AVAILABLE_YET"],
+    "description": "Uses future vocal scores — warnings only in phase 5.",
+    "rule": {
+      "name": "Low Vocal",
+      "target_size": 50,
+      "engine_version": "playlist_engine_v1",
+      "source": { "liked_tracks": true },
+      "filters": {
+        "features": {
+          "vocal_presence_score": { "max": 0.3, "required": false }
+        }
+      },
+      "weights": {
+        "components": {
+          "instrumentalness": { "weight": 0.5 },
+          "energy": { "weight": 0.5 }
+        }
+      },
+      "constraints": {},
+      "ordering": { "mode": "score_desc" },
+      "spotify": { "playlist_name": "Low Vocal", "sync_mode": "add_only" }
+    }
+  }
+]
