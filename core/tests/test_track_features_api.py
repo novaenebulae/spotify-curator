@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -10,6 +11,8 @@ from app.database.engine import get_engine
 from app.database.init_db import init_db
 from app.database.models_features import AudioFeature
 from app.database.repositories.feature_sources import FeatureSourcesRepository
+from app.audio.essentia_aggregate import aggregate_segment_features
+from app.audio.essentia_parser import parse_essentia_json
 from app.features.reccobeats_mapper import map_reccobeats_result
 from app.features.upsert import FeatureUpsertService
 from app.main import create_app
@@ -172,3 +175,31 @@ def test_track_features_both_sources_essentia_wins_merge(tmp_path, monkeypatch) 
     rb = next(s for s in data["sources"] if s["source_name"] == "reccobeats")
     assert rb["is_active"] is False
     assert rb["fields"].get("energy") is not None
+
+
+def test_track_features_essentia_extended_via_upsert_path(tmp_path, monkeypatch) -> None:
+    client = _client(tmp_path, monkeypatch)
+    fixture = Path(__file__).parent / "fixtures" / "essentia_lowlevel_sample.json"
+    parsed = parse_essentia_json(json.loads(fixture.read_text(encoding="utf-8")))
+    aggregated = aggregate_segment_features([parsed], analysis_decision="deezer_only")
+    engine = get_engine()
+    with Session(engine) as session:
+        FeatureUpsertService().upsert_essentia_lowlevel(
+            session,
+            track_id=1,
+            aggregated=aggregated,
+            force_refresh=True,
+        )
+        session.commit()
+    res = client.get("/api/v1/features/tracks/1")
+    assert res.status_code == 200
+    data = res.json()
+    ess = next(s for s in data["sources"] if s["source_name"] == "essentia_lowlevel")
+    ext = ess["extended"]
+    assert ext.get("spectral_centroid") == 2200.0
+    assert ext.get("spectral_rolloff") == 4500.0
+    assert ext.get("dynamic_complexity") == 4.5
+    assert ext.get("onset_rate") == 2.1
+    assert len(ext.get("mfcc") or []) == 5
+    assert len(ext.get("hpcp") or []) == 3
+    assert ext.get("spectral_contrast") == [1.0, 2.0, 3.0]

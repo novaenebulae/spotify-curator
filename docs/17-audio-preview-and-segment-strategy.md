@@ -32,7 +32,7 @@ Stratégie legacy **`abc_default`** : bandes A/B/C (10–25 %, 45–60 %, 70–8
 ## UI vs analyse
 
 - **UI** : `track_previews.preview_url` — lecture streaming HTML5, pas de fichier local persisté.
-- **Analyse** : segments temporaires `<= 30 s` dans `track_segments` ; cleanup après Essentia sauf option debug.
+- **Analyse** : segments temporaires `<= 30 s` dans `track_segments` ; cleanup après Essentia sauf `AUDIO_KEEP_SEGMENTS_AFTER_ANALYSIS=true`. Descripteurs timbre/spectral : `GET /features/tracks/{id}` → `sources[].extended` (voir [`06-api-contract.md`](06-api-contract.md)).
 
 ### URLs Deezer signées
 

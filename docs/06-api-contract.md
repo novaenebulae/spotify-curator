@@ -594,6 +594,24 @@ Réponse (extrait) :
       "status": "success",
       "fields": { "bpm": 128, "energy": 0.71 },
       "extended": {}
+    },
+    {
+      "source_name": "essentia_lowlevel",
+      "display_name": "Essentia low-level",
+      "is_active": true,
+      "status": "success",
+      "fields": { "bpm": 127.2, "key": 7, "mode": 1, "loudness": -8.2 },
+      "extended": {
+        "spectral_centroid": 2200.0,
+        "spectral_rolloff": 4500.0,
+        "spectral_contrast": [1.0, 2.0, 3.0],
+        "dynamic_complexity": 4.5,
+        "onset_rate": 2.1,
+        "mfcc": [0.1, 0.2, 0.3],
+        "hpcp": [0.5, 0.4, 0.3],
+        "analysis_decision": "deezer_only",
+        "segments_used": 1
+      }
     }
   ],
   "availability": {
@@ -607,7 +625,12 @@ Réponse (extrait) :
 
 - **404** si le `track_id` n’existe pas.
 - **200** avec `merged: null` et `sources: []` si aucune analyse.
-- `extended` (Essentia) : descripteurs issus du dernier `audio_feature_raw_payloads` (`mfcc`, `hpcp`, spectral, `analysis_decision`, `segments_used`).
+- `extended` (source `essentia_lowlevel` uniquement) : agrégat JSON `payload.aggregated` du dernier `audio_feature_raw_payloads` :
+  - scalaires : `spectral_centroid`, `spectral_rolloff`, `dynamic_complexity`, `onset_rate`
+  - vecteurs : `mfcc`, `hpcp`, `spectral_contrast`
+  - meta : `analysis_decision`, `segments_used`, `segments_planned`, `segments_analyzed`, `segments_missing_reason`
+- Les colonnes SQL `audio_features` restent limitées au rythme/tonalité (`bpm`, `key`, `mode`, `loudness`, …) ; l’UI drawer lit `extended` pour le timbre.
+- Titres analysés **avant** une mise à jour du pipeline : relancer Essentia avec `force_refresh=true` pour regénérer `aggregated` complet (merge recompute ne suffit pas).
 
 ### `POST /features/merge/recompute`
 

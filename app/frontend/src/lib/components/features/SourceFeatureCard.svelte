@@ -1,15 +1,44 @@
 <script lang="ts">
 	import type { TrackFeatureSource } from '$lib/featuresApi';
 	import FeatureMetricGrid from '$lib/components/features/FeatureMetricGrid.svelte';
-	import { formatAnalysisDecision, formatConfidence } from '$lib/featureFormat';
+	import {
+		formatAnalysisDecision,
+		formatConfidence,
+		formatSpectralContrast,
+		formatVectorPreview
+	} from '$lib/featureFormat';
 
 	let { source }: { source: TrackFeatureSource } = $props();
 
-	const hasExtended = $derived(
+	const TIMBRE_KEYS = [
+		'spectral_centroid',
+		'spectral_rolloff',
+		'spectral_contrast',
+		'dynamic_complexity',
+		'onset_rate',
+		'mfcc',
+		'hpcp'
+	] as const;
+
+	function hasTimbreValue(ext: Record<string, unknown>, key: (typeof TIMBRE_KEYS)[number]): boolean {
+		const v = ext[key];
+		if (v == null) return false;
+		if (Array.isArray(v)) return v.length > 0;
+		if (typeof v === 'number') return Number.isFinite(v);
+		return false;
+	}
+
+	const hasTimbreData = $derived(
 		source.extended &&
 			typeof source.extended === 'object' &&
-			Object.keys(source.extended).length > 0
+			TIMBRE_KEYS.some((k) => hasTimbreValue(source.extended as Record<string, unknown>, k))
 	);
+
+	const detailsOpen = $derived(source.is_active && hasTimbreData);
+
+	const mfccPreview = $derived(formatVectorPreview(source.extended?.mfcc));
+	const hpcpPreview = $derived(formatVectorPreview(source.extended?.hpcp));
+	const contrastPreview = $derived(formatSpectralContrast(source.extended?.spectral_contrast));
 </script>
 
 <article class="source-card" class:inactive={!source.is_active}>
@@ -37,8 +66,8 @@
 	{#if source.pipeline_version}
 		<p class="meta">Pipeline: {source.pipeline_version}</p>
 	{/if}
-	{#if hasExtended}
-		<details class="extended">
+	{#if hasTimbreData}
+		<details class="extended" open={detailsOpen}>
 			<summary>Spectral & timbre (local)</summary>
 			<dl class="extended-grid">
 				{#if source.extended.segments_used != null}
@@ -56,13 +85,34 @@
 				{#if source.extended.spectral_rolloff != null}
 					<div><dt>Spectral rolloff</dt><dd>{source.extended.spectral_rolloff}</dd></div>
 				{/if}
+				{#if contrastPreview}
+					<div><dt>Spectral contrast</dt><dd>{contrastPreview}</dd></div>
+				{/if}
 				{#if source.extended.dynamic_complexity != null}
 					<div><dt>Dynamic complexity</dt><dd>{source.extended.dynamic_complexity}</dd></div>
 				{/if}
 				{#if source.extended.onset_rate != null}
 					<div><dt>Onset rate</dt><dd>{source.extended.onset_rate}</dd></div>
 				{/if}
+				{#if mfccPreview}
+					<div><dt>MFCC</dt><dd>{mfccPreview}</dd></div>
+				{/if}
+				{#if hpcpPreview}
+					<div><dt>HPCP</dt><dd>{hpcpPreview}</dd></div>
+				{/if}
 			</dl>
+			{#if mfccPreview && Array.isArray(source.extended.mfcc) && source.extended.mfcc.length > 5}
+				<details class="vector-detail">
+					<summary>All MFCC coefficients</summary>
+					<p class="vector-list">{source.extended.mfcc.join(', ')}</p>
+				</details>
+			{/if}
+			{#if hpcpPreview && Array.isArray(source.extended.hpcp) && source.extended.hpcp.length > 5}
+				<details class="vector-detail">
+					<summary>All HPCP coefficients</summary>
+					<p class="vector-list">{source.extended.hpcp.join(', ')}</p>
+				</details>
+			{/if}
 		</details>
 	{/if}
 </article>
@@ -136,5 +186,17 @@
 	}
 	.extended-grid dd {
 		margin: 0 0 var(--space-xs);
+		word-break: break-word;
+	}
+	.vector-detail {
+		margin-top: var(--space-sm);
+		font-size: 0.8rem;
+	}
+	.vector-list {
+		margin: var(--space-xs) 0 0;
+		color: var(--color-muted);
+		font-family: var(--font-mono, monospace);
+		font-size: 0.75rem;
+		line-height: 1.4;
 	}
 </style>

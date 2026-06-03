@@ -238,10 +238,18 @@ Features extraites :
 - mode ;
 - key confidence ;
 - MFCC ;
-- **Meta segments** (exposés dans le drawer Features / Sources) :
-  - `segments_planned`
-  - `segments_analyzed`
-  - `segments_missing_reason` (si < planned)
+- HPCP ;
+- spectral centroid ;
+- spectral rolloff ;
+- spectral contrast ;
+- dynamic complexity ;
+- onset rate.
+
+**Persistance** : agrégation multi-segments → `audio_feature_raw_payloads.payload_json.aggregated` (timbre/spectral inclus) + colonnes scalaires `audio_features` pour merge. L’UI Library (`GET /features/tracks/{id}` → `sources[].extended`) expose les descripteurs timbre.
+
+**Meta segments** (drawer / `extended`) : `segments_planned`, `segments_analyzed`, `segments_missing_reason`, `analysis_decision`.
+
+**Cleanup WAV** (inchangé) : après succès Essentia low-level, segments supprimés du cache sauf `AUDIO_KEEP_SEGMENTS_AFTER_ANALYSIS=true`.
 
 #### Gating (éviter l’analyse locale inutile)
 
@@ -251,12 +259,6 @@ Par défaut, l’analyse Essentia low-level est **filtrée** pour ne tourner que
 - sinon Essentia ne s’exécute que si ReccoBeats a des champs low-level manquants (actuellement : `bpm`, `loudness`, `key`, `mode`, `duration_ms`).
 
 Un override manuel existe via `force_refresh=true`.
-- HPCP ;
-- spectral centroid ;
-- spectral rolloff ;
-- spectral contrast ;
-- dynamic complexity ;
-- onset rate.
 
 ## Phase 7 — Analyse avancée
 

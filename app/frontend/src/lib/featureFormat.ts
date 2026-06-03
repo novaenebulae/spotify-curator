@@ -64,6 +64,35 @@ export function formatAnalysisDecision(code: string | undefined): string {
 	return code.replaceAll('_', ' ');
 }
 
+function asNumberArray(values: unknown): number[] {
+	if (!Array.isArray(values)) return [];
+	return values.filter((v): v is number => typeof v === 'number' && Number.isFinite(v));
+}
+
+/** Compact preview for MFCC/HPCP vectors in the Essentia extended panel. */
+export function formatVectorPreview(values: unknown, maxItems = 5): string | null {
+	const nums = asNumberArray(values);
+	if (nums.length === 0) return null;
+	const preview = nums
+		.slice(0, maxItems)
+		.map((v) => (Math.abs(v) >= 100 ? v.toFixed(1) : v.toFixed(3)))
+		.join(', ');
+	const suffix = nums.length > maxItems ? `, … (${nums.length} total)` : '';
+	return `${nums.length} coefficient${nums.length === 1 ? '' : 's'}: ${preview}${suffix}`;
+}
+
+/** Summary line for spectral contrast band vectors. */
+export function formatSpectralContrast(contrast: unknown): string | null {
+	const nums = asNumberArray(contrast);
+	if (nums.length === 0) return null;
+	const preview = nums
+		.slice(0, 4)
+		.map((v) => v.toFixed(2))
+		.join(', ');
+	const suffix = nums.length > 4 ? `, … (${nums.length} bands)` : ` (${nums.length} bands)`;
+	return preview + suffix;
+}
+
 export const MOOD_FIELDS = ['energy', 'valence', 'danceability'] as const;
 export const TEXTURE_FIELDS = ['acousticness', 'instrumentalness', 'speechiness', 'liveness'] as const;
 export const RHYTHM_FIELDS = ['bpm', 'time_signature'] as const;

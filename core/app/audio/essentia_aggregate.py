@@ -108,19 +108,42 @@ def aggregate_segment_features(
     bpm_val = _weighted_mean([b for b, _ in bpms], [w for _, w in bpms]) if bpms else None
     loud_val = _weighted_mean([x for x, _ in loudness], [w for _, w in loudness]) if loudness else None
 
-    detail: dict = {
+    mfcc_vec = _mean_vectors([p.mfcc for p in parsed if p.mfcc])
+    hpcp_vec = _mean_vectors([p.hpcp for p in parsed if p.hpcp])
+    spectral_centroid_val = _median(
+        [float(p.spectral_centroid) for p in parsed if p.spectral_centroid is not None]
+    )
+    spectral_rolloff_val = _median(
+        [float(p.spectral_rolloff) for p in parsed if p.spectral_rolloff is not None]
+    )
+    spectral_contrast_vec = _mean_vectors([p.spectral_contrast for p in parsed if p.spectral_contrast])
+    dynamic_complexity_val = _median(
+        [float(p.dynamic_complexity) for p in parsed if p.dynamic_complexity is not None]
+    )
+    onset_rate_val = _median([float(p.onset_rate) for p in parsed if p.onset_rate is not None])
+
+    segments_missing = None
+    if segments_planned is not None and segments_planned > len(parsed):
+        segments_missing = segments_missing_reason or "not_all_segments_available"
+
+    detail: dict[str, Any] = {
         "segment_count": len(parsed),
         "segments_analyzed": len(parsed),
-        "mfcc": _mean_vectors([p.mfcc for p in parsed if p.mfcc]),
-        "hpcp": _mean_vectors([p.hpcp for p in parsed if p.hpcp]),
+        "mfcc": mfcc_vec,
+        "hpcp": hpcp_vec,
+        "spectral_centroid": spectral_centroid_val,
+        "spectral_rolloff": spectral_rolloff_val,
+        "spectral_contrast": spectral_contrast_vec,
+        "dynamic_complexity": dynamic_complexity_val,
+        "onset_rate": onset_rate_val,
         "source_qualities": [p.source_quality for p in parsed],
         "source_quality_weights": weights,
         "match_confidences": match_confs,
     }
     if segments_planned is not None:
         detail["segments_planned"] = segments_planned
-        if segments_planned > len(parsed):
-            detail["segments_missing_reason"] = segments_missing_reason or "not_all_segments_available"
+        if segments_missing:
+            detail["segments_missing_reason"] = segments_missing
     if analysis_decision:
         detail["analysis_decision"] = analysis_decision
 
@@ -137,22 +160,16 @@ def aggregate_segment_features(
             source_quality_weights=weights,
             match_confidences=match_confs,
         ),
-        mfcc=_mean_vectors([p.mfcc for p in parsed if p.mfcc]),
-        hpcp=_mean_vectors([p.hpcp for p in parsed if p.hpcp]),
-        spectral_centroid=_median(
-            [float(p.spectral_centroid) for p in parsed if p.spectral_centroid is not None]
-        ),
-        spectral_rolloff=_median(
-            [float(p.spectral_rolloff) for p in parsed if p.spectral_rolloff is not None]
-        ),
-        spectral_contrast=_mean_vectors([p.spectral_contrast for p in parsed if p.spectral_contrast]),
-        dynamic_complexity=_median(
-            [float(p.dynamic_complexity) for p in parsed if p.dynamic_complexity is not None]
-        ),
-        onset_rate=_median([float(p.onset_rate) for p in parsed if p.onset_rate is not None]),
+        mfcc=mfcc_vec,
+        hpcp=hpcp_vec,
+        spectral_centroid=spectral_centroid_val,
+        spectral_rolloff=spectral_rolloff_val,
+        spectral_contrast=spectral_contrast_vec,
+        dynamic_complexity=dynamic_complexity_val,
+        onset_rate=onset_rate_val,
         segments_used=len(parsed),
         segments_planned=segments_planned,
         segments_analyzed=len(parsed),
-        segments_missing_reason=detail.get("segments_missing_reason"),
+        segments_missing_reason=segments_missing,
         detail_json=detail,
     )
