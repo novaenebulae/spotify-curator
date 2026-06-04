@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.audio.tensorflow.classifier_runner import ClassifierRunner
 from app.audio.tensorflow.embeddings_runner import EFFNET_MODEL_KEY, EmbeddingsRunner
+from app.audio.tensorflow.errors import InferenceError, TENSORFLOW_INFERENCE_FAILED
 from app.audio.tensorflow.genre_runner import GENRE_MODEL_KEY, GenreRunner
 
 
@@ -52,3 +53,24 @@ def test_embeddings_and_genre_model_missing(
     assert emb.embedding_outputs == {}
     assert GENRE_MODEL_KEY in genre.models_missing
     assert genre.genre_outputs == {}
+
+
+def test_genre_audio_too_short_treated_as_model_missing(
+    tmp_path, build_tf_models, make_tf_manager
+) -> None:
+    class ShortAudioBackend:
+        def classifier_activations(self, wav_path: str, *, extractor_key: str, head_key: str):
+            raise InferenceError(
+                code=TENSORFLOW_INFERENCE_FAILED,
+                message="Head inference failed: input signal is too short",
+            )
+
+    mm = make_tf_manager(
+        build_tf_models(["discogs_maest_30s_pw_519l", "genre_discogs519_maest_519l"])
+    )
+    result = GenreRunner(model_manager=mm, backend=ShortAudioBackend()).run_for_segment(
+        segment_id=1, wav_path=_wav(tmp_path)
+    )
+    assert GENRE_MODEL_KEY in result.models_missing
+    assert result.genre_outputs == {}
+    assert result.inference_mode == "none"

@@ -81,7 +81,8 @@ def plan_hybrid_segments(
     if mode == "fast":
         # Prefer Deezer preview when available & confident enough.
         if deezer_preview_available:
-            preview_dur = min(seg_dur, settings.audio_segment_max_seconds, 30.0)
+            # Full Deezer preview (~30s) for MAEST/genre models; do not cap to 15s default.
+            preview_dur = min(settings.audio_segment_max_seconds, 30.0)
             validate_segment_duration(preview_dur)
             seg = PlannedSegment(
                 segment_type="DEEZER_PREVIEW",

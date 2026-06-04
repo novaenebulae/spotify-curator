@@ -1,12 +1,19 @@
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from collections import OrderedDict
+from typing import Any, Protocol, runtime_checkable
 
 from app.audio.tensorflow.errors import TENSORFLOW_INFERENCE_FAILED, InferenceError
 from app.models_registry.manager import ModelManager
 
 DEFAULT_SAMPLE_RATE = 16000
 DEFAULT_EMBEDDING_DIM = 1280
+
+# Small LRU bounds: within one segment all heads share the same WAV, so a tiny
+# cache collapses the ~12 redundant EffNet inferences into one while keeping
+# memory flat across the many segments a persistent worker processes.
+_AUDIO_CACHE_SIZE = 2
+_FRAMES_CACHE_SIZE = 2
 
 
 @runtime_checkable
@@ -35,6 +42,11 @@ class EssentiaTensorflowBackend:
 
     def __init__(self, *, model_manager: ModelManager) -> None:
         self._mm = model_manager
+        # Predictor graphs are static -> memoize for the worker lifetime
+        # (~14 models). Audio/frames are WAV-scoped -> small LRU to bound memory.
+        self._predictor_cache: dict[tuple, Any] = {}
+        self._audio_cache: OrderedDict[tuple, Any] = OrderedDict()
+        self._frames_cache: OrderedDict[tuple, Any] = OrderedDict()
 
     def embeddings(self, wav_path: str, *, extractor_key: str) -> list[float]:
         try:
@@ -66,12 +78,53 @@ class EssentiaTensorflowBackend:
     # ----- internal Essentia helpers ---------------------------------------
 
     def _load_audio(self, wav_path: str, sample_rate: int):
+        key = (wav_path, sample_rate)
+        cached = self._audio_cache.get(key)
+        if cached is not None:
+            self._audio_cache.move_to_end(key)
+            return cached
+
         import essentia.standard as es  # type: ignore[import-not-found]
 
         loader = es.MonoLoader(filename=wav_path, sampleRate=sample_rate, resampleQuality=4)
-        return loader()
+        audio = loader()
+        self._audio_cache[key] = audio
+        self._audio_cache.move_to_end(key)
+        while len(self._audio_cache) > _AUDIO_CACHE_SIZE:
+            self._audio_cache.popitem(last=False)
+        return audio
+
+    def _get_predictor(
+        self,
+        es,
+        algo_name: str,
+        *,
+        graph: str,
+        output: str | None = None,
+        input_node: str | None = None,
+    ):
+        """Build (and memoize) an Essentia predictor keyed by its graph + I/O nodes."""
+        key = (algo_name, graph, output, input_node)
+        cached = self._predictor_cache.get(key)
+        if cached is not None:
+            return cached
+        algo_cls = getattr(es, algo_name)
+        kwargs: dict[str, object] = {"graphFilename": graph}
+        if output:
+            kwargs["output"] = output
+        if input_node:
+            kwargs["input"] = input_node
+        predictor = algo_cls(**kwargs)
+        self._predictor_cache[key] = predictor
+        return predictor
 
     def _embedding_frames(self, wav_path: str, extractor_key: str):
+        key = (wav_path, extractor_key)
+        cached = self._frames_cache.get(key)
+        if cached is not None:
+            self._frames_cache.move_to_end(key)
+            return cached
+
         import essentia.standard as es  # type: ignore[import-not-found]
 
         entry = self._mm.get_entry(extractor_key)
@@ -82,12 +135,13 @@ class EssentiaTensorflowBackend:
         algo_name = _meta_algorithm(meta) or _default_extractor_algorithm(extractor_key)
 
         audio = self._load_audio(wav_path, sample_rate)
-        algo_cls = getattr(es, algo_name)
-        kwargs: dict[str, object] = {"graphFilename": graph}
-        if output:
-            kwargs["output"] = output
-        predictor = algo_cls(**kwargs)
-        return predictor(audio)
+        predictor = self._get_predictor(es, algo_name, graph=graph, output=output)
+        frames = predictor(audio)
+        self._frames_cache[key] = frames
+        self._frames_cache.move_to_end(key)
+        while len(self._frames_cache) > _FRAMES_CACHE_SIZE:
+            self._frames_cache.popitem(last=False)
+        return frames
 
     def _extractor_embeddings(self, wav_path: str, extractor_key: str) -> list[float]:
         frames = self._embedding_frames(wav_path, extractor_key)
@@ -98,23 +152,55 @@ class EssentiaTensorflowBackend:
     ) -> list[tuple[str, float]]:
         import essentia.standard as es  # type: ignore[import-not-found]
 
-        embeddings = self._embedding_frames(wav_path, extractor_key)
         head_meta = self._mm.read_metadata(head_key) or {}
+
+        # Some extractors (e.g. MAEST) are self-contained classifiers that emit a
+        # rank-2 ``predictions`` output directly. Chaining them into a 2D head
+        # fails ("cannot convert TENSOR_REAL to MATRIX_REAL"), so run single-stage.
+        ext_meta = self._mm.read_metadata(extractor_key) or {}
+        if _predictions_output(ext_meta) is not None:
+            return self._direct_predictions(
+                wav_path, extractor_key, fallback_classes=_meta_classes(head_meta)
+            )
+
+        embeddings = self._embedding_frames(wav_path, extractor_key)
         head_entry = self._mm.get_entry(head_key)
         graph = str(self._mm.weights_path(head_key))
+        input_node = _meta_input(head_meta) or "model/Placeholder"
         output = (
-            head_entry.output
-            or _meta_output(head_meta, purpose="predictions")
-            or "PartitionedCall"
+            head_entry.output or _meta_output(head_meta, purpose="predictions") or "model/Identity"
         )
-        predictor = es.TensorflowPredict2D(
-            graphFilename=graph,
-            input="serving_default_model_Placeholder",
+        predictor = self._get_predictor(
+            es,
+            "TensorflowPredict2D",
+            graph=graph,
             output=output,
+            input_node=input_node,
         )
         activations = predictor(embeddings)
         scores = _mean_rows(activations)
         labels = _meta_classes(head_meta) or [f"class_{i}" for i in range(len(scores))]
+        return [(str(labels[i]), float(scores[i])) for i in range(min(len(labels), len(scores)))]
+
+    def _direct_predictions(
+        self, wav_path: str, extractor_key: str, *, fallback_classes: list[str]
+    ) -> list[tuple[str, float]]:
+        """Single-stage inference for self-classifying extractors (e.g. MAEST)."""
+        import essentia.standard as es  # type: ignore[import-not-found]
+
+        entry = self._mm.get_entry(extractor_key)
+        meta = self._mm.read_metadata(extractor_key) or {}
+        graph = str(self._mm.weights_path(extractor_key))
+        sample_rate = int(entry.sample_rate or _meta_sample_rate(meta) or DEFAULT_SAMPLE_RATE)
+        output = _predictions_output(meta)
+        algo_name = _meta_algorithm(meta) or _default_extractor_algorithm(extractor_key)
+
+        audio = self._load_audio(wav_path, sample_rate)
+        predictor = self._get_predictor(es, algo_name, graph=graph, output=output)
+        scores = _reduce_predictions(predictor(audio))
+        labels = (
+            _meta_classes(meta) or fallback_classes or [f"class_{i}" for i in range(len(scores))]
+        )
         return [(str(labels[i]), float(scores[i])) for i in range(min(len(labels), len(scores)))]
 
 
@@ -136,6 +222,37 @@ def _meta_algorithm(meta: dict) -> str | None:
         algo = inference.get("algorithm")
         if isinstance(algo, str) and algo:
             return algo
+    return None
+
+
+def _predictions_output(meta: dict) -> str | None:
+    """Return the node name of a ``predictions`` output, if the model has one."""
+    schema = meta.get("schema") if isinstance(meta, dict) else None
+    if not isinstance(schema, dict):
+        return None
+    outputs = schema.get("outputs")
+    if not isinstance(outputs, list):
+        return None
+    for out in outputs:
+        if isinstance(out, dict) and out.get("output_purpose") == "predictions":
+            name = out.get("name")
+            if isinstance(name, str) and name:
+                return name
+    return None
+
+
+def _meta_input(meta: dict) -> str | None:
+    schema = meta.get("schema") if isinstance(meta, dict) else None
+    if not isinstance(schema, dict):
+        return None
+    inputs = schema.get("inputs")
+    if not isinstance(inputs, list):
+        return None
+    for inp in inputs:
+        if isinstance(inp, dict):
+            name = inp.get("name")
+            if isinstance(name, str) and name:
+                return name
     return None
 
 
@@ -184,6 +301,21 @@ def _default_extractor_algorithm(extractor_key: str) -> str:
     if "musicnn" in key:
         return "TensorflowPredictMusiCNN"
     return "TensorflowPredictEffnetDiscogs"
+
+
+def _reduce_predictions(activations) -> list[float]:
+    """Average a (possibly rank-3) prediction array over all but the class axis.
+
+    MAEST emits predictions shaped like ``[patches, 1, n_classes]``; collapse the
+    leading axes so we get one score per class.
+    """
+    import numpy as np  # type: ignore[import-not-found]
+
+    arr = np.asarray(activations, dtype=float)
+    if arr.ndim == 0:
+        return [float(arr)]
+    arr = arr.reshape(-1, arr.shape[-1])
+    return [float(v) for v in arr.mean(axis=0)]
 
 
 def _mean_rows(matrix) -> list[float]:

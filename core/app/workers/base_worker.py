@@ -84,11 +84,16 @@ class BaseWorker(ABC):
                 self._heartbeat_running(
                     current_job_id=item.job_id,
                     current_item_id=item.id,
+                    metadata=heartbeat_meta,
                 )
 
+        heartbeat_meta: dict[str, object] | None = None
+        if item.stage_name:
+            heartbeat_meta = {"stage_name": item.stage_name}
         self._heartbeat_running(
             current_job_id=item.job_id,
             current_item_id=item.id,
+            metadata=heartbeat_meta,
         )
         pulse_thread = threading.Thread(target=_pulse, daemon=True)
         pulse_thread.start()
@@ -111,6 +116,7 @@ class BaseWorker(ABC):
         *,
         current_job_id: str | None = None,
         current_item_id: str | None = None,
+        metadata: dict[str, object] | None = None,
     ) -> None:
         """Refresh heartbeat while a long-running item is processed."""
         self._heartbeat.register_or_update(
@@ -119,6 +125,7 @@ class BaseWorker(ABC):
             status="running",
             current_job_id=current_job_id,
             current_item_id=current_item_id,
+            metadata=metadata,
         )
 
     @abstractmethod

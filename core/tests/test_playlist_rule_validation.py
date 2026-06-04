@@ -22,7 +22,7 @@ def test_invalid_no_source() -> None:
 
 
 def test_future_feature_warning() -> None:
-    preset = next(p for p in load_presets() if p["id"] == "low_vocal_phase7")
+    preset = next(p for p in load_presets() if p["id"] == "dark_mood_phase7")
     result = PlaylistRuleValidator().validate(rule=preset["rule"])
     assert result.valid is True
     assert any(w.code == "FEATURE_NOT_AVAILABLE_YET" for w in result.warnings)

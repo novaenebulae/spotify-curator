@@ -238,6 +238,12 @@ class AnalysisPipelineOrchestrator:
                     blocked_reason=BLOCKED_REASON_DEPENDENCY_PENDING,
                 )
 
+            self._items.record_pipeline_stage_created(
+                session,
+                job_id=job_id,
+                track_count=len(track_plans),
+                pipeline_mode=pipeline_mode,
+            )
             session.commit()
             self._items.recompute_job_progress(session, job_id)
             session.commit()

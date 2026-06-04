@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session
 from app.database.engine import get_engine
 from app.database.models_jobs import Job as JobRow
 from app.jobs.insights import latest_jobs_by_type
+from app.audio.pipeline.constants import ALL_PIPELINE_STAGES, JOB_TYPE_AUDIO_ANALYSIS_PIPELINE, STAGE_STATUSES
 from app.jobs.items.constants import WORKER_MANAGED_JOB_TYPES
+from app.jobs.items.events import JobEventsService
 from app.jobs.items.service import JobItemService
 from app.jobs.service import JobService
 from app.jobs.status_mapping import map_job_status
@@ -18,6 +20,7 @@ from app.observability.errors import ApiError
 router = APIRouter(prefix="/jobs")
 _jobs = JobService()
 _items = JobItemService()
+_events = JobEventsService()
 
 @router.get("")
 def list_jobs(
@@ -62,7 +65,30 @@ def get_job(job_id: str) -> dict:
     job = _jobs.get(job_id)
     if job is None:
         raise ApiError(code="NOT_FOUND", message="Job not found.", status_code=404)
-    return job.to_api_dict()
+    payload = job.to_api_dict()
+    if job.job_type == JOB_TYPE_AUDIO_ANALYSIS_PIPELINE:
+        stage_counts = _items.pipeline_stage_counts(job_id)
+        payload["stages"] = {
+            stage: {status: stage_counts.get(stage, {}).get(status, 0) for status in STAGE_STATUSES}
+            for stage in ALL_PIPELINE_STAGES
+        }
+    return payload
+
+
+@router.get("/{job_id}/events")
+def list_job_events(
+    job_id: str,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    event_type: str | None = Query(default=None),
+) -> dict:
+    job = _jobs.get(job_id)
+    if job is None:
+        raise ApiError(code="NOT_FOUND", message="Job not found.", status_code=404)
+    events = _events.list_events(
+        job_id, limit=limit, offset=offset, event_type=event_type
+    )
+    return {"job_id": job_id, "events": events, "count": len(events)}
 
 
 @router.get("/{job_id}/items")

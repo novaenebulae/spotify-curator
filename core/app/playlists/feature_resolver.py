@@ -58,9 +58,6 @@ _ADVANCED_FALLBACK: dict[str, str] = {
     "instrumentalness": "instrumental_focus_score",
 }
 
-_CONSUMER_PHASE = 5
-
-
 class FeatureResolver:
     """Load normalized TrackFeatureView rows for playlist engine consumers."""
 
@@ -147,11 +144,14 @@ class FeatureResolver:
         self, row: TrackAdvancedFeature, *, feature_name: str | None = None
     ) -> FeatureValue:
         name = feature_name or row.feature_name
-        warnings: list[str] = []
-        if row.model_name:
-            warnings.append(f"model_name={row.model_name}")
-        if row.pipeline_version:
-            warnings.append(f"pipeline_version={row.pipeline_version}")
+        provenance = {
+            "model_name": row.model_name,
+            "model_version": row.model_version,
+            "model_hash": row.model_hash,
+            "pipeline_version": row.pipeline_version,
+            "aggregation_method": row.aggregation_method,
+            "feature_source_detail": row.model_name,
+        }
 
         if row.status == "model_missing":
             return FeatureValue(
@@ -159,7 +159,7 @@ class FeatureResolver:
                 status="model_missing",  # type: ignore[arg-type]
                 missing_reason="MODEL_MISSING",
                 source=row.source,
-                warnings=warnings,
+                **provenance,
             )
         value: Any = row.value_float
         if row.feature_name == "genre_discogs_519_top_k" and row.value_json:
@@ -181,7 +181,7 @@ class FeatureResolver:
                 status="missing",
                 missing_reason="FEATURE_MISSING",
                 source=row.source,
-                warnings=warnings,
+                **provenance,
             )
 
         status: str = "available"
@@ -209,7 +209,7 @@ class FeatureResolver:
             source=row.source,
             status=status,  # type: ignore[arg-type]
             missing_reason=missing_reason,
-            warnings=warnings,
+            **provenance,
         )
 
     def _load_tracks(self, session: Session, track_ids: list[int]) -> dict[int, tuple]:
@@ -357,10 +357,14 @@ class FeatureResolver:
         except (json.JSONDecodeError, ValueError):
             return
 
-        warnings: list[str] = [
-            f"model_name={embedding_row.model_name}",
-            f"pipeline_version={embedding_row.pipeline_version or ''}",
-        ]
+        provenance = {
+            "model_name": embedding_row.model_name,
+            "model_version": embedding_row.model_version,
+            "model_hash": embedding_row.model_hash,
+            "pipeline_version": embedding_row.pipeline_version,
+            "aggregation_method": embedding_row.aggregation_method,
+            "feature_source_detail": embedding_row.model_name,
+        }
         conf = embedding_row.confidence
         status: str = "available"
         if embedding_row.status == "partial":
@@ -374,7 +378,7 @@ class FeatureResolver:
             confidence=conf,
             source="track_embeddings",
             status=status,  # type: ignore[arg-type]
-            warnings=[w for w in warnings if w],
+            **provenance,
         )
         timbre = vector[:TIMBRE_EMBEDDING_DIM]
         features["timbre_embedding"] = FeatureValue(
@@ -383,7 +387,8 @@ class FeatureResolver:
             confidence=conf,
             source="track_embeddings",
             status=status,  # type: ignore[arg-type]
-            warnings=warnings + [f"timbre_dims={len(timbre)}"],
+            warnings=[f"timbre_dims={len(timbre)}"],
+            **provenance,
         )
 
     def _pick_row(
@@ -563,15 +568,16 @@ class FeatureResolver:
         self._apply_embedding_features(features, embedding_row)
         self._apply_advanced_features(features, advanced_by_name)
 
+        active_phase = self._registry.ACTIVE_PHASE
         for desc in self._registry.list_all_descriptors():
-            if desc.phase_available <= _CONSUMER_PHASE or desc.name in features:
+            if desc.name in features:
                 continue
             if desc.name in advanced_by_name:
                 features[desc.name] = self._feature_value_from_advanced(
                     advanced_by_name[desc.name]
                 )
                 continue
-            if desc.phase_available > 6:
+            if desc.phase_available > active_phase:
                 features[desc.name] = FeatureValue(
                     name=desc.name,
                     status="not_available_yet",

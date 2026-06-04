@@ -46,6 +46,7 @@ class ReservedJobItem:
     segment_id: int | None
     input_json: dict[str, Any]
     attempt_count: int
+    stage_name: str | None = None
 
 
 class JobItemService:
@@ -225,7 +226,7 @@ class JobItemService:
                     text(
                         f"""
                         SELECT i.id, i.job_id, i.item_type, i.track_id, i.segment_id,
-                               i.input_json, i.attempt_count
+                               i.input_json, i.attempt_count, i.stage_name
                         FROM job_items i
                         INNER JOIN jobs j ON j.id = i.job_id
                         WHERE i.status IN ('pending', 'rate_limited')
@@ -287,6 +288,7 @@ class JobItemService:
             segment_id=row[4],
             input_json=input_json,
             attempt_count=int(row[6]),
+            stage_name=row[7] if len(row) > 7 else None,
         )
 
     def _reserve_pipeline_stage_item(
@@ -308,7 +310,7 @@ class JobItemService:
                     text(
                         """
                         SELECT i.id, i.job_id, i.item_type, i.track_id, i.segment_id,
-                               i.input_json, i.attempt_count
+                               i.input_json, i.attempt_count, i.stage_name
                         FROM job_items i
                         INNER JOIN jobs j ON j.id = i.job_id
                         WHERE i.status IN ('pending', 'rate_limited')
@@ -371,6 +373,13 @@ class JobItemService:
                 session.commit()
                 self.recompute_job_progress(session, row[1])
                 session.commit()
+                self._emit_stage_started(
+                    job_id=row[1],
+                    item_id=row[0],
+                    stage_name=stage_name,
+                    track_id=row[3],
+                    segment_id=row[4],
+                )
             except Exception:
                 conn.execute(text("ROLLBACK"))
                 raise
@@ -384,6 +393,103 @@ class JobItemService:
             segment_id=row[4],
             input_json=input_json,
             attempt_count=int(row[6]),
+            stage_name=row[7] if len(row) > 7 else stage_name,
+        )
+
+    def _emit_stage_started(
+        self,
+        *,
+        job_id: str,
+        item_id: str,
+        stage_name: str,
+        track_id: int | None,
+        segment_id: int | None,
+    ) -> None:
+        engine = get_engine()
+        with Session(engine) as session:
+            self._events.append(
+                session,
+                job_id=job_id,
+                item_id=item_id,
+                event_type="stage_started",
+                message=f"Stage {stage_name} started",
+                context={
+                    "stage_name": stage_name,
+                    "track_id": track_id,
+                    "segment_id": segment_id,
+                },
+                commit=True,
+            )
+
+    def emit_model_missing(
+        self,
+        *,
+        job_id: str,
+        item_id: str,
+        stage_name: str | None,
+        models_missing: list[str],
+    ) -> None:
+        if not models_missing:
+            return
+        engine = get_engine()
+        with Session(engine) as session:
+            self._events.append(
+                session,
+                job_id=job_id,
+                item_id=item_id,
+                event_type="model_missing",
+                level="warning",
+                message="One or more TensorFlow models are missing",
+                context={
+                    "stage_name": stage_name,
+                    "models_missing": models_missing,
+                },
+                commit=True,
+            )
+
+    def emit_cleanup_done(
+        self,
+        *,
+        job_id: str,
+        item_id: str,
+        result: dict[str, Any],
+    ) -> None:
+        engine = get_engine()
+        with Session(engine) as session:
+            self._events.append(
+                session,
+                job_id=job_id,
+                item_id=item_id,
+                event_type="cleanup_done",
+                message="Audio cleanup finished",
+                context={
+                    "deleted_files": result.get("deleted_files", 0),
+                    "freed_bytes": result.get("freed_bytes", 0),
+                    "skipped": result.get("skipped", False),
+                    "reason": result.get("reason"),
+                },
+                commit=True,
+            )
+
+    def record_pipeline_stage_created(
+        self,
+        session: Session,
+        *,
+        job_id: str,
+        track_count: int,
+        pipeline_mode: str,
+    ) -> None:
+        stage_counts = self._items.count_by_stage_name(session, job_id)
+        self._events.append(
+            session,
+            job_id=job_id,
+            event_type="stage_created",
+            message="Analysis pipeline stages created",
+            context={
+                "track_count": track_count,
+                "pipeline_mode": pipeline_mode,
+                "stage_item_counts": stage_counts,
+            },
         )
 
     def mark_success(
@@ -461,6 +567,24 @@ class JobItemService:
                 message=error_message,
                 context={"error_code": error_code},
             )
+            if item.item_type == ITEM_TYPE_ANALYSIS_PIPELINE_STAGE:
+                stage_ctx: dict[str, Any] = {
+                    "error_code": error_code,
+                    "retryable": retryable,
+                }
+                if item.stage_name:
+                    stage_ctx["stage_name"] = item.stage_name
+                if item.track_id is not None:
+                    stage_ctx["track_id"] = item.track_id
+                self._events.append(
+                    session,
+                    job_id=item.job_id,
+                    item_id=item_id,
+                    event_type="stage_failed",
+                    level="error",
+                    message=error_message,
+                    context=stage_ctx,
+                )
             session.commit()
             if status == "failed":
                 self.recompute_job_progress(session, item.job_id)
@@ -585,6 +709,12 @@ class JobItemService:
                 job.status = "succeeded"
         if job.finished_at is None:
             job.finished_at = datetime.now(tz=UTC).replace(tzinfo=None)
+        total = sum(counts.values())
+        terminal = sum(counts.get(s, 0) for s in TERMINAL_ITEM_STATUSES)
+        if preserve_cancelled:
+            job.current_step = "cancelled"
+        elif total > 0:
+            job.current_step = f"completed {terminal}/{total}"
         if failed > 0 and not job.last_error:
             sample = self._items.first_failed_for_job(session, job.id)
             if sample and sample.error_message:
@@ -655,9 +785,13 @@ class JobItemService:
     def cancel_pending_for_job(self, job_id: str) -> int:
         now = datetime.now(tz=UTC).replace(tzinfo=None)
         engine = get_engine()
+        pipeline_job = False
         with Session(engine) as session:
-            count = self._items.cancel_pending_for_job(session, job_id, now=now)
             job = session.get(Job, job_id)
+            pipeline_job = (
+                job is not None and job.job_type == JOB_TYPE_AUDIO_ANALYSIS_PIPELINE
+            )
+            count = self._items.cancel_non_terminal_for_job(session, job_id, now=now)
             if job is not None:
                 job.status = "cancelled"
                 job.finished_at = now
@@ -672,6 +806,13 @@ class JobItemService:
                     job.result_json = json.dumps(
                         self._build_terminal_result_json(session, job, counts)
                     )
+                self._events.append(
+                    session,
+                    job_id=job_id,
+                    event_type="cancelled",
+                    message="Job cancelled by user",
+                    context={"cancelled_items": count},
+                )
             session.commit()
         with Session(engine) as session:
             job = session.get(Job, job_id)
@@ -681,11 +822,19 @@ class JobItemService:
                     counts.get("pending", 0)
                     + counts.get("running", 0)
                     + counts.get("rate_limited", 0)
+                    + counts.get("blocked", 0)
                 )
                 if pending == 0 and sum(counts.values()) > 0:
                     self._apply_terminal_job_result(session, job, counts)
                     session.commit()
+        if pipeline_job:
+            self._maybe_refresh_pipeline_dependencies(job_id)
         return count
+
+    def pipeline_stage_counts(self, job_id: str) -> dict[str, dict[str, int]]:
+        engine = get_engine()
+        with Session(engine) as session:
+            return self._items.count_by_stage_name(session, job_id)
 
     def list_items(self, job_id: str, *, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
         engine = get_engine()
@@ -702,11 +851,13 @@ class JobItemService:
             job = session.get(Job, job_id)
             if job is None or job.job_type != JOB_TYPE_AUDIO_ANALYSIS_PIPELINE:
                 return
+        from app.audio.pipeline.audio_cleanup import PipelineAudioCleanupService
         from app.audio.pipeline.feature_aggregation import PipelineFeatureAggregationService
         from app.audio.pipeline.orchestrator import AnalysisPipelineOrchestrator
 
         AnalysisPipelineOrchestrator(items=self).refresh_dependencies(job_id)
         PipelineFeatureAggregationService(items=self).try_run_pending_for_job(job_id)
+        PipelineAudioCleanupService(items=self).try_run_pending_for_job(job_id)
 
 
 def _item_to_dict(row: JobItem) -> dict[str, Any]:

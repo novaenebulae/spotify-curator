@@ -6,6 +6,8 @@ services:
     ports:
       - "127.0.0.1:8765:8765"
     environment:
+      # Ensure `app` is importable when running ad-hoc scripts (python scripts/x.py).
+      - PYTHONPATH=/app
       # Never interpolate host DATABASE_URL (Windows Alembic paths break the named volume).
       - DATABASE_URL=sqlite:////app/data/spotify_curator.sqlite
       - SQLITE_JOURNAL_MODE=${SQLITE_JOURNAL_MODE:-WAL}

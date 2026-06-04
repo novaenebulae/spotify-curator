@@ -185,7 +185,7 @@ valence_tf
 energy_proxy
 ```
 
-**État juin 2026 (6.6–6.7 livrés)** : descriptors phase 6 dans `FeatureRegistry` ; persistance `track_embeddings` (vecteurs) et `track_advanced_features` (classifiers, genre, `energy_proxy`). `FeatureResolver` charge embeddings (`style_embedding`, `timbre_embedding`), genre Discogs519, fallbacks ReccoBeats → proxies locaux, et statut `model_missing` si modèle absent. Inférence TF sur WAV reste stub tant que les `.pb` ne sont pas branchés.
+**État juin 2026 (6.6–6.8 livrés)** : descriptors phase 6 dans `FeatureRegistry` ; persistance `track_embeddings` (vecteurs) et `track_advanced_features` (classifiers, genre, `energy_proxy`). `FeatureResolver` charge embeddings (`style_embedding`, `timbre_embedding`), genre Discogs519, fallbacks ReccoBeats → proxies locaux, et statut `model_missing` si modèle absent. L'inférence Essentia TensorFlow réelle sur WAV est livrée en 6.8B (`inference_mode="real"`, garde stub `STUB_INFERENCE_FORBIDDEN` hors test). Le moteur de playlists consomme désormais ces features (voir `FeatureRegistry.ACTIVE_PHASE`, §3.7).
 
 ### 3.5 Features phase 7 (clustering)
 
@@ -213,6 +213,16 @@ danceability_local → danceability_tf
 ```
 
 Les alias doivent être résolus avant validation des règles.
+
+### 3.7 Phase active et consommation complète
+
+`FeatureRegistry.ACTIVE_PHASE` (= 6 en juin 2026) déclare la phase la plus avancée dont les features ont un producteur réel. Le contrat est en **consommation complète** :
+
+- une feature dont `phase_available <= ACTIVE_PHASE` et présente dans `TrackFeatureView` est consommée par le playlist engine (filtres + scoring) ;
+- une feature `phase_available <= ACTIVE_PHASE` mais absente pour la piste retourne `missing` (gérée par la politique features manquantes, sans crash) ;
+- une feature `phase_available > ACTIVE_PHASE` (ex. `embedding_similarity`, `mood_dark_score`) retourne `not_available_yet` → warning `FEATURE_NOT_AVAILABLE_YET`.
+
+`ACTIVE_PHASE` est l'unique levier : il avance avec les phases (7 clustering, 8 moteur avancé) sans modifier le moteur, qui hérite ainsi automatiquement des nouvelles features.
 
 ---
 
@@ -286,6 +296,13 @@ class FeatureValue:
     status: str
     missing_reason: str | None
     warnings: list[str]
+    # Provenance structurée (phase 6) — remplace les chaînes "model_name=..." des warnings :
+    model_name: str | None
+    model_version: str | None
+    model_hash: str | None
+    pipeline_version: str | None
+    aggregation_method: str | None
+    feature_source_detail: str | None
 
 class TrackFeatureView:
     track_id: int

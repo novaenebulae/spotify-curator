@@ -111,6 +111,80 @@ def test_handoff_unblocks_analysis_before_all_downloads_done(tmp_path, monkeypat
     assert downloads[1]["status"] in ("pending", "running")
 
 
+def _planned_deezer_preview() -> dict:
+    planned = _planned_a()
+    planned["source"] = "deezer_preview"
+    planned["source_quality"] = "deezer_preview"
+    return planned
+
+
+def test_pipeline_deezer_preview_download_uses_stored_url(tmp_path, monkeypatch) -> None:
+    from app.database.repositories.track_previews import TrackPreviewsRepository
+
+    db_path = tmp_path / "pipeline_deezer_dl.sqlite"
+    cache_root = tmp_path / "cache"
+    cache_root.mkdir()
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
+    monkeypatch.setenv("CACHE_DIR", str(cache_root))
+    reset_engine()
+    init_db()
+
+    preview_url = "https://cdnt-preview.dzcdn.net/test.mp3?hdnea=exp=9999999999"
+    engine = get_engine()
+    with Session(engine) as session:
+        _seed_track(session, 1)
+        TrackPreviewsRepository().upsert(
+            session,
+            track_id=1,
+            provider="deezer",
+            fields={
+                "preview_url": preview_url,
+                "provider_track_id": "99",
+                "is_available": True,
+                "match_confidence": 1.0,
+            },
+        )
+        session.commit()
+
+    orch = AnalysisPipelineOrchestrator()
+    job_id = orch.create_pipeline_job(
+        [TrackSegmentPlan(track_id=1, segment_ids=[None], planned_segments=(_planned_deezer_preview(),))],
+        include_tensorflow=False,
+    )
+
+    captured: dict[str, str] = {}
+
+    def _fake_download(*_args, **kwargs):
+        captured["preview_url"] = kwargs["preview_url"]
+        rel = f"audio_segments/1/{job_id}/deezer.wav"
+        path = cache_root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"\x00\x01")
+        return rel, "deadbeef"
+
+    monkeypatch.setattr(
+        "app.audio.pipeline.segment_download.download_deezer_preview_segment",
+        _fake_download,
+    )
+    monkeypatch.setattr(
+        "app.workers.audio_downloader_worker.ensure_fresh_deezer_preview_url",
+        lambda *_a, **kw: kw["preview_url"],
+    )
+
+    items = JobItemService()
+    reserved = items.reserve_next(worker_id="dl-deezer", worker_type="audio_downloader")
+    assert reserved is not None
+
+    worker = AudioDownloaderWorker(use_test_provider=False)
+    worker.process_item(reserved)
+
+    download = next(
+        i for i in items.list_items(job_id) if i["stage_name"] == STAGE_SEGMENT_DOWNLOAD
+    )
+    assert download["status"] == "success"
+    assert captured.get("preview_url") == preview_url
+
+
 def test_pipeline_downloader_handoff_with_stub_provider(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "pipeline_dl.sqlite"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")

@@ -51,6 +51,23 @@ class AudioAnalysisRequest(BaseModel):
     require_existing_segments: bool = True
 
 
+class AdvancedAnalysisRequest(BaseModel):
+    track_ids: list[int] | None = None
+    filter: dict | None = None
+    only_missing: bool = True
+    force_refresh: bool = False
+    retry_failed: bool = False
+    limit: int | None = None
+    analysis_mode: str = "fast"
+    strategy: str | None = None
+    segment_duration_seconds: float | None = None
+    include_lowlevel: bool = True
+    include_tensorflow: bool = True
+    pipeline_mode: str = "streaming"
+    model_profile: str = "phase6-recommended"
+    require_real_tensorflow: bool = False
+
+
 class AudioJobResponse(BaseModel):
     job_id: str
     status: str

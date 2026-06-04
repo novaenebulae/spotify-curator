@@ -334,6 +334,14 @@ _ALL_DESCRIPTORS = (
 
 _ALIASES: dict[str, str] = {
     "tempo": "bpm",
+    # Phase 6 advanced-feature aliases (see docs/18 section 3.6).
+    "genre_discogs519": "genre_discogs_519",
+    "mood_electronic": "electronic_profile_score",
+    "mood_acoustic": "acoustic_profile_score",
+    "acoustic": "acoustic_profile_score",
+    "instrumental": "instrumental_focus_score",
+    "valence_local": "valence_tf",
+    "danceability_local": "danceability_tf",
 }
 
 # Scoring-only alias resolved at score time, not a stored feature row.
@@ -346,6 +354,11 @@ class FeatureRegistry:
     """Canonical feature descriptors for playlist engine and clustering."""
 
     ENGINE_VERSION = "playlist_engine_v1"
+
+    # Most advanced phase whose features have a real producer. Consumers treat
+    # features with phase_available <= ACTIVE_PHASE as usable; beyond it warns
+    # FEATURE_NOT_AVAILABLE_YET. Advance this as phases 7 (clustering) / 8 land.
+    ACTIVE_PHASE = 6
 
     def __init__(self) -> None:
         self._by_name: dict[str, FeatureDescriptor] = {}
@@ -387,17 +400,19 @@ class FeatureRegistry:
             return True
         return self.resolve_name(name) in {d.name for d in _ALL_DESCRIPTORS}
 
-    def is_available_in_phase(self, name: str, *, phase: int = 5) -> bool:
+    def is_available_in_phase(self, name: str, *, phase: int | None = None) -> bool:
         desc = self.get(name)
         if desc is None:
             return False
-        return desc.phase_available <= phase and not desc.is_alias
+        target = self.ACTIVE_PHASE if phase is None else phase
+        return desc.phase_available <= target and not desc.is_alias
 
-    def is_future(self, name: str, *, phase: int = 5) -> bool:
+    def is_future(self, name: str, *, phase: int | None = None) -> bool:
         desc = self.get(name)
         if desc is None:
             return False
-        return desc.phase_available > phase
+        target = self.ACTIVE_PHASE if phase is None else phase
+        return desc.phase_available > target
 
     def list_all_descriptors(self) -> list[FeatureDescriptor]:
         out: list[FeatureDescriptor] = []

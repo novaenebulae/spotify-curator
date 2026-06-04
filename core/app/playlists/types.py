@@ -41,6 +41,13 @@ class FeatureValue:
     status: FeatureStatus = "missing"
     missing_reason: str | None = None
     warnings: list[str] = field(default_factory=list)
+    # Structured provenance (phase 6); replaces the "model_name=..." warning strings.
+    model_name: str | None = None
+    model_version: str | None = None
+    model_hash: str | None = None
+    pipeline_version: str | None = None
+    aggregation_method: str | None = None
+    feature_source_detail: str | None = None
 
 
 @dataclass

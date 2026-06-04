@@ -7,10 +7,12 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database.engine import get_engine
+from app.features.advanced_coverage import AdvancedFeatureCoverageService
 from app.features.coverage import FeatureCoverageService
 from app.features.enrichment import ReccoBeatsEnrichmentService
 from app.features.merge import FeatureMergeService
 from app.features.schemas import (
+    AdvancedCoverageResponse,
     CoverageResponse,
     EnrichJobResponse,
     ReccoBeatsEnrichRequest,
@@ -22,6 +24,7 @@ from app.jobs.status_mapping import map_job_status
 router = APIRouter(prefix="/features")
 _enrichment = ReccoBeatsEnrichmentService()
 _coverage = FeatureCoverageService()
+_advanced_coverage = AdvancedFeatureCoverageService()
 _merge = FeatureMergeService()
 _track_features = TrackFeaturesService()
 
@@ -51,10 +54,29 @@ def start_reccobeats_enrichment(body: ReccoBeatsEnrichRequest) -> EnrichJobRespo
 
 
 @router.get("/tracks/{track_id}", response_model=TrackFeaturesResponse)
-def get_track_features(track_id: int) -> TrackFeaturesResponse:
+def get_track_features(
+    track_id: int,
+    include_embedding_vector: bool = Query(default=False),
+) -> TrackFeaturesResponse:
     engine = get_engine()
     with Session(engine) as session:
-        return _track_features.get_track_features(session, track_id)
+        return _track_features.get_track_features(
+            session,
+            track_id,
+            include_embedding_vector=include_embedding_vector,
+        )
+
+
+@router.get("/advanced/coverage", response_model=AdvancedCoverageResponse)
+def get_advanced_feature_coverage(
+    recent_failures_limit: int = Query(default=20, ge=1, le=100),
+) -> AdvancedCoverageResponse:
+    engine = get_engine()
+    with Session(engine) as session:
+        return _advanced_coverage.get_coverage(
+            session,
+            recent_failures_limit=recent_failures_limit,
+        )
 
 
 @router.get("/coverage", response_model=CoverageResponse)

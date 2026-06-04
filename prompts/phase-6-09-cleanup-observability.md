@@ -1,5 +1,6 @@
 # Prompt Cursor — Phase 6.9 — Cleanup, observabilité et robustesse
 
+**Statut : implémenté (6.9c backend).** Voir backlog [`backlog/phase-6.md`](../backlog/phase-6.md) §6.9c, docs [`06-api-contract.md`](../docs/06-api-contract.md) (`GET /jobs/{id}/events`), [`10-testing-strategy.md`](../docs/10-testing-strategy.md). UI : 6.9b.
 
 Tu travailles sur le projet Spotify Curator.
 

@@ -12,8 +12,15 @@ from __future__ import annotations
 
 import argparse
 import sys
+from pathlib import Path
 
-from app.models_registry import ModelManager, ModelManagerError
+# Make `app` importable when launched as `python scripts/x.py` (script dir, not
+# the core root, lands on sys.path). Mirrors tests/conftest.py.
+_CORE_ROOT = Path(__file__).resolve().parents[1]
+if str(_CORE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_CORE_ROOT))
+
+from app.models_registry import ModelManager, ModelManagerError  # noqa: E402
 
 PROFILES = ("phase6-minimal", "phase6-recommended", "phase6-full")
 

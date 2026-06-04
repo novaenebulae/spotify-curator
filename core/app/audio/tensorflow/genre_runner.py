@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.audio.tensorflow.backend import TensorflowInferenceBackend, model_identity
+from app.audio.tensorflow.errors import InferenceError
 from app.audio.tensorflow.guard import ensure_stub_allowed, stubs_allowed
 from app.audio.tensorflow.model_map import (
     GENRE_EXTRACTOR_KEY,
@@ -61,21 +62,30 @@ class GenreRunner:
         if not available:
             missing.append(GENRE_MODEL_KEY)
         elif self._backend is not None:
-            activations = self._backend.classifier_activations(
-                wav_path, extractor_key=GENRE_EXTRACTOR_KEY, head_key=GENRE_HEAD_KEY
-            )
-            ranked = sorted(activations, key=lambda pair: pair[1], reverse=True)[:k]
-            model_name, model_version = model_identity(self._mm, GENRE_HEAD_KEY)
-            outputs[GENRE_MODEL_KEY] = {
-                "model_key": GENRE_MODEL_KEY,
-                "model_status": "available",
-                "top_k": [{"label": label, "score": float(score)} for label, score in ranked],
-                "model_name": model_name,
-                "model_version": model_version,
-                "inference_mode": "real",
-                "wav_path_used": True,
-            }
-            real_used = True
+            try:
+                activations = self._backend.classifier_activations(
+                    wav_path, extractor_key=GENRE_EXTRACTOR_KEY, head_key=GENRE_HEAD_KEY
+                )
+            except (InferenceError, Exception) as exc:  # noqa: BLE001
+                if _is_audio_too_short(exc):
+                    missing.append(GENRE_MODEL_KEY)
+                else:
+                    raise
+            else:
+                ranked = sorted(activations, key=lambda pair: pair[1], reverse=True)[:k]
+                model_name, model_version = model_identity(self._mm, GENRE_HEAD_KEY)
+                outputs[GENRE_MODEL_KEY] = {
+                    "model_key": GENRE_MODEL_KEY,
+                    "model_status": "available",
+                    "top_k": [
+                        {"label": label, "score": float(score)} for label, score in ranked
+                    ],
+                    "model_name": model_name,
+                    "model_version": model_version,
+                    "inference_mode": "real",
+                    "wav_path_used": True,
+                }
+                real_used = True
         elif stubs_allowed():
             model_name, model_version = model_identity(self._mm, GENRE_HEAD_KEY)
             outputs[GENRE_MODEL_KEY] = {
@@ -95,6 +105,11 @@ class GenreRunner:
             models_missing=missing,
             inference_mode=_resolve_mode(real_used, stub_used),
         )
+
+
+def _is_audio_too_short(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return "too short" in msg or "signal is too short" in msg
 
 
 def _resolve_mode(real_used: bool, stub_used: bool) -> str:

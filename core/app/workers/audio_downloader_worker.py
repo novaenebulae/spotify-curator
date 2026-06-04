@@ -310,6 +310,22 @@ class AudioDownloaderWorker(BaseWorker):
                 candidates = self._provider.resolve(ctx)  # type: ignore[union-attr]
                 selected = next((c for c in candidates if c.selected), None)
 
+            deezer_preview_url: str | None = None
+            if planned.source == "deezer_preview":
+                with Session(engine) as session:
+                    preview_row = self._previews.get_for_track_provider(
+                        session, track_id=item.track_id, provider="deezer"
+                    )
+                    if preview_row and preview_row.preview_url:
+                        deezer_preview_url = ensure_fresh_deezer_preview_url(
+                            session,
+                            track_id=item.track_id,
+                            preview_url=preview_row.preview_url,
+                            provider_track_id=preview_row.provider_track_id,
+                            previews=self._previews,
+                        )
+                        session.commit()
+
             with Session(engine) as session:
                 download_id = create_audio_download_job_row(
                     session,
@@ -327,7 +343,7 @@ class AudioDownloaderWorker(BaseWorker):
                     provider=self._provider,
                     is_test=self._is_test,
                     selected_source=selected,
-                    deezer_preview_url=None,
+                    deezer_preview_url=deezer_preview_url,
                     download_job_id=download_id,
                 )
                 segment_index = inp.get("segment_index")

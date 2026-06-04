@@ -38,3 +38,30 @@ def test_registry_phase6_embedding_features() -> None:
     assert reg.is_known("style_embedding")
     assert reg.is_known("genre_discogs_519_top_k")
     assert reg.is_available_in_phase("timbre_embedding", phase=6)
+
+
+def test_registry_phase6_aliases_resolve() -> None:
+    reg = FeatureRegistry()
+    expected = {
+        "genre_discogs519": "genre_discogs_519",
+        "mood_electronic": "electronic_profile_score",
+        "mood_acoustic": "acoustic_profile_score",
+        "acoustic": "acoustic_profile_score",
+        "instrumental": "instrumental_focus_score",
+        "valence_local": "valence_tf",
+        "danceability_local": "danceability_tf",
+    }
+    for alias, canonical in expected.items():
+        assert reg.is_known(alias)
+        assert reg.resolve_name(alias) == canonical
+        assert reg.get(alias) is not None
+
+
+def test_registry_active_phase_makes_phase6_usable() -> None:
+    reg = FeatureRegistry()
+    assert reg.ACTIVE_PHASE == 6
+    # Phase-6 features are consumable now (not "future"); phase-7 still future.
+    assert not reg.is_future("mood_happy_score")
+    assert not reg.is_future("vocal_presence_score")
+    assert reg.is_future("mood_dark_score")
+    assert reg.is_future("embedding_similarity")

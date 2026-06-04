@@ -41,7 +41,7 @@ Ce document décrit la **cible** d'exécution et l'**état réel** du dépôt (p
 | Exécution audio / previews | `job_items` + workers Docker ([`core/app/workers/`](../core/app/workers/), [`JobItemService`](../core/app/jobs/items/service.py)) | Idem + scaling / `job-worker` |
 | Tables `job_items`, `worker_heartbeats`, `job_events` | **Présentes** (migration `0006_phase4_audio_local`) | Enrichissement events HTTP, reprise `pending` après crash |
 | ReccoBeats HTTP | Batch `GET /v1/audio-features?ids=` par chunks ≤40, **séquentiel** entre chunks | Concurrence HTTP parallèle entre chunks (`RECCOBEATS_CONCURRENCY`) |
-| API jobs | `GET /jobs`, `GET /jobs/{id}`, `POST .../cancel`, `GET .../items`, `GET /jobs/insights/latest`, `GET /workers` | + `GET /jobs/{id}/events`, payload enrichi avec compteurs items |
+| API jobs | `GET /jobs`, `GET /jobs/{id}`, `POST .../cancel`, `GET .../items`, `GET .../events`, `GET /jobs/insights/latest`, `GET /workers` | payload enrichi avec compteurs items / stages live |
 | Reprise après crash | Locks items expirés → `pending` ; jobs `running` orphelins → `failed` au démarrage API | Reprise automatique des items orphelins en `pending` |
 
 Voir [`backlog/phase-3.md`](../backlog/phase-3.md) (dette ReccoBeats), [`backlog/phase-4.md`](../backlog/phase-4.md) (audio livré) et [`backlog/phase-6.md`](../backlog/phase-6.md) (pipeline parallèle + TensorFlow).
@@ -383,7 +383,7 @@ Cette table est utile en phase 4+ et phase 9, notamment pour le rapport système
 
 ### 4.4 Table `job_events`
 
-> **Implémentée** en base si `JOB_EVENTS_ENABLED=true` ([`JobEventsService`](../core/app/jobs/items/events.py)). **Pas d’endpoint HTTP** `GET /jobs/{id}/events` (cible).
+> **Implémentée** en base si `JOB_EVENTS_ENABLED=true` ([`JobEventsService`](../core/app/jobs/items/events.py)). **HTTP** : `GET /api/v1/jobs/{job_id}/events` (6.9c, voir [`06-api-contract.md`](06-api-contract.md)).
 
 | Champ | Type | Notes |
 |---|---|---|
@@ -1329,7 +1329,7 @@ Préfixe API : `/api/v1/jobs`.
 | `GET /api/v1/jobs/{job_id}/items` | **Implémenté** |
 | `GET /api/v1/jobs/insights/latest` | **Implémenté** (derniers jobs par type enrichissement/audio) |
 | `GET /api/v1/workers` | **Implémenté** |
-| `GET /api/v1/jobs/{job_id}/events` | **Cible** (events en DB seulement) |
+| `GET /api/v1/jobs/{job_id}/events` | **Implémenté** (`limit`, `offset`, `event_type`) |
 
 La réponse de `GET /jobs/{id}` correspond à `JobStatus.to_api_dict()` (pas encore de champs `workers` / `items` embarqués — voir §15.3 cible).
 
@@ -1722,16 +1722,7 @@ Ajouter :
 - cleanup robuste ;
 - tests smoke Docker.
 
-## 21.4 Phase 6 — Clustering
-
-Ajouter :
-
-- worker clustering unique ;
-- job progress ;
-- cancellation minimale ;
-- persistance des runs.
-
-## 21.5 Phase 7 — Essentia TensorFlow
+## 21.4 Phase 6 — Essentia TensorFlow
 
 Ajouter :
 
@@ -1741,6 +1732,15 @@ Ajouter :
 - embeddings et moods ;
 - hash/version modèle ;
 - tests vector shape.
+
+## 21.5 Phase 7 — Clustering
+
+Ajouter :
+
+- worker clustering unique ;
+- job progress ;
+- cancellation minimale ;
+- persistance des runs.
 
 ## 21.6 Phase 9 — Packaging
 

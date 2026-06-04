@@ -125,6 +125,7 @@ class TrackFeatureAvailabilityOut(BaseModel):
     has_any_features: bool
     has_reccobeats: bool
     has_essentia_lowlevel: bool
+    has_essentia_tensorflow: bool = False
     other_sources_count: int = 0
 
 
@@ -133,3 +134,87 @@ class TrackFeaturesResponse(BaseModel):
     merged: TrackFeatureMergedOut | None = None
     sources: list[TrackFeatureSourceOut] = Field(default_factory=list)
     availability: TrackFeatureAvailabilityOut
+    advanced: EssentiaTensorFlowSourceOut | None = None
+
+
+class AdvancedScalarFeatureOut(BaseModel):
+    feature_name: str
+    value: float | str | None = None
+    confidence: float | None = None
+    status: str
+    model_name: str | None = None
+    model_version: str | None = None
+    pipeline_version: str | None = None
+    aggregation_method: str | None = None
+    missing_reason: str | None = None
+
+
+class AdvancedEmbeddingOut(BaseModel):
+    status: str
+    model_name: str | None = None
+    dimension: int | None = None
+    pipeline_version: str | None = None
+    aggregation_method: str | None = None
+    segments_used: int | None = None
+    confidence: float | None = None
+    vector: list[float] | None = None
+
+
+class AdvancedGenreOut(BaseModel):
+    label: str | None = None
+    score: float | None = None
+    top_k: list[dict] = Field(default_factory=list)
+
+
+class EssentiaTensorFlowSourceOut(BaseModel):
+    source_name: str = "essentia_tensorflow"
+    display_name: str = "Essentia TensorFlow"
+    status: str
+    scalar_features: list[AdvancedScalarFeatureOut] = Field(default_factory=list)
+    genre: AdvancedGenreOut | None = None
+    embedding: AdvancedEmbeddingOut | None = None
+
+
+class AdvancedCoverageFeatureOut(BaseModel):
+    feature_name: str
+    tracks_with_feature: int
+    success_count: int
+    model_missing_count: int = 0
+    failed_count: int = 0
+    missing_count: int = 0
+
+
+class AdvancedCoverageSummaryOut(BaseModel):
+    track_count: int
+    with_any_advanced_features: int
+    with_embeddings: int
+
+
+class AdvancedEmbeddingCoverageOut(BaseModel):
+    rows_count: int
+    tracks_with_embedding: int
+
+
+class AdvancedCoverageModelsSummaryOut(BaseModel):
+    real_inference_ready: bool
+    default_profile: str
+    missing_model_keys: list[str] = Field(default_factory=list)
+
+
+class AdvancedFailureOut(BaseModel):
+    track_id: int
+    title: str
+    artist_names: list[str] = Field(default_factory=list)
+    feature_name: str
+    model_name: str | None = None
+    status: str
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+class AdvancedCoverageResponse(BaseModel):
+    summary: AdvancedCoverageSummaryOut
+    features: list[AdvancedCoverageFeatureOut] = Field(default_factory=list)
+    embeddings: AdvancedEmbeddingCoverageOut
+    models_summary: AdvancedCoverageModelsSummaryOut
+    recent_failures: list[AdvancedFailureOut] = Field(default_factory=list)

@@ -33,7 +33,7 @@ def test_fast_prefers_deezer_preview() -> None:
     assert len(segs) == 1
     assert segs[0].segment_type == "DEEZER_PREVIEW"
     assert segs[0].source == "deezer_preview"
-    assert all(s.duration_seconds <= 30 for s in segs)
+    assert segs[0].duration_seconds == 30.0
 
 def test_fast_youtube_one_segment_fallback() -> None:
     segs, decision = plan_hybrid_for_track(

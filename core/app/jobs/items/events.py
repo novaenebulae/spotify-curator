@@ -42,3 +42,46 @@ class JobEventsService:
         )
         if commit:
             session.commit()
+
+    def list_events(
+        self,
+        job_id: str,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        event_type: str | None = None,
+    ) -> list[dict[str, Any]]:
+        from app.database.engine import get_engine
+
+        engine = get_engine()
+        with Session(engine) as session:
+            rows = self._repo.list_for_job(
+                session,
+                job_id,
+                limit=limit,
+                offset=offset,
+                event_type=event_type,
+            )
+            return [_event_to_dict(r) for r in rows]
+
+
+def _event_to_dict(row: object) -> dict[str, Any]:
+    from app.database.models_job_items import JobEvent
+
+    assert isinstance(row, JobEvent)
+    try:
+        context = json.loads(row.context_json or "{}")
+    except json.JSONDecodeError:
+        context = {}
+    if not isinstance(context, dict):
+        context = {}
+    return {
+        "id": row.id,
+        "job_id": row.job_id,
+        "item_id": row.item_id,
+        "level": row.level,
+        "event_type": row.event_type,
+        "message": row.message,
+        "context": redact_dict(context),
+        "created_at": row.created_at.isoformat() if row.created_at else None,
+    }

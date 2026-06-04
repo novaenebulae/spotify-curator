@@ -755,7 +755,7 @@ Réponse :
 
 Prépare un diff Spotify.
 
-## Phase 6 — Clustering
+## Phase 7 — Clustering
 
 ### `GET /clustering/profiles`
 
@@ -887,9 +887,11 @@ Réponse :
 
 ## Phase 6 — Analyse avancée
 
+**État juin 2026** : endpoints backend livrés (6.9a). Consommation **UI** (`/features`, `TrackFeaturesDrawer`) reportée en 6.9b — validation via curl/HTTP.
+
 ### `POST /audio/analysis/advanced`
 
-Crée un job `audio_analysis_pipeline`.
+**Implémenté.** Crée un job `audio_analysis_pipeline` (mode `streaming` par défaut : téléchargement segments → low-level → TensorFlow → agrégation → cleanup).
 
 Body :
 
@@ -918,19 +920,52 @@ Règles :
 
 ### `GET /features/advanced/coverage`
 
-Couverture embeddings, genres, moods, modèles manquants, échecs récents.
+**Implémenté.** Couverture par feature avancée, embeddings (compteurs sans vecteur), résumé modèles (`ModelManager`), échecs récents (`model_missing` / `failed`).
 
 ### Extension `GET /features/tracks/{track_id}`
 
-Source `essentia_tensorflow` avec champs moods, `genre_discogs_519_*`, embedding status dans `extended`.
+**Implémenté (partiel).** Champ racine `advanced` : scalaires TF, genre Discogs top-k (tronqué), statut embedding. Query `include_embedding_vector=true` pour inclure le vecteur (défaut : absent).
 
 ### `GET /embeddings/tracks/{track_id}`
 
-Détail embedding persisté (dimension, modèle, agrégation).
+Non implémenté — utiliser `GET /features/tracks/{id}?include_embedding_vector=true` ou reporté en 6.9b.
 
 ### Jobs — compteurs par stage
 
-`GET /jobs/{job_id}` peut exposer `items` par `stage_name` (pending/running/success/failed).
+**Implémenté.** `GET /jobs/{job_id}` inclut `stages` pour les jobs `audio_analysis_pipeline` (compteurs live, pas seulement en fin de job). Détail items : `GET /jobs/{job_id}/items`.
+
+### `GET /jobs/{job_id}/events`
+
+**Implémenté (6.9c).** Journal d'événements persistés (`job_events`, activé si `JOB_EVENTS_ENABLED=true`).
+
+Query : `limit` (défaut 50, max 200), `offset`, `event_type` (filtre optionnel).
+
+Réponse :
+
+```json
+{
+  "job_id": "job_...",
+  "count": 2,
+  "events": [
+    {
+      "id": 1,
+      "job_id": "job_...",
+      "item_id": "abc...",
+      "level": "info",
+      "event_type": "stage_started",
+      "message": "Stage segment_download started",
+      "context": { "stage_name": "segment_download", "track_id": 1, "segment_id": null },
+      "created_at": "2026-06-04T12:00:00"
+    }
+  ]
+}
+```
+
+Types courants : `stage_created`, `segment_ready`, `stage_started`, `stage_failed`, `model_missing`, `cleanup_done`, `completed`, `failed`, `cancelled`. Contexte redacted (pas de secrets).
+
+### Annulation pipeline
+
+**Implémenté (6.9c).** `POST /jobs/{job_id}/cancel` annule les items `pending`, `rate_limited` et **`blocked`**. Les items **`running`** restent en cours (sortie coopérative worker). Pour `audio_analysis_pipeline`, un refresh post-annulation tente agrégation + cleanup là où les prérequis le permettent.
 
 ### Erreurs phase 6
 

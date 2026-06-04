@@ -830,6 +830,16 @@ Chaque onglet doit conserver son état local si possible : recherche, page, filt
 - **Recent failures** : section repliable ; sources `reccobeats`, `essentia_lowlevel`, `deezer_preview`, `audio_download` ; colonne date ; bouton **Clear list** = masquage des échecs antérieurs (`failures_after` + `localStorage` `features_failures_cleared_at`).
 - Scrollbars des tableaux scrollables alignées sur le thème sombre (`app.css`).
 
+### 11.7 Features avancées / TensorFlow (planifié — backlog 6.9b)
+
+**Backend livré (6.9a)** : `POST /audio/analysis/advanced`, `GET /features/advanced/coverage`, `GET /models/status`, extension `GET /features/tracks/{id}` (`advanced`, `include_embedding_vector`). **UI non implémentée** dans cette livraison.
+
+Cible UI :
+
+- Écran `/features` : tuiles coverage TensorFlow, modèles manquants, bouton lancement analyse avancée, jobs `audio_analysis_pipeline`, failures par modèle.
+- `TrackFeaturesDrawer` : onglet **Advanced** (moods, genre top-k, statut embedding, `model_missing`).
+- Client : `modelsApi.ts` + extensions `featuresApi.ts` ; états loading / empty / error / offline.
+
 ---
 
 ## 12. Library — Onglet Tracks

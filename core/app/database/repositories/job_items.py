@@ -124,11 +124,15 @@ class JobItemsRepository:
         session.execute(update(JobItem).where(JobItem.id == item_id).values(**fields))
 
     def cancel_pending_for_job(self, session: Session, job_id: str, *, now: datetime) -> int:
+        return self.cancel_non_terminal_for_job(session, job_id, now=now)
+
+    def cancel_non_terminal_for_job(self, session: Session, job_id: str, *, now: datetime) -> int:
+        """Cancel queued pipeline/worker items. Running items finish cooperatively."""
         result = session.execute(
             update(JobItem)
             .where(
                 JobItem.job_id == job_id,
-                JobItem.status.in_(("pending", "rate_limited")),
+                JobItem.status.in_(("pending", "rate_limited", "blocked")),
             )
             .values(status="cancelled", finished_at=now, locked_by=None, locked_at=None)
         )

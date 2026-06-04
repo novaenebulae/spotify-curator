@@ -282,29 +282,29 @@
     }
   },
   {
-    "id": "low_vocal_phase7",
-    "label": "Low Vocal (phase 7 preview)",
+    "id": "dark_mood_phase7",
+    "label": "Dark Mood (phase 7 preview)",
     "warnings": ["FEATURE_NOT_AVAILABLE_YET"],
-    "description": "Uses future vocal scores — warnings only in phase 5.",
+    "description": "Uses the future mood_dark_score (phase 7) — warnings until delivered.",
     "rule": {
-      "name": "Low Vocal",
+      "name": "Dark Mood",
       "target_size": 50,
       "engine_version": "playlist_engine_v1",
       "source": { "liked_tracks": true },
       "filters": {
         "features": {
-          "vocal_presence_score": { "max": 0.3, "required": false }
+          "mood_dark_score": { "min": 0.6, "required": false }
         }
       },
       "weights": {
         "components": {
-          "instrumentalness": { "weight": 0.5 },
+          "mood_dark_score": { "weight": 0.5 },
           "energy": { "weight": 0.5 }
         }
       },
       "constraints": {},
       "ordering": { "mode": "score_desc" },
-      "spotify": { "playlist_name": "Low Vocal", "sync_mode": "add_only" }
+      "spotify": { "playlist_name": "Dark Mood", "sync_mode": "add_only" }
     }
   }
 ]

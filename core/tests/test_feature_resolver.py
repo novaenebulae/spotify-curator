@@ -147,9 +147,15 @@ def test_resolver_mood_from_advanced_and_model_missing(tmp_path, monkeypatch) ->
     assert happy is not None
     assert happy.status == "available"
     assert happy.value == 0.7
+    # Structured provenance fields populated (not stuffed into warnings).
+    assert happy.model_name == "mood_happy"
+    assert happy.pipeline_version == "tf_v1"
+    assert happy.feature_source_detail == "mood_happy"
+    assert not any(w.startswith("model_name=") for w in happy.warnings)
     approach = view.features.get("approachability")
     assert approach is not None
     assert approach.status == "model_missing"
+    assert approach.model_name == "approachability"
 
 
 def test_resolver_exposes_embeddings_and_genre(tmp_path, monkeypatch) -> None:
@@ -210,6 +216,9 @@ def test_resolver_exposes_embeddings_and_genre(tmp_path, monkeypatch) -> None:
     assert style.status == "available"
     assert isinstance(style.value, list)
     assert len(style.value) == 1280
+    assert style.model_name == "discogs_effnet_embeddings"
+    assert style.pipeline_version == "tf_v1"
+    assert not any(w.startswith("model_name=") for w in style.warnings)
 
     timbre = view.features.get("timbre_embedding")
     assert timbre is not None

@@ -23,12 +23,13 @@ La phase 6 n'est pas validable tant que :
 
 Reclassement des tâches :
 
-- 6.2 Handoff → **PARTIAL** tant que le pipeline n'est pas déclenchable par l'utilisateur.
-- 6.4 Worker TensorFlow → **PARTIAL** tant que l'inférence réelle n'est pas branchée.
-- 6.5 Model registry → **PARTIAL** tant qu'il n'y a pas de manifest/downloader/verifier.
-- 6.6 Embeddings + Genre Discogs519 → **PARTIAL** tant que les runners sont stub.
-- 6.7 Classifiers avancés → **PARTIAL** tant que les runners sont stub.
-- Ajout de tâches **bloquantes** : 6.8A (gestion modèles, downloader, vérification), 6.8B (inférence réelle), 6.8C (smoke tests inférence réelle).
+- 6.2 Handoff → **DONE** : `POST /api/v1/audio/analysis/advanced` déclenche le job `audio_analysis_pipeline` (mode streaming complet) ; déclenchement UI reporté en 6.9b.
+- 6.4 Worker TensorFlow → **DONE** : inférence réelle branchée en 6.8B (image worker reconstruite sur `python:3.11-slim` + wheel `essentia-tensorflow`).
+- 6.5 Model registry → **DONE** : manifest + downloader + verifier livrés via `ModelManager` en 6.8A.
+- 6.6 Embeddings + Genre Discogs519 → **DONE** : runners réels livrés en 6.8B.
+- 6.7 Classifiers avancés → **DONE** : runners réels livrés en 6.8B.
+- 6.8 FeatureRegistry/Resolver/TrackFeatureView → **DONE** : consommation complète activée (`FeatureRegistry.ACTIVE_PHASE = 6`), provenance structurée sur `FeatureValue`.
+- Tâches **bloquantes** ajoutées et livrées : 6.8A (gestion modèles, downloader, vérification), 6.8B (inférence réelle), 6.8C (smoke tests inférence réelle).
 
 Règles non négociables :
 
@@ -198,15 +199,17 @@ Livrables : migration `0009_phase6_job_items_pipeline_stages`, extension `job_it
 
 ## 6.2 — Handoff downloader → analyzers
 
-Statut : PARTIAL — le mécanisme de handoff existe, mais le pipeline n'est pas encore déclenchable par l'utilisateur.
+Statut : DONE
 
 Livrables : `ANALYSIS_PIPELINE_MODE`, `PipelineSegmentHandoffService`, `audio_downloader` pipeline segment path, consumers/cleanup gating, tests `test_analysis_pipeline_handoff.py`, `test_audio_cleanup.py`. Baseline : 205 pytest.
 
-Critères bloquants restants :
+Livrables complémentaires (6.9 backend) :
 
-- `AnalysisPipelineOrchestrator.create_pipeline_job` doit être appelé depuis `POST /api/v1/audio/analysis/advanced` (cf. 6.9), pas seulement depuis les tests.
-- Le mode streaming ne doit pas être limité aux tests.
-- L'UI doit déclencher le job `audio_analysis_pipeline`.
+- [`AdvancedAnalysisJobService`](../core/app/audio/advanced_analysis_job_service.py) + `POST /api/v1/audio/analysis/advanced` : résolution pistes, planification segments (`segment_ids=[None,…]` + `planned_segments`), création job `audio_analysis_pipeline` en mode `streaming` (download → low-level → TensorFlow → agrégation → cleanup).
+- [`PipelineAudioCleanupService`](../core/app/audio/pipeline/audio_cleanup.py) : exécution du stage `audio_cleanup` après agrégation (gating consommateurs via `AudioCleanupService`).
+- Tests : [`test_advanced_analysis_api.py`](../core/tests/test_advanced_analysis_api.py), [`test_jobs_pipeline_stages_live.py`](../core/tests/test_jobs_pipeline_stages_live.py).
+
+Reporté (6.9b UI) : bouton UI pour lancer l'analyse avancée.
 
 ### Sous-tâches
 
@@ -264,15 +267,15 @@ Livrables : réservation stage `essentia_lowlevel`, branche pipeline du worker, 
 
 ## 6.4 — Image et worker Essentia TensorFlow
 
-Statut : PARTIAL — le worker et l'image existent, mais l'inférence reste stub (pas d'inférence réelle branchée).
+Statut : DONE — l'inférence réelle est branchée via 6.8B. L'image worker a été reconstruite sur `python:3.11-slim` + wheel PyPI `essentia-tensorflow` (l'image de base MTG fournit un essentia sans TensorFlow, compilé pour Python 3.9, incompatible avec notre `>=3.11`). Voir [`docker/essentia-tensorflow-worker/Dockerfile`](../docker/essentia-tensorflow-worker/Dockerfile).
 
 Livrables : `docker/essentia-tensorflow-worker`, Compose profil `advanced-analysis`, `EssentiaTensorflowWorker`, `ModelRegistry`, `GET /api/v1/models/status`, tests registry/API/worker, smoke script. Baseline : 219+ pytest.
 
-Critères bloquants restants :
+Critères bloquants (satisfaits) :
 
 - le worker démarre sans modèle lourd obligatoire ;
 - le worker n'écrit aucune feature fake ;
-- le worker peut exécuter une vraie inférence sur WAV court lorsqu'au moins `phase6-minimal` est installé (cf. 6.8B) ;
+- le worker exécute une vraie inférence sur WAV court lorsqu'au moins `phase6-minimal` est installé (cf. 6.8B) ;
 - le worker ne lance pas un conteneur par piste.
 
 ### Sous-tâches
@@ -299,7 +302,7 @@ Critères bloquants restants :
 
 ## 6.5 — Model registry
 
-Statut : PARTIAL — le registry déclare les modèles, mais ne sait pas encore les télécharger/vérifier (manifest + downloader + verifier manquants).
+Statut : DONE — manifest + downloader + verifier livrés via `ModelManager` en 6.8A (le `ModelRegistry` legacy subsiste temporairement le temps de la migration).
 
 ### Sous-tâches
 
@@ -485,6 +488,8 @@ Statut : DONE
 
 Livrables : backend d'inférence injectable [`core/app/audio/tensorflow/backend.py`](../core/app/audio/tensorflow/backend.py) (`EssentiaTensorflowBackend`, import `essentia` paresseux ; `Protocol` mocké en test), garde stub [`guard.py`](../core/app/audio/tensorflow/guard.py) + erreurs [`errors.py`](../core/app/audio/tensorflow/errors.py) (`STUB_INFERENCE_FORBIDDEN`, `TENSORFLOW_INFERENCE_FAILED`, `MODEL_MISSING`, `MODEL_INVALID`), pont clés legacy↔manifeste [`model_map.py`](../core/app/audio/tensorflow/model_map.py), runners réécrits (`EmbeddingsRunner`/`GenreRunner`/`ClassifierRunner` pilotés par `ModelManager` + backend, `inference_mode` réel/stub/none, `model_missing`), worker [`essentia_tensorflow_worker.py`](../core/app/workers/essentia_tensorflow_worker.py) (backend réel par défaut, gating `ModelManager.real_inference_ready`, capture `InferenceError`→`mark_failed`), settings `app_env` + `essentia_tf_*`, accès publics `ModelManager` (`get_entry`/`weights_path`/`metadata_path`/`is_available`) + champs `output`/`sample_rate`/`backend`. Tests : `test_tf_stub_guard.py`, `test_essentia_tf_real_runners.py`, `test_essentia_tf_model_missing.py`, `test_embeddings_runner.py` (réécrit), `test_essentia_tensorflow_worker.py` + `test_feature_aggregation_*` (backend factice → mode `real`). Suite : 277 pytest verts. Stub uniquement si `APP_ENV=test` + `ESSENTIA_TF_ALLOW_STUBS_IN_TESTS=true`.
 
+Optimisation (post-6.8C) : `EssentiaTensorflowBackend` met en cache (1) les prédicteurs par `(algorithme, graphFilename, output, input)` pour la durée de vie du worker, (2) l'audio décodé par `(wav_path, sample_rate)` (LRU borné), (3) les frames d'embedding par `(wav_path, extractor_key)` (LRU borné). L'extracteur EffNet n'est donc calculé qu'une seule fois par segment puis réutilisé par `embeddings()` et les ~11 têtes `TensorflowPredict2D` (pattern recommandé par Essentia), au lieu d'être recalculé par tête.
+
 ---
 
 ## 6.8C — Smoke tests inférence réelle
@@ -503,7 +508,7 @@ Livrables : script [`core/scripts/smoke_essentia_tensorflow_real.py`](../core/sc
 
 ## 6.8 — FeatureRegistry / FeatureResolver / TrackFeatureView
 
-Statut : TODO
+Statut : DONE
 
 ### Sous-tâches
 
@@ -511,8 +516,8 @@ Statut : TODO
 - Ajouter alias :
   - `genre_discogs519` → `genre_discogs_519`
   - `mood_electronic` → `electronic_profile_score`
+  - `mood_acoustic` / `acoustic` → `acoustic_profile_score`
   - `instrumental` → `instrumental_focus_score`
-  - `acoustic` → `acoustic_profile_score`
   - `valence_local` → `valence_tf`
   - `danceability_local` → `danceability_tf`
 - Ajouter source priority par feature.
@@ -526,48 +531,71 @@ Statut : TODO
 - Les features futures/absentes retournent warnings structurés.
 - Les tests de phase 5 continuent de passer.
 
+Livrables :
+
+- **Consommation complète activée** : `FeatureRegistry.ACTIVE_PHASE = 6`. `is_future`/`is_available_in_phase` se basent sur `ACTIVE_PHASE` (défaut). Le playlist engine (`scoring.py`, `filters.py`, `rule_validation.py`) consomme désormais réellement les features phase 6 (moods, voice/instrumental, acoustic/electronic, genre, embeddings) ; les valeurs absentes retournent `missing`/`FEATURE_MISSING` sans crash, et les features `phase_available > 6` (ex. `mood_dark_score`, `embedding_similarity`) restent en `FEATURE_NOT_AVAILABLE_YET`.
+- **Provenance structurée** : `FeatureValue` ([`core/app/playlists/types.py`](../core/app/playlists/types.py)) expose `model_name`, `model_version`, `model_hash`, `pipeline_version`, `aggregation_method`, `feature_source_detail` ; `FeatureResolver` ([`core/app/playlists/feature_resolver.py`](../core/app/playlists/feature_resolver.py)) les peuple depuis `track_advanced_features` / `track_embeddings` (plus de métadonnées injectées dans `warnings`).
+- **Alias** : 7 alias phase 6 ajoutés dans [`core/app/playlists/feature_registry.py`](../core/app/playlists/feature_registry.py) (`_ALIASES`).
+- **Preset** : `low_vocal_phase7` renommé `dark_mood_phase7` (utilise `mood_dark_score`, vraie feature phase 7) pour conserver un cas `FEATURE_NOT_AVAILABLE_YET`.
+- Tests : [`core/tests/test_feature_registry.py`](../core/tests/test_feature_registry.py) (alias + `ACTIVE_PHASE`), [`core/tests/test_feature_resolver.py`](../core/tests/test_feature_resolver.py) (champs structurés), [`core/tests/test_playlist_engine_phase6.py`](../core/tests/test_playlist_engine_phase6.py) (consommation phase 6 présent/absent/futur). Suite complète : 289 passed.
+- Doc : [`docs/18-feature-consumption-contract.md`](../docs/18-feature-consumption-contract.md) §3.7 (phase active) + §5.2 (champs `FeatureValue`).
+- Hors périmètre (→ 6.9 / prompt 6-08) : exposition HTTP/UI (`GET /features/tracks/{id}`, coverage avancée, écran `/features`).
+
 ---
 
 ## 6.9 — API et UI features avancées
 
-Statut : TODO
+Statut : **PARTIAL** — backend 6.9a + cleanup/observabilité 6.9c livrés ; UI 6.9b TODO.
 
-### Sous-tâches API
+### 6.9a — API backend (DONE)
 
-- `POST /api/v1/audio/analysis/advanced`
-- `GET /api/v1/models/status`
-- `POST /api/v1/models/download`
-- `POST /api/v1/models/download-profile`
-- `POST /api/v1/models/verify`
-- `GET /api/v1/features/advanced/coverage`
-- Étendre `GET /api/v1/features/tracks/{track_id}`.
-- Étendre `GET /api/v1/features/coverage`.
-- Étendre `GET /api/v1/jobs/{job_id}` ou `/items` avec compteurs par stage.
+- `POST /api/v1/audio/analysis/advanced` — [`core/app/api/v1/audio.py`](../core/app/api/v1/audio.py), service [`advanced_analysis_job_service.py`](../core/app/audio/advanced_analysis_job_service.py).
+- `GET /api/v1/models/status` (+ download/verify) — déjà livré en 6.8A ([`models.py`](../core/app/api/v1/models.py)).
+- `GET /api/v1/features/advanced/coverage` — [`advanced_coverage.py`](../core/app/features/advanced_coverage.py).
+- `GET /api/v1/features/tracks/{track_id}` étendu : bloc `advanced` / `essentia_tensorflow` (scalaires, genre top-k, embedding status ; vecteur uniquement si `include_embedding_vector=true`).
+- `GET /api/v1/jobs/{job_id}` : compteurs `stages` en direct pour `audio_analysis_pipeline` (pas seulement en fin de job).
+- Hors périmètre backend : extension `GET /features/coverage` (agrégat ReccoBeats/low-level inchangé ; coverage TF via `/features/advanced/coverage`).
+- Tests : `test_advanced_analysis_api.py`, `test_advanced_features_coverage_api.py`, `test_track_features_advanced_api.py`, `test_jobs_pipeline_stages_live.py`.
 
-### Sous-tâches UI
+Validation curl (Docker `audio` + `advanced-analysis`) :
 
-- Mettre à jour écran `/features`.
-- Afficher :
-  - coverage low-level ;
-  - coverage TensorFlow ;
-  - modèles disponibles/manquants ;
-  - bouton téléchargement profil minimal/recommandé ;
-  - bouton lancement analyse avancée ;
-  - derniers jobs avancés ;
-  - failures par modèle.
-- Mettre à jour `TrackFeaturesDrawer` :
-  - onglet Advanced ;
-  - moods ;
-  - genre Discogs top-k ;
-  - embeddings status ;
-  - source/confidence/model ;
-  - statut `model_missing`.
+```bash
+curl -X POST http://127.0.0.1:8765/api/v1/audio/analysis/advanced -H "Content-Type: application/json" -d "{\"track_ids\":[1],\"only_missing\":true}"
+curl http://127.0.0.1:8765/api/v1/jobs/{job_id}
+curl http://127.0.0.1:8765/api/v1/features/advanced/coverage
+```
 
-### Critères
+### 6.9b — UI (TODO)
 
-- L'utilisateur comprend pourquoi une feature est absente.
-- Les payloads raw restent repliés.
-- Aucun fichier audio/modèle n'est exposé.
+- Mettre à jour écran `/features` et `TrackFeaturesDrawer` (onglet Advanced) — consommer les endpoints 6.9a via `modelsApi.ts` / extensions `featuresApi.ts`.
+- Afficher coverage TF, modèles, jobs pipeline, failures ; boutons download profil et lancement analyse avancée.
+- États loading / empty / error / offline obligatoires.
+
+### 6.9c — Cleanup / observabilité (DONE)
+
+- `GET /api/v1/jobs/{job_id}/events` — [`JobEventsService`](../core/app/jobs/items/events.py), route [`jobs.py`](../core/app/api/v1/jobs.py).
+- Événements : `stage_created`, `stage_started`, `stage_failed`, `model_missing`, `cleanup_done` (+ `segment_ready`, `completed`, `failed`, `cancelled`).
+- Annulation : items `pending` / `rate_limited` / **`blocked`** → `cancelled` ; items `running` terminés coopérativement ; refresh agrégation + cleanup post-annulation si possible.
+- Heartbeats : `metadata.stage_name` sur workers pendant traitement (`ReservedJobItem.stage_name`).
+- Tests : `test_analysis_pipeline_observability.py`, `test_jobs_cancel_pipeline.py`, `test_worker_heartbeats.py`, `test_pipeline_audio_cleanup.py`.
+
+Validation manuelle (PowerShell) :
+
+```powershell
+docker compose --profile audio --profile advanced-analysis up -d --build
+$body = '{"track_ids":[1],"only_missing":false,"include_tensorflow":true,"require_real_tensorflow":false}'
+$r = Invoke-RestMethod -Method POST -Uri "http://127.0.0.1:8765/api/v1/audio/analysis/advanced" -ContentType "application/json" -Body $body
+$jobId = $r.job_id
+curl "http://127.0.0.1:8765/api/v1/jobs/$jobId"
+curl "http://127.0.0.1:8765/api/v1/jobs/$jobId/events?limit=30"
+curl http://127.0.0.1:8765/api/v1/workers
+```
+
+### Critères (backend)
+
+- Le pipeline complet est déclenchable par HTTP (sans UI).
+- L'absence de features avancées est explicable via API (`advanced`, `advanced/coverage`, `model_missing`).
+- Aucun fichier audio ni vecteur embedding complet par défaut dans les réponses JSON.
 
 ---
 

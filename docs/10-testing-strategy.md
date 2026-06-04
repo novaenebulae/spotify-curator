@@ -329,9 +329,38 @@ Phase 6+ :
 docker compose --profile audio --profile advanced-analysis up -d --build
 curl http://127.0.0.1:8765/api/v1/workers
 curl http://127.0.0.1:8765/api/v1/models/status
+curl -X POST http://127.0.0.1:8765/api/v1/audio/analysis/advanced -H "Content-Type: application/json" -d "{\"track_ids\":[1],\"only_missing\":true}"
+curl http://127.0.0.1:8765/api/v1/features/advanced/coverage
 ```
 
-Tests backend phase 6 : pipeline stages, handoff downloader → analyzers, cleanup multi-consommateurs, model registry mock, TensorFlow worker mock, embeddings shape, `FeatureResolver` source priority, non-régression phase 4 audio et phase 5 playlist.
+Pipeline complet + observabilité (bash) :
+
+```bash
+JOB=$(curl -s -X POST http://127.0.0.1:8765/api/v1/audio/analysis/advanced \
+  -H "Content-Type: application/json" \
+  -d '{"track_ids":[1],"only_missing":false,"include_tensorflow":true}' | jq -r .job_id)
+curl -s "http://127.0.0.1:8765/api/v1/jobs/$JOB/events?limit=30" | jq .
+curl -s http://127.0.0.1:8765/api/v1/workers | jq .
+# curl -X POST "http://127.0.0.1:8765/api/v1/jobs/$JOB/cancel"
+```
+
+PowerShell (Windows) : voir backlog [`phase-6.md`](../backlog/phase-6.md) §6.9c.
+
+Tests API analyse avancée (backend, sans UI) :
+
+```bash
+cd core
+uv run pytest tests/test_advanced_analysis_api.py tests/test_advanced_features_coverage_api.py tests/test_track_features_advanced_api.py tests/test_jobs_pipeline_stages_live.py -q
+```
+
+Tests cleanup / observabilité (6.9c) :
+
+```bash
+cd core
+uv run pytest tests/test_audio_cleanup.py tests/test_jobs_cancel_pipeline.py tests/test_worker_heartbeats.py tests/test_analysis_pipeline_observability.py tests/test_pipeline_audio_cleanup.py -q
+```
+
+Tests backend phase 6 : pipeline stages, handoff downloader → analyzers (déclenchement HTTP `POST /audio/analysis/advanced`), cleanup pipeline stage, events API, annulation `blocked`, model registry mock, TensorFlow worker mock, embeddings shape, `FeatureResolver` source priority, non-régression phase 4 audio et phase 5 playlist. UI `/features` avancée : backlog 6.9b.
 
 ### Tests modèles
 
@@ -357,14 +386,16 @@ Cas à couvrir :
 
 ### Smoke inférence réelle
 
+Le download/verify et le smoke s'exécutent dans `essentia-tensorflow-worker` : seule cette image embarque le wheel `essentia-tensorflow` (le service `core-api` n'a pas `essentia`).
+
 ```bash
 docker compose --profile audio --profile advanced-analysis up -d --build
-docker compose exec core-api uv run python scripts/download_essentia_models.py --profile phase6-minimal --accept-license
-docker compose exec core-api uv run python scripts/download_essentia_models.py --verify-only
-docker compose exec core-api uv run python scripts/smoke_essentia_tensorflow_real.py --require-models
+docker compose exec essentia-tensorflow-worker uv run python scripts/download_essentia_models.py --profile phase6-minimal --accept-license
+docker compose exec essentia-tensorflow-worker uv run python scripts/download_essentia_models.py --verify-only
+docker compose exec essentia-tensorflow-worker uv run python scripts/smoke_essentia_tensorflow_real.py --require-models
 ```
 
-Options du smoke : `--require-models` (échoue si modèles absents), `--allow-missing` (tolère l'absence), `--track-id`, `--wav-path` (sinon un WAV court 16 kHz est généré), `--profile` (défaut `phase6-minimal`), `--persist` (écrit l'embedding réel via `TrackEmbeddingsRepository`, sinon dry-run).
+Options du smoke : `--require-models` (échoue si modèles absents), `--allow-missing` (tolère l'absence), `--track-id`, `--wav-path` (sinon un WAV de 30 s 16 kHz mono est généré, durée requise par MAEST), `--profile` (défaut `phase6-minimal`), `--persist` (écrit l'embedding réel via `TrackEmbeddingsRepository`, sinon dry-run).
 
 Codes de sortie : `0` inférence réelle OK ; `1` `model_missing` avec `--require-models` ; `2` échec d'inférence Essentia.
 

@@ -3,10 +3,12 @@ from __future__ import annotations
 from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
+from app.audio.advanced_analysis_job_service import AdvancedAnalysisJobService
 from app.audio.analysis_job_service import EssentiaLowlevelJobService
 from app.audio.cleanup import AudioCleanupService
 from app.audio.download_job_service import AudioDownloadJobService
 from app.audio.schemas import (
+    AdvancedAnalysisRequest,
     AudioAnalysisRequest,
     AudioDownloadRequest,
     AudioJobResponse,
@@ -31,6 +33,7 @@ from app.observability.errors import ApiError
 router = APIRouter(prefix="/audio")
 _downloads = AudioDownloadJobService()
 _analysis = EssentiaLowlevelJobService()
+_advanced = AdvancedAnalysisJobService()
 _segments = TrackSegmentsRepository()
 _cleanup = AudioCleanupService()
 
@@ -127,6 +130,27 @@ def list_track_segments(track_id: int) -> TrackSegmentsResponse:
             "deleted_count": deleted_count,
         },
     )
+
+
+@router.post("/analysis/advanced", response_model=AudioJobResponse)
+def start_advanced_analysis(body: AdvancedAnalysisRequest) -> AudioJobResponse:
+    job_id = _advanced.start_advanced_analysis_job(
+        track_ids=body.track_ids,
+        filter_dict=body.filter,
+        only_missing=body.only_missing,
+        force_refresh=body.force_refresh,
+        retry_failed=body.retry_failed,
+        limit=body.limit,
+        strategy=body.strategy,
+        analysis_mode=body.analysis_mode,
+        segment_duration_seconds=body.segment_duration_seconds,
+        include_lowlevel=body.include_lowlevel,
+        include_tensorflow=body.include_tensorflow,
+        pipeline_mode=body.pipeline_mode,
+        model_profile=body.model_profile,
+        require_real_tensorflow=body.require_real_tensorflow,
+    )
+    return AudioJobResponse(job_id=job_id, status=map_job_status("queued"))
 
 
 @router.post("/analysis/lowlevel", response_model=AudioJobResponse)

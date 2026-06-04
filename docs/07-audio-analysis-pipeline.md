@@ -294,6 +294,8 @@ Le pipeline phase 6 utilise les fichiers TensorFlow `.pb` et metadata `.json`, p
 
 ### Pipeline avancé réel
 
+**Point d'entrée production (backend)** : `POST /api/v1/audio/analysis/advanced` — voir [`core/app/audio/advanced_analysis_job_service.py`](../core/app/audio/advanced_analysis_job_service.py). Déclenchement UI : backlog 6.9b.
+
 ```text
 POST /audio/analysis/advanced
   ↓
@@ -319,7 +321,7 @@ audio_cleanup
 | `essentia_lowlevel` | `essentia-lowlevel-worker` (un item = un segment ; upsert track différé) |
 | `essentia_tensorflow_embeddings` / `essentia_tensorflow_classifiers` | `essentia-tensorflow-worker` (profil `advanced-analysis`) |
 | `feature_aggregation` | core (`PipelineFeatureAggregationService`, après succès des prérequis stage) |
-| `audio_cleanup` | core |
+| `audio_cleanup` | core (`PipelineAudioCleanupService`, après agrégation) |
 
 **Implémenté (6.3)** : le worker low-level réserve les stages `essentia_lowlevel` du job `audio_analysis_pipeline` (mode `streaming`), persiste les features par segment (`features_json` enrichi), puis le stage `feature_aggregation` agrège et appelle `FeatureUpsertService.upsert_essentia_lowlevel`. Le flux legacy `essentia_lowlevel_analysis` / `essentia_lowlevel_track` est inchangé.
 

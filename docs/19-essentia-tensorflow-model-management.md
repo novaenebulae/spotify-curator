@@ -352,6 +352,12 @@ Si `accept_license=false` :
 }
 ```
 
+## Runtime worker
+
+L'inférence réelle s'exécute uniquement dans le service `essentia-tensorflow-worker`. Son image (`docker/essentia-tensorflow-worker/Dockerfile`) est construite sur `python:3.11-slim` puis installe le wheel PyPI `essentia-tensorflow` dans le venv `uv`. L'image de base MTG (`ghcr.io/mtg/essentia`) n'est pas utilisée : elle fournit un `essentia` compilé sans les algorithmes `TensorflowPredict*` et pour Python 3.9, incompatible avec notre `requires-python >=3.11`. Le service `core-api` n'embarque pas `essentia`.
+
+Optimisation d'inférence : `EssentiaTensorflowBackend` calcule les embeddings de l'extracteur (Discogs-EffNet) **une seule fois par segment** puis les réutilise pour toutes les têtes `TensorflowPredict2D` (pattern recommandé par Essentia). Les prédicteurs sont mis en cache par `(algorithme, graphFilename, output, input)` pour la durée de vie du worker ; l'audio décodé et les frames d'embedding sont mis en cache (LRU borné) par WAV.
+
 ## Règles runtime
 
 En production ou développement normal :

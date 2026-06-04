@@ -1,6 +1,6 @@
 # 08 — Moteur de playlists
 
-Tags: #playlist #rules #scoring #sync #phase-5 #phase-6 #phase-7
+Tags: #playlist #rules #scoring #sync #phase-5 #phase-6 #phase-7 #phase-8
 
 ## Objectif
 
@@ -8,8 +8,8 @@ Transformer une configuration utilisateur en playlist candidate, explicable et s
 
 La phase 5 doit livrer un moteur simple, mais l'architecture doit rester prête pour :
 
-- phase 6 — clusters UMAP/HDBSCAN ;
-- phase 7 — embeddings, moods, voice/instrumental, Essentia TensorFlow ;
+- phase 6 — embeddings, moods, voice/instrumental, Essentia TensorFlow ;
+- phase 7 — clusters UMAP/HDBSCAN ;
 - phase 8 — génération avancée par seeds, courbes, similarité et découverte.
 
 Règle structurante :
@@ -90,8 +90,8 @@ source:
   playlists_exclude: []
   track_ids_include: []
   track_ids_exclude: []
-  clusters_include: []       # phase 6
-  clusters_exclude: []       # phase 6
+  clusters_include: []       # phase 7
+  clusters_exclude: []       # phase 7
   seed_tracks: []            # phase 8
 
 filters:
@@ -240,7 +240,7 @@ Sources phase 5 :
 
 Sources futures déjà prévues dans le schéma :
 
-- clusters phase 6 ;
+- clusters phase 7 ;
 - seeds phase 8.
 
 ### 4.1 Règles
@@ -283,7 +283,7 @@ Filtres phase 5 :
 | Feature présente et valide | appliquer filtre |
 | Feature absente + `required=true` | exclure |
 | Feature absente + `required=false` | garder avec warning |
-| Feature future phase 7 | warning `FEATURE_NOT_AVAILABLE_YET` |
+| Feature future (phase 7+) | warning `FEATURE_NOT_AVAILABLE_YET` |
 | Confidence insuffisante | exclure si filtre confidence strict, sinon warning |
 
 ### 5.2 Exclusion reason
@@ -347,15 +347,18 @@ final_score = sum(component_contribution) + bonuses - penalties
 - `diversity_bonus`
 - `preview_bonus`
 
-Composants futurs phase 7 :
+Composants phase 6 (disponibles, consommés si présents) :
 
-- `mood_dark_score`
 - `mood_aggressive_score`
 - `mood_relaxed_score`
 - `vocal_presence_score`
 - `instrumental_focus_score`
 - `acoustic_profile_score`
 - `electronic_profile_score`
+
+Composants futurs (phase 7) :
+
+- `mood_dark_score`
 - `embedding_similarity`
 
 ### 6.2 Renormalisation
@@ -413,9 +416,9 @@ Contraintes phase 5 :
 
 Contraintes futures :
 
-- diversité clusters phase 6 ;
-- équilibre vocal/instrumental phase 7 ;
-- diversité mood/style phase 7/8.
+- équilibre vocal/instrumental phase 6 ;
+- diversité clusters phase 7 ;
+- diversité mood/style phase 8.
 
 ### 7.1 Sélection stable
 
@@ -600,7 +603,7 @@ Presets phase 5 entièrement utilisables :
 - Clean Library ;
 - Missing Tracks Recovery.
 
-Presets partiels avec warnings phase 7 :
+Presets exploitant les features avancées phase 6 (moods, voice/instrumental, acoustic/electronic) :
 
 - Low Vocal ;
 - Instrumental Focus ;
@@ -610,27 +613,13 @@ Presets partiels avec warnings phase 7 :
 - IDM / Experimental ;
 - EBM / Industrial.
 
-Ces presets peuvent exister, mais doivent signaler que certaines composantes seront améliorées après phase 7.
+Ces composantes sont disponibles depuis la phase 6 ; les pistes non analysées produisent un warning `FEATURE_MISSING` sans bloquer.
 
 ---
 
-## Phase 6 — Extension clustering
+## Phase 6 — Extension features avancées
 
 La phase 6 ajoute :
-
-- `clusters_include` ;
-- `clusters_exclude` ;
-- `cluster_diversity` ;
-- génération depuis un cluster ;
-- affichage cluster dans les previews.
-
-Le moteur phase 5 ne doit pas être refondu. Il doit seulement recevoir une nouvelle source candidate via le même pipeline.
-
----
-
-## Phase 7 — Extension features avancées
-
-La phase 7 ajoute :
 
 - embeddings ;
 - moods ;
@@ -648,6 +637,20 @@ TrackFeatureView
 ```
 
 Elle ne doit pas créer un second moteur de playlists.
+
+---
+
+## Phase 7 — Extension clustering
+
+La phase 7 ajoute :
+
+- `clusters_include` ;
+- `clusters_exclude` ;
+- `cluster_diversity` ;
+- génération depuis un cluster ;
+- affichage cluster dans les previews.
+
+Le moteur phase 5 ne doit pas être refondu. Il doit seulement recevoir une nouvelle source candidate via le même pipeline.
 
 ---
 

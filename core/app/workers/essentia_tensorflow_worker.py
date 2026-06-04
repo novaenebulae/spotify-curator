@@ -162,16 +162,33 @@ class EssentiaTensorflowWorker(BaseWorker):
                     self._embeddings_runner
                     or EmbeddingsRunner(model_manager=self._mm, backend=self._backend)
                 ).run_for_segment(segment_id=item.segment_id, wav_path=str(wav))
-                genre = (
-                    self._genre_runner
-                    or GenreRunner(model_manager=self._mm, backend=self._backend)
-                ).run_for_segment(segment_id=item.segment_id, wav_path=str(wav))
                 result["inference"] = emb.inference_mode
                 result["embedding_outputs"] = emb.embedding_outputs
-                result["genre_outputs"] = genre.genre_outputs
+                genre_missing: list[str] = []
+                genre_outputs: dict = {}
+                genre_mode = "none"
+                try:
+                    genre = (
+                        self._genre_runner
+                        or GenreRunner(model_manager=self._mm, backend=self._backend)
+                    ).run_for_segment(segment_id=item.segment_id, wav_path=str(wav))
+                    genre_outputs = genre.genre_outputs
+                    genre_missing = list(genre.models_missing)
+                    genre_mode = genre.inference_mode
+                except (InferenceError, ModelManagerError) as genre_exc:
+                    if _is_audio_too_short(genre_exc):
+                        from app.audio.tensorflow.genre_runner import GENRE_MODEL_KEY
+
+                        genre_missing = [GENRE_MODEL_KEY]
+                    else:
+                        raise
+                result["genre_outputs"] = genre_outputs
+                result["genre_inference"] = genre_mode
                 result["models_missing"] = sorted(
-                    set(emb.models_missing) | set(genre.models_missing)
+                    set(emb.models_missing) | set(genre_missing)
                 )
+                if emb.inference_mode == "real" or genre_mode == "real":
+                    result["inference"] = "real"
         except InferenceError as exc:
             self._items.mark_failed(
                 item.id, error_code=exc.code, error_message=exc.message
@@ -185,6 +202,14 @@ class EssentiaTensorflowWorker(BaseWorker):
 
         result["pipeline_version"] = self._pipeline_version(job_item, result["inference"])
         self._items.mark_success(item.id, result_json=result)
+        missing = result.get("models_missing")
+        if isinstance(missing, list) and missing:
+            self._items.emit_model_missing(
+                job_id=item.job_id,
+                item_id=item.id,
+                stage_name=job_item.stage_name,
+                models_missing=[str(m) for m in missing],
+            )
 
     @staticmethod
     def _pipeline_version(job_item: JobItem, inference_mode: str) -> str:
@@ -212,3 +237,8 @@ class EssentiaTensorflowWorker(BaseWorker):
             current_item_id=current_item_id,
             metadata=redact_dict(meta),
         )
+
+
+def _is_audio_too_short(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return "too short" in msg or "signal is too short" in msg

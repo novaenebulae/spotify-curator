@@ -23,22 +23,36 @@ import wave
 from pathlib import Path
 from typing import Any
 
-from app.audio.tensorflow.backend import EssentiaTensorflowBackend, TensorflowInferenceBackend
-from app.audio.tensorflow.classifier_runner import ClassifierRunner
-from app.audio.tensorflow.embeddings_runner import EFFNET_MODEL_KEY, EmbeddingsRunner
-from app.audio.tensorflow.errors import InferenceError
-from app.audio.tensorflow.genre_runner import GENRE_MODEL_KEY, GenreRunner
-from app.audio.tensorflow.model_map import (
+# Make `app` importable when launched as `python scripts/x.py` (script dir, not
+# the core root, lands on sys.path). Mirrors tests/conftest.py.
+_CORE_ROOT = Path(__file__).resolve().parents[1]
+if str(_CORE_ROOT) not in sys.path:
+    sys.path.insert(0, str(_CORE_ROOT))
+
+from app.audio.tensorflow.backend import (  # noqa: E402
+    EssentiaTensorflowBackend,
+    TensorflowInferenceBackend,
+)
+from app.audio.tensorflow.classifier_runner import ClassifierRunner  # noqa: E402
+from app.audio.tensorflow.embeddings_runner import (  # noqa: E402
+    EFFNET_MODEL_KEY,
+    EmbeddingsRunner,
+)
+from app.audio.tensorflow.errors import InferenceError  # noqa: E402
+from app.audio.tensorflow.genre_runner import GENRE_MODEL_KEY, GenreRunner  # noqa: E402
+from app.audio.tensorflow.model_map import (  # noqa: E402
     EMBEDDINGS_EXTRACTOR_KEY,
     GENRE_EXTRACTOR_KEY,
     GENRE_HEAD_KEY,
 )
-from app.models_registry import ModelManager, ModelManagerError
-from app.settings.config import settings
+from app.models_registry import ModelManager, ModelManagerError  # noqa: E402
+from app.settings.config import settings  # noqa: E402
 
 DEFAULT_PROFILE = "phase6-minimal"
 SMOKE_SAMPLE_RATE = 16000
-SMOKE_DURATION_SECONDS = 5
+# 30 s is the project segment cap and the minimum the MAEST 30 s genre model
+# needs ("input signal is too short" otherwise).
+SMOKE_DURATION_SECONDS = 30
 
 
 def generate_test_wav(path: Path, *, duration_s: int = SMOKE_DURATION_SECONDS) -> Path:

@@ -58,7 +58,9 @@ Mapping depuis SQLite : `queued` → `pending`, `succeeded` → `success` ([`cor
 
 **Implémenté** : statut job DB **`partial`** (succès + échecs items) pour jobs workers ; API expose souvent `partial` tel quel (mapping `partial_success` encore incomplet).
 
-**Cible** : `partial_success` uniforme ; endpoint `GET /jobs/{id}/events` ; heartbeats exposés — [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §3 et §17.
+**Implémenté (6.9c)** : `GET /api/v1/jobs/{job_id}/events` (taxonomie `stage_created`, `segment_ready`, `stage_started`, `stage_failed`, `model_missing`, `cleanup_done`, …) ; `GET /api/v1/workers` avec `metadata.stage_name` pendant le traitement d'un item.
+
+**Cible restante** : mapping API `partial_success` uniforme — [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md) §3 et §17.
 
 **Liste tracks** : en-têtes perf optionnels si `TRACKS_PERF_LOG=1` (`X-Tracks-Perf-Ms`, etc.) — voir [`backlog/phase-2.5-perf.md`](../backlog/phase-2.5-perf.md).
 
@@ -84,8 +86,8 @@ Diagnostics phase 0+ :
 - ffmpeg available phase 4 ;
 - yt-dlp available phase 4 ;
 - Essentia image available phase 4 ;
-- TensorFlow image available phase 7 ;
-- models present phase 7.
+- TensorFlow image available phase 6 ;
+- models present phase 6.
 
 ## Endpoint rapport système
 

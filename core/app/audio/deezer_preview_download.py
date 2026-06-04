@@ -11,6 +11,9 @@ from app.audio.provider import PlannedSegment, TrackContext
 from app.audio.ffmpeg import convert_to_wav_pcm
 from app.settings.config import settings
 
+# MAEST 30s models reject inputs slightly below 30s wall-clock seconds.
+_MAEST_MIN_SECONDS = 30.0
+
 
 def download_deezer_preview_segment(
     track: TrackContext,
@@ -52,11 +55,50 @@ def download_deezer_preview_segment(
         convert_to_wav_pcm(trimmed, dest)
     except Exception:
         convert_to_wav_pcm(tmp_mp3, dest)
+    if max_dur >= _MAEST_MIN_SECONDS - 0.5:
+        _ensure_wav_min_duration(dest, min_seconds=_MAEST_MIN_SECONDS)
     for p in (tmp_mp3, trimmed):
         if p.exists():
             p.unlink(missing_ok=True)
     digest = hashlib.sha256(dest.read_bytes()).hexdigest()[:32]
     return rel, digest
+
+
+def _ensure_wav_min_duration(path: Path, *, min_seconds: float) -> None:
+    """Pad short Deezer previews so MAEST 30s extractors accept the WAV."""
+    import wave
+
+    with wave.open(str(path), "rb") as wf:
+        rate = wf.getframerate()
+        channels = wf.getnchannels()
+        if rate <= 0:
+            return
+        current = wf.getnframes() / float(rate)
+    if current >= min_seconds - 0.05:
+        return
+    padded = path.with_suffix(".pad.wav")
+    pad_dur = max(0.0, min_seconds - current)
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(path),
+            "-af",
+            f"apad=pad_dur={pad_dur:.3f}",
+            "-t",
+            str(min_seconds),
+            "-ar",
+            str(rate),
+            "-ac",
+            str(channels),
+            str(padded),
+        ],
+        check=True,
+        capture_output=True,
+        timeout=settings.ffmpeg_timeout_seconds,
+    )
+    padded.replace(path)
 
 
 def _ffmpeg_trim(src: Path, dest: Path, *, duration_seconds: float) -> None:

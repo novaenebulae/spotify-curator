@@ -32,6 +32,7 @@ def _seed_track(session: Session, track_id: int = 1) -> None:
 
 
 def test_cleanup_blocked_while_consumer_pending(tmp_path, monkeypatch) -> None:
+    """Gating via segment consumers; end-to-end pipeline cleanup in test_pipeline_audio_cleanup."""
     db_path = tmp_path / "cleanup_gate.sqlite"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
     reset_engine()
