@@ -64,6 +64,7 @@ export type TrackItem = {
 	duplicate_status: string;
 	reccobeats_status?: string;
 	essentia_status?: string;
+	local_analysis_status?: string;
 	preview_available?: boolean;
 };
 

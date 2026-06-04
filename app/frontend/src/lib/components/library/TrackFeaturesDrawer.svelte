@@ -1,13 +1,9 @@
 <script lang="ts">
 	import { onDestroy } from 'svelte';
 	import AlbumCover from '$lib/components/common/AlbumCover.svelte';
-	import FeatureMetricGrid from '$lib/components/features/FeatureMetricGrid.svelte';
+	import ResolvedFeaturesGrid from '$lib/components/features/ResolvedFeaturesGrid.svelte';
 	import SourceFeatureCard from '$lib/components/features/SourceFeatureCard.svelte';
-	import TrackFeaturesAdvancedPanel from '$lib/components/features/TrackFeaturesAdvancedPanel.svelte';
-	import {
-		formatAnalysisDecision,
-		formatConfidence
-	} from '$lib/featureFormat';
+	import TensorFlowSourceCard from '$lib/components/features/TensorFlowSourceCard.svelte';
 	import { getTrackFeatures, type TrackFeaturesResponse } from '$lib/featuresApi';
 	import { getTrackPreview, type TrackPreview } from '$lib/previewApi';
 	import type { TrackItem } from '$lib/libraryApi';
@@ -23,7 +19,7 @@
 		onClose: () => void;
 	} = $props();
 
-	let tab: 'fusion' | 'sources' | 'advanced' = $state('fusion');
+	let tab: 'features' | 'sources' = $state('features');
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let offline = $state(false);
@@ -40,10 +36,11 @@
 	}
 
 	function statusBadge(): string {
-		if (!data?.merged) return 'Not analysed';
-		if (data.merged.status === 'success') return 'Analysed';
-		if (data.merged.status === 'partial') return 'Partial';
-		return data.merged.status;
+		if (!data?.merged && !(data?.resolved_features?.length)) return 'Not analysed';
+		if (data?.availability.has_essentia_tensorflow) return 'Analysed (local + TF)';
+		if (data?.merged?.status === 'success') return 'Analysed';
+		if (data?.merged?.status === 'partial') return 'Partial';
+		return data?.merged?.status ?? 'Partial';
 	}
 
 	function isStaleCoreApiError(msg: string | null): boolean {
@@ -58,17 +55,18 @@
 
 	const staleCoreApi = $derived(isStaleCoreApiError(error));
 
-	const hasEssentiaSource = $derived(
-		data?.sources.some((s) => s.source_name === 'essentia_lowlevel') ?? false
+	const classicSources = $derived(
+		data?.sources.filter((s) => s.source_name !== 'essentia_tensorflow') ?? []
 	);
-	const sortedSources = $derived(
-		data?.sources
-			? [...data.sources].sort((a, b) => {
-					if (a.source_name === 'essentia_lowlevel') return -1;
-					if (b.source_name === 'essentia_lowlevel') return 1;
-					return a.source_name.localeCompare(b.source_name);
-				})
-			: []
+	const tfSource = $derived(
+		data?.sources.find((s) => s.source_name === 'essentia_tensorflow') ?? null
+	);
+	const sortedClassicSources = $derived(
+		[...classicSources].sort((a, b) => {
+			if (a.source_name === 'essentia_lowlevel') return -1;
+			if (b.source_name === 'essentia_lowlevel') return 1;
+			return a.source_name.localeCompare(b.source_name);
+		})
 	);
 
 	async function load() {
@@ -105,7 +103,7 @@
 
 	$effect(() => {
 		if (open && track) {
-			tab = 'fusion';
+			tab = 'features';
 			load();
 		}
 	});
@@ -156,10 +154,10 @@
 		<div class="tabs">
 			<button
 				type="button"
-				class:active={tab === 'fusion'}
-				onclick={() => (tab = 'fusion')}
+				class:active={tab === 'features'}
+				onclick={() => (tab = 'features')}
 			>
-				Fusion
+				Features
 			</button>
 			<button
 				type="button"
@@ -167,13 +165,6 @@
 				onclick={() => (tab = 'sources')}
 			>
 				Sources
-			</button>
-			<button
-				type="button"
-				class:active={tab === 'advanced'}
-				onclick={() => (tab = 'advanced')}
-			>
-				Advanced
 			</button>
 		</div>
 
@@ -189,78 +180,25 @@
 						Rebuild and restart the API:
 						<code>docker compose up -d --build core-api</code>
 					</p>
-					<p class="hint">
-						Then verify:
-						<code>curl http://127.0.0.1:8765/api/v1/features/tracks/1</code>
-					</p>
 				</div>
 			{:else if error}
 				<p class="error">{error}</p>
-			{:else if tab === 'fusion'}
-				{#if !data?.merged}
-					<p class="muted">No analysis results yet.</p>
-					<p class="hint">
-						Run ReccoBeats enrichment or local analysis from the <a href="/features">Features</a>
-						page.
-					</p>
-				{:else}
-					<p class="primary-source">
-						Primary source: <strong>{data.merged.display_name}</strong>
-						{#if !data.merged.is_active}
-							<span class="muted"> (inactive row)</span>
-						{/if}
-					</p>
-					{#if data.sources.length > 1}
-						<p class="hint-banner">
-							{#if data.merged.primary_source === 'essentia_lowlevel'}
-								Mood metrics (energy, valence) are on the ReccoBeats card in Sources.
-							{:else}
-								Local timbre details may be on the Essentia card in Sources.
-							{/if}
-						</p>
-					{/if}
-					{#if data.merged.feature_confidence != null}
-						<p class="conf">{formatConfidence(data.merged.feature_confidence)}</p>
-					{/if}
-					{#if data.merged.status === 'failed'}
-						<p class="error">{data.merged.error_message ?? data.merged.error_code}</p>
-					{:else if Object.keys(data.merged.fields).length > 0}
-						<FeatureMetricGrid fields={data.merged.fields} />
-					{/if}
-					{#if data.merged.meta.analysis_decision}
-						<p class="meta">
-							Analysis strategy: {formatAnalysisDecision(data.merged.meta.analysis_decision)}
-						</p>
-					{/if}
-					{#if data.merged.meta.segments_used != null}
-						<p class="meta">{data.merged.meta.segments_used} segment(s) analysed</p>
-					{/if}
-					{#if data.merged.meta.pipeline_version}
-						<p class="meta">Pipeline: {data.merged.meta.pipeline_version}</p>
-					{/if}
-				{/if}
-			{:else if tab === 'advanced' && track}
-				<TrackFeaturesAdvancedPanel
-					{data}
-					trackId={track.track_id}
+			{:else if tab === 'features'}
+				<ResolvedFeaturesGrid
+					features={data?.resolved_features ?? []}
 					{loading}
-					error={null}
-					{offline}
 				/>
 			{:else if data}
-				{#if data.sources.length === 0}
+				{#if sortedClassicSources.length === 0 && !tfSource}
 					<p class="muted">No source data stored for this track.</p>
+					<p class="hint"><a href="/features">Run local analysis on Features →</a></p>
 				{:else}
-					{#if !hasEssentiaSource}
-						<p class="hint-banner">
-							No local Essentia low-level analysis for this track yet. Run
-							<a href="/features">Download then analyze</a> on the Features page, then reopen this
-							drawer.
-						</p>
-					{/if}
-					{#each sortedSources as source (source.source_name)}
+					{#each sortedClassicSources as source (source.source_name)}
 						<SourceFeatureCard {source} />
 					{/each}
+					{#if tfSource}
+						<TensorFlowSourceCard source={tfSource} />
+					{/if}
 				{/if}
 			{/if}
 		</div>
@@ -356,18 +294,6 @@
 		overflow: auto;
 		padding: var(--space-lg);
 	}
-	.primary-source {
-		margin-top: 0;
-	}
-	.hint-banner {
-		font-size: 0.85rem;
-		color: var(--color-muted);
-		background: var(--color-surface-elevated);
-		padding: var(--space-sm);
-		border-radius: var(--radius-sm);
-	}
-	.conf,
-	.meta,
 	.hint {
 		font-size: 0.85rem;
 		color: var(--color-muted);
@@ -383,9 +309,5 @@
 		border: 1px solid var(--color-border);
 		border-radius: var(--radius-sm);
 		padding: var(--space-md);
-	}
-	.stale-api-banner .hint {
-		font-size: 0.85rem;
-		margin: var(--space-sm) 0 0;
 	}
 </style>

@@ -72,8 +72,9 @@ def aggregate_genre_top_k(
         return None
 
     top = merged[0]
+    display_top_k = merged[:3]
     return AggregatedGenre(
-        top_k=merged,
+        top_k=display_top_k,
         top_label=top.label,
         top_score=top.score,
         segments_used=len(segment_top_k_lists),
@@ -89,7 +90,7 @@ def genre_features_from_top_k(
 ) -> list[dict[str, Any]]:
     """Rows ready for TrackAdvancedFeaturesRepository (feature_name + fields)."""
     top_k_json = json.dumps(
-        [{"label": g.label, "score": g.score} for g in aggregated.top_k]
+        [{"label": g.label, "score": g.score} for g in aggregated.top_k[:3]]
     )
     return [
         {

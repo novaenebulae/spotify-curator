@@ -808,16 +808,16 @@ Chaque onglet doit conserver son état local si possible : recherche, page, filt
 - Sélection multi-page non conservée par défaut.
 - Pas de bouton `Apply to Spotify`.
 - Dry-run obligatoire.
-- Colonne **Features** compacte (RB / Essentia / Preview) + détails via drawer ; pas de colonnes BPM/energy détaillées en table.
+- Colonne **Features** compacte (ReccoBeats / Analyse locale) + détails via drawer ; pas de badge Preview (bouton ▶ sur la ligne).
 - Pas de clustering.
 
-### 11.5 Drawer features par titre (implémenté)
+### 11.5 Drawer features par titre (implémenté — rework feedback 6.9b)
 
 - **Ouverture** : clic sur le titre dans l’onglet Tracks (`LibraryTable` → `TrackFeaturesDrawer`).
 - **Fermeture** : Escape, clic overlay, changement d’onglet ou de page bibliothèque.
 - **Onglets** :
-  - **Fusion** : ligne `audio_features` active (`is_active=true`) — source gagnante après merge (priorité Essentia > ReccoBeats).
-  - **Sources** : une carte par provider (`SourceFeatureCard`), y compris sources inactives.
+  - **Features** : toutes les features résolues via `FeatureResolver` (`resolved_features` sur `GET /features/tracks/{id}`), priorités phase 6.
+  - **Sources** : ReccoBeats, Essentia low-level, **Essentia TensorFlow** (carte dédiée + extended).
 - **États** : loading, empty (« Not analysed yet » + lien `/features`), error, offline core.
 - **Données** : `GET /api/v1/features/tracks/{track_id}` via `featuresApi.getTrackFeatures`.
 - Checkbox, preview play et tri de colonnes **n’ouvrent pas** le drawer.
@@ -826,7 +826,7 @@ Chaque onglet doit conserver son état local si possible : recherche, page, filt
 
 - **Last runs** : section repliable (fermée par défaut, `features_last_runs_open`) ; hydrate depuis `GET /api/v1/jobs/insights/latest` ; tuiles compactes par type de job (Processed, Succeeded, Failed + Not found ou Skipped selon le job).
 - **Accueil** : tuiles ReccoBeats, Essentia local, Deezer previews et lien Features (couverture via `/api/v1/features/coverage` et `/api/v1/previews/coverage`).
-- **Field coverage** : section repliable (fermée par défaut) ; grille compacte ReccoBeats vs Essentia (`fields_by_source` sur `/api/v1/features/coverage`).
+- **Field coverage** : retiré (feedback 6.9b) — couverture via tuiles « Analyse locale » + ReccoBeats.
 - **Recent failures** : section repliable ; sources `reccobeats`, `essentia_lowlevel`, `deezer_preview`, `audio_download` ; colonne date ; bouton **Clear list** = masquage des échecs antérieurs (`failures_after` + `localStorage` `features_failures_cleared_at`).
 - Scrollbars des tableaux scrollables alignées sur le thème sombre (`app.css`).
 

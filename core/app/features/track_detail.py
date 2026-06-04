@@ -19,6 +19,7 @@ from app.features.schemas import (
     AdvancedGenreOut,
     AdvancedScalarFeatureOut,
     EssentiaTensorFlowSourceOut,
+    ResolvedFeatureOut,
     TrackFeatureAvailabilityOut,
     TrackFeatureMergedOut,
     TrackFeatureMetaOut,
@@ -26,6 +27,8 @@ from app.features.schemas import (
     TrackFeatureSourceOut,
 )
 from app.observability.errors import ApiError
+from app.playlists.feature_registry import get_feature_registry
+from app.playlists.feature_resolver import FeatureResolver
 from app.settings.config import settings
 
 
@@ -222,12 +225,20 @@ class TrackFeaturesService:
             include_embedding_vector=include_embedding_vector,
         )
         has_tf = advanced_block is not None and advanced_block.status in ("success", "partial")
+        if advanced_block is not None:
+            sources_out.append(_tensorflow_source_from_advanced(advanced_block))
+            sources_out.sort(key=lambda s: s.source_name)
+
+        resolved = self._build_resolved_features(session, track_id)
+        if advanced_block and advanced_block.genre:
+            resolved = _merge_genre_into_resolved(resolved, advanced_block.genre)
 
         return TrackFeaturesResponse(
             track_id=track_id,
             merged=merged,
             sources=sources_out,
             advanced=advanced_block,
+            resolved_features=resolved,
             availability=TrackFeatureAvailabilityOut(
                 has_any_features=has_any or has_tf,
                 has_reccobeats=has_reccobeats
@@ -303,18 +314,54 @@ class TrackFeaturesService:
         genre_block: AdvancedGenreOut | None = None
         genre_row = by_name.get("genre_discogs_519")
         top_k_row = by_name.get("genre_discogs_519_top_k")
-        if genre_row or top_k_row:
-            label = genre_row.value_text if genre_row else None
-            score = genre_row.value_float if genre_row else None
+        top_label_row = by_name.get("genre_discogs_519_top_label")
+        top_score_row = by_name.get("genre_discogs_519_top_score")
+        if genre_row or top_k_row or top_label_row:
+            label = (top_label_row.value_text if top_label_row else None) or (
+                genre_row.value_text if genre_row else None
+            )
+            score = (
+                top_score_row.value_float
+                if top_score_row and top_score_row.value_float is not None
+                else (genre_row.value_float if genre_row else None)
+            )
             top_k: list[dict] = []
-            if top_k_row and top_k_row.value_json:
-                try:
-                    parsed = json.loads(top_k_row.value_json)
-                    if isinstance(parsed, list):
-                        top_k = [x for x in parsed[:10] if isinstance(x, dict)]
-                except json.JSONDecodeError:
-                    top_k = []
-            genre_block = AdvancedGenreOut(label=label, score=score, top_k=top_k)
+            for src in (top_k_row, genre_row):
+                if src and src.value_json:
+                    try:
+                        parsed = json.loads(src.value_json)
+                        if isinstance(parsed, list):
+                            top_k = [x for x in parsed[:3] if isinstance(x, dict)]
+                            break
+                    except json.JSONDecodeError:
+                        continue
+            genre_status = "missing"
+            genre_missing: str | None = None
+            if top_k:
+                genre_status = "success"
+                if label is None and top_k:
+                    label = str(top_k[0].get("label") or "")
+                if score is None and top_k:
+                    sc = top_k[0].get("score")
+                    score = float(sc) if sc is not None else None
+            elif top_label_row and top_label_row.status in ("success", "partial") and label:
+                genre_status = "success"
+            elif genre_row:
+                genre_status = genre_row.status
+                if genre_row.status == "model_missing":
+                    genre_missing = "MODEL_MISSING"
+                    err_text = (genre_row.value_text or "").strip()
+                    if err_text in ("AUDIO_TOO_SHORT", "MODEL_NOT_ON_DISK", "NO_PREDICTIONS"):
+                        genre_missing = err_text
+                elif genre_row.status not in ("success", "partial"):
+                    genre_missing = "FEATURE_MISSING"
+            genre_block = AdvancedGenreOut(
+                label=label,
+                score=score,
+                top_k=top_k,
+                status=genre_status,
+                missing_reason=genre_missing,
+            )
 
         embedding_block: AdvancedEmbeddingOut | None = None
         emb = max(emb_rows, key=lambda e: e.updated_at or e.created_at, default=None)
@@ -344,3 +391,126 @@ class TrackFeaturesService:
             genre=genre_block,
             embedding=embedding_block,
         )
+
+    def _build_resolved_features(self, session: Session, track_id: int) -> list[ResolvedFeatureOut]:
+        registry = get_feature_registry()
+        views = FeatureResolver().load_views(session, [track_id])
+        view = views.get(track_id)
+        if view is None:
+            return []
+        skip = frozenset(
+            {
+                "preview_available",
+                "availability_status",
+                "market_status",
+                "liked_status",
+                "playlist_membership",
+                "duplicate_status",
+                "isrc",
+                "artist_id",
+                "album_id",
+                "genre_discogs_519_top_label",
+                "genre_discogs_519_top_score",
+                "genre_discogs_519_top_k",
+            }
+        )
+        out: list[ResolvedFeatureOut] = []
+        for desc in registry.list_descriptors(phase=registry.ACTIVE_PHASE):
+            if desc.is_alias or desc.name in skip:
+                continue
+            fv = view.features.get(desc.name)
+            if fv is None:
+                continue
+            val = fv.value
+            if isinstance(val, (list, dict)):
+                continue
+            if isinstance(val, (int, float)) and desc.value_type == "float":
+                val = float(val)
+            if not isinstance(val, (int, float, str, bool)) and val is not None:
+                continue
+            out.append(
+                ResolvedFeatureOut(
+                    name=desc.name,
+                    label=desc.label,
+                    value=val,
+                    status=fv.status,
+                    source=fv.source,
+                    confidence=fv.confidence,
+                    missing_reason=fv.missing_reason,
+                    model_name=fv.model_name,
+                    phase_available=desc.phase_available,
+                )
+            )
+        return sorted(out, key=lambda r: (r.phase_available, r.label))
+
+
+_GENRE_RESOLVED_SKIP = frozenset(
+    {
+        "genre_discogs_519",
+        "genre_discogs_519_top_label",
+        "genre_discogs_519_top_score",
+        "genre_discogs_519_top_k",
+    }
+)
+
+
+def _merge_genre_into_resolved(
+    resolved: list[ResolvedFeatureOut], genre: AdvancedGenreOut
+) -> list[ResolvedFeatureOut]:
+    """Single genre row for Features tab; drop redundant alias rows."""
+    filtered = [r for r in resolved if r.name not in _GENRE_RESOLVED_SKIP]
+    if genre.top_k:
+        parts = [
+            f"{item.get('label', '?')} ({float(item.get('score', 0)):.3f})"
+            for item in genre.top_k[:3]
+            if isinstance(item, dict)
+        ]
+        value = ", ".join(parts) if parts else None
+        status = genre.status or "success"
+        missing_reason = None
+    else:
+        value = genre.label
+        status = genre.status or "model_missing"
+        missing_reason = genre.missing_reason
+    filtered.append(
+        ResolvedFeatureOut(
+            name="genre_discogs_519",
+            label="Genre (Discogs519 top 3)",
+            value=value,
+            status=status if status in ("success", "partial") else "model_missing",
+            source="essentia_tensorflow",
+            confidence=genre.score,
+            missing_reason=missing_reason,
+            phase_available=6,
+        )
+    )
+    return sorted(filtered, key=lambda r: (r.phase_available, r.label))
+
+
+def _tensorflow_source_from_advanced(
+    advanced: EssentiaTensorFlowSourceOut,
+) -> TrackFeatureSourceOut:
+    fields: dict[str, float | int] = {}
+    for scalar in advanced.scalar_features:
+        if scalar.value is None:
+            continue
+        if isinstance(scalar.value, (int, float)):
+            fields[scalar.feature_name] = float(scalar.value)
+    extended: dict[str, Any] = {
+        "scalar_features": [s.model_dump() for s in advanced.scalar_features],
+    }
+    if advanced.genre is not None:
+        extended["genre"] = advanced.genre.model_dump()
+    if advanced.embedding is not None:
+        extended["embedding"] = advanced.embedding.model_dump(exclude={"vector"})
+    return TrackFeatureSourceOut(
+        source_name="essentia_tensorflow",
+        display_name=advanced.display_name,
+        is_active=True,
+        status=advanced.status,
+        fields=fields,
+        extended=extended,
+        pipeline_version=advanced.scalar_features[0].pipeline_version
+        if advanced.scalar_features
+        else None,
+    )

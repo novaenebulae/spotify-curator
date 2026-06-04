@@ -39,6 +39,7 @@ from app.features.advanced.energy_proxy import compute_energy_proxy
 from app.features.advanced.mappers import feature_names_for_model_key
 from app.features.upsert import FeatureUpsertService
 from app.jobs.items.service import JobItemService
+from app.models_registry.profile_scope import model_key_in_default_profile
 from app.settings.config import settings
 
 
@@ -134,8 +135,8 @@ class PipelineFeatureAggregationService:
             clf_segment_outputs, clf_models_missing = self._collect_classifier_outputs(
                 session, job_id=job_id, track_id=track_id
             )
-            emb_vectors, genre_segments, emb_models_missing = self._collect_embedding_outputs(
-                session, job_id=job_id, track_id=track_id
+            emb_vectors, genre_segments, emb_models_missing, genre_error_codes = (
+                self._collect_embedding_outputs(session, job_id=job_id, track_id=track_id)
             )
 
             advanced_rows = self._build_advanced_rows(
@@ -145,6 +146,7 @@ class PipelineFeatureAggregationService:
                 aggregated=aggregated,
                 genre_segments=genre_segments,
                 emb_models_missing=emb_models_missing,
+                genre_error_codes=genre_error_codes,
             )
             if advanced_rows:
                 self._advanced.upsert_many(session, advanced_rows)
@@ -219,7 +221,7 @@ class PipelineFeatureAggregationService:
         *,
         job_id: str,
         track_id: int,
-    ) -> tuple[dict[str, list[list[float]]], list[list], set[str]]:
+    ) -> tuple[dict[str, list[list[float]]], list[list], set[str], list[str]]:
         emb_items = list(
             session.scalars(
                 select(JobItem).where(
@@ -232,6 +234,7 @@ class PipelineFeatureAggregationService:
         )
         vectors_by_key: dict[str, list[list[float]]] = {}
         genre_segments: list[list] = []
+        genre_error_codes: list[str] = []
         models_missing: set[str] = set()
 
         for emb in emb_items:
@@ -258,11 +261,15 @@ class PipelineFeatureAggregationService:
                     parsed = parse_genre_segment_output(genre_out)
                     if parsed:
                         genre_segments.append(parsed)
+                    else:
+                        err = genre_out.get("error_code")
+                        if isinstance(err, str) and err:
+                            genre_error_codes.append(err)
             missing = payload.get("models_missing")
             if isinstance(missing, list):
                 models_missing.update(str(m) for m in missing)
 
-        return vectors_by_key, genre_segments, models_missing
+        return vectors_by_key, genre_segments, models_missing, genre_error_codes
 
     def _persist_track_embeddings(
         self,
@@ -309,6 +316,7 @@ class PipelineFeatureAggregationService:
         aggregated,
         genre_segments: list[list] | None = None,
         emb_models_missing: set[str] | None = None,
+        genre_error_codes: list[str] | None = None,
     ) -> list[AdvancedFeatureUpsertRow]:
         pipeline_tf = settings.essentia_tensorflow_pipeline_version
         rows: list[AdvancedFeatureUpsertRow] = []
@@ -331,6 +339,8 @@ class PipelineFeatureAggregationService:
 
         written_names = {r.feature_name for r in rows}
         for model_key in sorted(models_missing):
+            if not model_key_in_default_profile(model_key):
+                continue
             for feature_name in feature_names_for_model_key(model_key):
                 if feature_name in written_names:
                     continue
@@ -376,7 +386,9 @@ class PipelineFeatureAggregationService:
                     written_names.add(row["feature_name"])
 
         emb_missing = emb_models_missing or set()
-        if GENRE_MODEL_KEY in emb_missing:
+        genre_ok = bool(genre_segments)
+        genre_err = (genre_error_codes or [None])[0] if genre_error_codes else None
+        if not genre_ok and (GENRE_MODEL_KEY in emb_missing or genre_err):
             for feature_name in GENRE_FEATURE_NAMES:
                 if feature_name in written_names:
                     continue
@@ -385,6 +397,7 @@ class PipelineFeatureAggregationService:
                         track_id=track_id,
                         feature_name=feature_name,
                         value_float=None,
+                        value_text=genre_err if feature_name == "genre_discogs_519" else None,
                         confidence=None,
                         source="essentia_tensorflow",
                         model_name=GENRE_MODEL_KEY,

@@ -233,10 +233,20 @@ class ModelManager:
         return digest.hexdigest()
 
     def _paths_for(self, entry: ModelEntry) -> tuple[Path, Path]:
-        return (
-            self._models_dir / entry.local_weights_path,
-            self._models_dir / entry.local_metadata_path,
-        )
+        """Resolve weights/metadata under essentia_models_dir (avoid essentia/essentia/)."""
+        weights_rel = entry.local_weights_path
+        metadata_rel = entry.local_metadata_path
+        if weights_rel.startswith("essentia/") and self._models_dir.name == "essentia":
+            weights_rel = weights_rel.removeprefix("essentia/")
+            metadata_rel = metadata_rel.removeprefix("essentia/")
+        weights = self._models_dir / weights_rel
+        metadata = self._models_dir / metadata_rel
+        if not weights.is_file() and entry.local_weights_path != weights_rel:
+            alt_w = self._models_dir / entry.local_weights_path
+            alt_m = self._models_dir / entry.local_metadata_path
+            if alt_w.is_file() and alt_m.is_file():
+                return alt_w, alt_m
+        return weights, metadata
 
     def _status_for(self, entry: ModelEntry) -> tuple[ManifestModelStatus, str | None]:
         weights, metadata = self._paths_for(entry)

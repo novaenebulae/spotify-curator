@@ -78,6 +78,9 @@ export type RecentFailure = {
 	error_code: string | null;
 	error_message: string | null;
 	occurred_at?: string | null;
+	stage_name?: string | null;
+	feature_name?: string | null;
+	model_name?: string | null;
 };
 
 export type CoverageFieldsBySource = {
@@ -238,6 +241,20 @@ export type AdvancedGenre = {
 	label?: string | null;
 	score?: number | null;
 	top_k: { label?: string; score?: number }[];
+	status?: string | null;
+	missing_reason?: string | null;
+};
+
+export type ResolvedFeature = {
+	name: string;
+	label: string;
+	value?: number | string | boolean | null;
+	status: string;
+	source?: string | null;
+	confidence?: number | null;
+	missing_reason?: string | null;
+	model_name?: string | null;
+	phase_available?: number;
 };
 
 export type AdvancedEmbedding = {
@@ -264,6 +281,7 @@ export type TrackFeaturesResponse = {
 	track_id: number;
 	merged: TrackFeatureMerged | null;
 	sources: TrackFeatureSource[];
+	resolved_features: ResolvedFeature[];
 	availability: {
 		has_any_features: boolean;
 		has_reccobeats: boolean;

@@ -372,10 +372,41 @@ npm run build
 
 Validation manuelle (Docker `audio` + `advanced-analysis`) :
 
-1. Ouvrir `/features` — tuiles TensorFlow, panneau modèles, lancer pipeline sur 1–10 titres.
-2. Vérifier `GlobalJobBar` : progression et détail **Pipeline stages**.
-3. Bibliothèque → drawer → onglet **Advanced** après job terminé.
-4. Arrêter Docker → bannière offline, pas de crash.
+1. Ouvrir `/features` — couverture locale fusionnée, **Run complete local analysis**, workers sur carte séparée, un seul **Recent failures** (stages pipeline inclus).
+2. Vérifier `GlobalJobBar` / `JobProgress` : **Track N / M**, temps écoulé, ETA si actif ; détail **Pipeline stages**.
+3. Bibliothèque → drawer → onglets **Features** (resolved) et **Sources** (carte TensorFlow) après job terminé.
+4. Colonne Features : badges ReccoBeats + **Local** (pas Preview).
+5. Arrêter Docker → bannière offline, pas de crash.
+
+Pytest ciblé correctifs 6.9b feedback :
+
+```bash
+cd core
+uv run pytest tests/test_track_features_advanced_api.py tests/test_track_feature_status.py tests/test_jobs_pipeline_stages_live.py tests/test_failures_insights.py -q
+```
+
+Pytest ciblé correctifs analyse TF + progression titres :
+
+```bash
+cd core
+uv run pytest tests/test_pipeline_track_progress.py tests/test_advanced_aggregate_scores.py tests/test_model_manager_paths.py tests/test_track_features_advanced_api.py tests/test_jobs_pipeline_stages_live.py -q
+```
+
+Smoke genre / classifiers (conteneur ou venv avec Essentia TF + modèles `phase6-recommended`, WAV **30 s**) :
+
+```bash
+cd core
+uv run python scripts/smoke_essentia_tensorflow_real.py --wav-path /path/to/segment.wav
+```
+
+Vérifier dans la sortie : `genre_available`, `genre_top_k_len`, mode `real` vs `missing` / `stub`.
+
+Validation manuelle complémentaire (après rebuild `audio-downloader` si padding 30 s modifié) :
+
+1. Pipeline `phase6-recommended` sur ~10 titres — drawer **Sources** : section **Top 3 genres** visible, pas de `MODEL_MISSING` genre si inférence OK.
+2. Moods / approachability / engagement : scores **distincts** sur un même titre (hors audio réellement plat).
+3. `GlobalJobBar` : `Track X / M` cohérent ; pas de `JobProgress` dans le panneau Local analysis ; elapsed/ETA plausibles.
+4. `/features` : ordre Features coverage → Enrichment → Local analysis (h2, non repliable) → Workers (grille) → Models → Last runs → Recent failures.
 
 ### Tests modèles
 

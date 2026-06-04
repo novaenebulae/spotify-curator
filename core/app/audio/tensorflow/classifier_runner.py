@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+import math
 from dataclasses import dataclass
 from typing import Any
+
+_logger = logging.getLogger(__name__)
 
 from app.audio.tensorflow.backend import TensorflowInferenceBackend, model_identity
 from app.audio.tensorflow.guard import ensure_stub_allowed, stubs_allowed
@@ -71,6 +75,8 @@ class ClassifierRunner:
         activations = self._backend.classifier_activations(
             wav_path, extractor_key=spec.extractor_key, head_key=spec.head_key
         )
+        meta = self._mm.read_metadata(spec.head_key) or {}
+        meta_classes = meta.get("classes") if isinstance(meta.get("classes"), list) else []
         model_name, model_version = model_identity(self._mm, spec.head_key)
         base: dict[str, Any] = {
             "model_key": spec.legacy_key,
@@ -82,16 +88,21 @@ class ClassifierRunner:
         }
         scores = dict(activations)
         if spec.kind == "arousal_valence":
-            base["arousal"] = _label_score(scores, "arousal", default=_max_score(activations))
-            base["valence"] = _label_score(scores, "valence", default=_max_score(activations))
+            base["arousal"], base["valence"] = _arousal_valence_scores(
+                activations, meta_classes
+            )
         elif spec.kind == "two_class":
             voice = _positive_score(activations, spec.positive_label or "voice")
             base["voice_probability"] = voice
             base["instrumental_probability"] = _label_score(
                 scores, "instrumental", default=1.0 - voice
             )
+        elif spec.kind == "regression_unit":
+            base["probability"] = _regression_unit_score(activations, spec.head_key)
         else:  # binary
-            base["probability"] = _positive_score(activations, spec.positive_label)
+            base["probability"] = _binary_positive_probability(
+                activations, spec.positive_label, meta_classes
+            )
         return base
 
 
@@ -116,7 +127,96 @@ def _label_score(scores: dict[str, float], label: str, *, default: float) -> flo
     return float(default)
 
 
-def _positive_score(activations: list[tuple[str, float]], positive_label: str | None) -> float:
+def _regression_unit_score(
+    activations: list[tuple[str, float]], head_key: str
+) -> float:
+    """EffNet regression heads: single scalar, map logits to [0, 1] when needed."""
+    if not activations:
+        return 0.0
+    raw: float | None = None
+    if len(activations) == 1:
+        raw = float(activations[0][1])
+    else:
+        for label, score in activations:
+            if label.lower() in ("score", "value", "regression", head_key.lower()):
+                raw = float(score)
+                break
+        if raw is None:
+            raw = float(activations[0][1])
+    if raw is None:
+        return 0.0
+    return _normalize_unit_score(raw)
+
+
+def _sigmoid_regression(x: float) -> float:
+    if x >= 0:
+        z = math.exp(-x)
+        return 1.0 / (1.0 + z)
+    z = math.exp(x)
+    return z / (1.0 + z)
+
+
+def _normalize_unit_score(raw: float) -> float:
+    """Map logits or probabilities into [0, 1]."""
+    if 0.0 <= raw <= 1.0:
+        return float(raw)
+    return _sigmoid_regression(raw)
+
+
+def _binary_positive_probability(
+    activations: list[tuple[str, float]],
+    positive_label: str | None,
+    meta_classes: list,
+) -> float:
+    """Pick the positive-class probability using manifest metadata class order."""
+    if not activations:
+        return 0.0
+    classes = [str(c) for c in meta_classes] if meta_classes else []
+    if positive_label and classes:
+        for label, score in activations:
+            if label.lower() == positive_label.lower():
+                return _normalize_unit_score(float(score))
+        act_labels = [str(a[0]) for a in activations]
+        if len(act_labels) == len(classes) and all(
+            act_labels[i].lower() == classes[i].lower() for i in range(len(classes))
+        ):
+            try:
+                idx = next(
+                    i for i, c in enumerate(classes) if c.lower() == positive_label.lower()
+                )
+                if idx < len(activations):
+                    return _normalize_unit_score(float(activations[idx][1]))
+            except StopIteration:
+                pass
+    fallback = _positive_score(activations, positive_label, "")
+    return _normalize_unit_score(fallback)
+
+
+def _arousal_valence_scores(
+    activations: list[tuple[str, float]], meta_classes: list
+) -> tuple[float, float]:
+    scores = dict(activations)
+    arousal = _label_score(scores, "arousal", default=-999.0)
+    valence = _label_score(scores, "valence", default=-999.0)
+    if arousal > -998 and valence > -998 and arousal != valence:
+        return float(arousal), float(valence)
+    classes = [str(c) for c in meta_classes] if meta_classes else []
+    if len(activations) >= 2 and classes:
+        a_idx = next((i for i, c in enumerate(classes) if "arousal" in c.lower()), 0)
+        v_idx = next((i for i, c in enumerate(classes) if "valence" in c.lower()), 1)
+        if a_idx < len(activations) and v_idx < len(activations):
+            return float(activations[a_idx][1]), float(activations[v_idx][1])
+    if len(activations) >= 2:
+        return float(activations[0][1]), float(activations[1][1])
+    fallback = _max_score(activations)
+    return fallback, fallback
+
+
+def _positive_score(
+    activations: list[tuple[str, float]],
+    positive_label: str | None,
+    head_key: str = "",
+) -> float:
     if not activations:
         return 0.0
     if positive_label is not None:
@@ -126,9 +226,13 @@ def _positive_score(activations: list[tuple[str, float]], positive_label: str | 
         for label, score in activations:
             if positive_label.lower() in label.lower():
                 return float(score)
-    # Regression heads expose a single output; fall back to it.
     if len(activations) == 1:
         return float(activations[0][1])
+    _logger.warning(
+        "classifier %s: positive_label=%r not in activations, using max score",
+        head_key or "?",
+        positive_label,
+    )
     return _max_score(activations)
 
 

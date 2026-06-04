@@ -6,8 +6,10 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.database.models_advanced_features import TrackAdvancedFeature
 from app.database.models_audio import AudioDownloadJob
 from app.database.models_features import AudioFeature
+from app.database.models_job_items import JobItem
 from app.database.models_library import Artist, Track, TrackArtist
 from app.database.models_previews import TrackPreview
 from app.database.repositories.audio_features import AudioFeaturesRepository
@@ -25,6 +27,9 @@ class _FailureRow:
     error_code: str | None
     error_message: str | None
     occurred_at: datetime
+    stage_name: str | None = None
+    feature_name: str | None = None
+    model_name: str | None = None
 
 
 class FailureInsightsService:
@@ -61,6 +66,9 @@ class FailureInsightsService:
                 error_code=r.error_code,
                 error_message=r.error_message,
                 occurred_at=r.occurred_at.isoformat() if r.occurred_at else None,
+                stage_name=r.stage_name,
+                feature_name=r.feature_name,
+                model_name=r.model_name,
             )
             for r in page_items
         ]
@@ -169,6 +177,70 @@ class FailureInsightsService:
                     error_code="DOWNLOAD_FAILED",
                     error_message=(dl.last_error or "")[:2000] or None,
                     occurred_at=occurred,
+                )
+            )
+
+        seen_advanced: set[tuple[int, str]] = set()
+        adv_rows = session.execute(
+            select(TrackAdvancedFeature, Track)
+            .join(Track, Track.id == TrackAdvancedFeature.track_id)
+            .where(TrackAdvancedFeature.status.in_(("failed", "model_missing")))
+            .order_by(TrackAdvancedFeature.updated_at.desc().nullslast())
+            .limit(max_per_source)
+        ).all()
+        for feat, track in adv_rows:
+            key = (track.id, feat.feature_name)
+            if key in seen_advanced:
+                continue
+            seen_advanced.add(key)
+            occurred = feat.updated_at or feat.created_at or datetime.utcnow()
+            if failures_after and occurred <= failures_after:
+                continue
+            out.append(
+                _FailureRow(
+                    id=f"advanced:{feat.id}",
+                    source="essentia_tensorflow",
+                    track_id=track.id,
+                    title=track.name,
+                    artist_names=self._artist_names(session, track.id),
+                    status=feat.status,
+                    error_code=feat.status if feat.status == "model_missing" else "ADVANCED_FEATURE_FAILED",
+                    error_message=feat.status,
+                    occurred_at=occurred,
+                    feature_name=feat.feature_name,
+                    model_name=feat.model_name,
+                )
+            )
+
+        pipeline_items = session.execute(
+            select(JobItem, Track)
+            .join(Track, Track.id == JobItem.track_id)
+            .where(
+                JobItem.status == "failed",
+                JobItem.track_id.is_not(None),
+                JobItem.stage_name.is_not(None),
+            )
+            .order_by(JobItem.finished_at.desc().nullslast())
+            .limit(max_per_source)
+        ).all()
+        for item, track in pipeline_items:
+            if track is None:
+                continue
+            occurred = item.finished_at or item.started_at or item.created_at or datetime.utcnow()
+            if failures_after and occurred <= failures_after:
+                continue
+            out.append(
+                _FailureRow(
+                    id=f"pipeline_item:{item.id}",
+                    source="audio_analysis_pipeline",
+                    track_id=track.id,
+                    title=track.name,
+                    artist_names=self._artist_names(session, track.id),
+                    status="failed",
+                    error_code=item.error_code,
+                    error_message=(item.error_message or "")[:2000] or None,
+                    occurred_at=occurred,
+                    stage_name=item.stage_name,
                 )
             )
         return out

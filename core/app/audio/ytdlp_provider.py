@@ -7,6 +7,7 @@ from pathlib import Path
 
 from app.audio.cleanup import AudioCleanupService
 from app.audio.ffmpeg import convert_to_wav_pcm
+from app.audio.wav_pad import ensure_min_wav_duration
 from app.audio.matching import rank_candidates
 from app.audio.paths import segment_absolute_path, segment_relative_path
 from app.audio.provider import (
@@ -65,6 +66,7 @@ class YtDlpSegmentProvider:
         )
         try:
             convert_to_wav_pcm(downloaded, wav_path)
+            ensure_min_wav_duration(wav_path)
         finally:
             if downloaded.exists():
                 downloaded.unlink(missing_ok=True)

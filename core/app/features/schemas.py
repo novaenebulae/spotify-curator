@@ -61,6 +61,9 @@ class RecentFailureOut(BaseModel):
     error_code: str | None
     error_message: str | None
     occurred_at: str | None = None
+    stage_name: str | None = None
+    feature_name: str | None = None
+    model_name: str | None = None
 
 
 class FailurePageOut(BaseModel):
@@ -129,12 +132,25 @@ class TrackFeatureAvailabilityOut(BaseModel):
     other_sources_count: int = 0
 
 
+class ResolvedFeatureOut(BaseModel):
+    name: str
+    label: str
+    value: float | str | bool | None = None
+    status: str
+    source: str | None = None
+    confidence: float | None = None
+    missing_reason: str | None = None
+    model_name: str | None = None
+    phase_available: int = 5
+
+
 class TrackFeaturesResponse(BaseModel):
     track_id: int
     merged: TrackFeatureMergedOut | None = None
     sources: list[TrackFeatureSourceOut] = Field(default_factory=list)
     availability: TrackFeatureAvailabilityOut
     advanced: EssentiaTensorFlowSourceOut | None = None
+    resolved_features: list[ResolvedFeatureOut] = Field(default_factory=list)
 
 
 class AdvancedScalarFeatureOut(BaseModel):
@@ -164,6 +180,8 @@ class AdvancedGenreOut(BaseModel):
     label: str | None = None
     score: float | None = None
     top_k: list[dict] = Field(default_factory=list)
+    status: str | None = None
+    missing_reason: str | None = None
 
 
 class EssentiaTensorFlowSourceOut(BaseModel):

@@ -52,7 +52,7 @@ def test_embeddings_and_genre_model_missing(
     assert EFFNET_MODEL_KEY in emb.models_missing
     assert emb.embedding_outputs == {}
     assert GENRE_MODEL_KEY in genre.models_missing
-    assert genre.genre_outputs == {}
+    assert genre.genre_outputs[GENRE_MODEL_KEY]["error_code"] == "MODEL_NOT_ON_DISK"
 
 
 def test_genre_audio_too_short_treated_as_model_missing(
@@ -71,6 +71,6 @@ def test_genre_audio_too_short_treated_as_model_missing(
     result = GenreRunner(model_manager=mm, backend=ShortAudioBackend()).run_for_segment(
         segment_id=1, wav_path=_wav(tmp_path)
     )
-    assert GENRE_MODEL_KEY in result.models_missing
-    assert result.genre_outputs == {}
+    assert GENRE_MODEL_KEY not in result.models_missing
+    assert result.genre_outputs[GENRE_MODEL_KEY]["error_code"] == "AUDIO_TOO_SHORT"
     assert result.inference_mode == "none"

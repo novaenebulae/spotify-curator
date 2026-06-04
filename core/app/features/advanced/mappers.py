@@ -34,11 +34,11 @@ _BINARY_MODEL_KEYS = frozenset(
         "mood_sad",
         "mood_electronic",
         "mood_acoustic",
-        "approachability",
-        "engagement",
         "danceability",
     }
 )
+
+_REGRESSION_UNIT_MODEL_KEYS = frozenset({"approachability", "engagement"})
 
 
 def _clamp01(value: float) -> float:
@@ -65,6 +65,20 @@ def binary_to_score(raw: float | dict[str, Any]) -> float:
     return _clamp01(float(raw))
 
 
+def arousal_valence_regression_to_unit(v: float) -> float:
+    """Map Essentia DEAM / arousal-valence regressions into [0, 1].
+
+    DEAM heads emit roughly 1..9 (annotation scale). Some models use 0..1 or -1..1.
+    """
+    if 0.0 <= v <= 1.0:
+        return float(v)
+    if -1.05 <= v <= 1.05:
+        return _clamp01((v + 1.0) / 2.0)
+    if 1.0 < v <= 9.05:
+        return _clamp01((v - 1.0) / 8.0)
+    return _clamp01(_sigmoid(v))
+
+
 def regression_to_unit(raw: float | dict[str, Any], *, field: str) -> float:
     if isinstance(raw, dict):
         val = raw.get(field)
@@ -73,10 +87,7 @@ def regression_to_unit(raw: float | dict[str, Any], *, field: str) -> float:
         v = float(val)
     else:
         v = float(raw)
-    # Essentia arousal/valence models often emit roughly -1..1 or 0..1
-    if -1.05 <= v <= 1.05:
-        return _clamp01((v + 1.0) / 2.0)
-    return _clamp01(v)
+    return arousal_valence_regression_to_unit(v)
 
 
 def map_classifier_output(
@@ -88,7 +99,7 @@ def map_classifier_output(
     confidence = 0.85
     results: list[MappedFeature] = []
 
-    if model_key in _BINARY_MODEL_KEYS:
+    if model_key in _BINARY_MODEL_KEYS or model_key in _REGRESSION_UNIT_MODEL_KEYS:
         if output.probability is None:
             return []
         score = _clamp01(output.probability)
@@ -107,16 +118,18 @@ def map_classifier_output(
     if model_key == "arousal_valence":
         if output.arousal is None or output.valence is None:
             return []
-        arousal = regression_to_unit(output.arousal, field="arousal") if isinstance(
-            output.arousal, dict
-        ) else _clamp01((float(output.arousal) + 1.0) / 2.0 if -1.05 <= float(output.arousal) <= 1.05 else float(output.arousal))
-        valence_tf = regression_to_unit(output.valence, field="valence") if isinstance(
-            output.valence, dict
-        ) else _clamp01(
-            (float(output.valence) + 1.0) / 2.0
-            if -1.05 <= float(output.valence) <= 1.05
+        arousal_raw = (
+            regression_to_unit(output.arousal, field="arousal")
+            if isinstance(output.arousal, dict)
+            else float(output.arousal)
+        )
+        valence_raw = (
+            regression_to_unit(output.valence, field="valence")
+            if isinstance(output.valence, dict)
             else float(output.valence)
         )
+        arousal = arousal_valence_regression_to_unit(arousal_raw)
+        valence_tf = arousal_valence_regression_to_unit(valence_raw)
         results.append(
             MappedFeature(
                 feature_name="arousal",

@@ -688,7 +688,15 @@ class JobItemService:
                 # If work is still pending, the job cannot be terminal.
                 job.status = "running"
                 job.finished_at = None
-            job.current_step = f"processing {terminal}/{total}"
+            step = f"processing {terminal}/{total}"
+            tp_log: dict[str, int] | None = None
+            if job.job_type == JOB_TYPE_AUDIO_ANALYSIS_PIPELINE:
+                tp_log = self.pipeline_track_progress(job_id)
+                tt = tp_log.get("tracks_total") or 0
+                if tt > 0:
+                    done = tp_log.get("tracks_completed", 0) + tp_log.get("tracks_failed", 0)
+                    step = f"processing tracks {done}/{tt} · items {terminal}/{total}"
+            job.current_step = step
         elif pending == 0 and total > 0:
             self._apply_terminal_job_result(session, job, counts)
         session.flush()
@@ -762,6 +770,8 @@ class JobItemService:
                 stage: {status: stage_counts.get(stage, {}).get(status, 0) for status in STAGE_STATUSES}
                 for stage in ALL_PIPELINE_STAGES
             }
+            tp = self.pipeline_track_progress(job.id)
+            result.update(tp)
         return result
 
     def _preview_resolve_outcome_counts(
@@ -835,6 +845,59 @@ class JobItemService:
         engine = get_engine()
         with Session(engine) as session:
             return self._items.count_by_stage_name(session, job_id)
+
+    def pipeline_track_progress(self, job_id: str) -> dict[str, int]:
+        """Per-track progress: completed only when audio_cleanup succeeds."""
+        from app.audio.pipeline.constants import STAGE_AUDIO_CLEANUP
+
+        engine = get_engine()
+        with Session(engine) as session:
+            job = session.get(Job, job_id)
+            if job is None:
+                return {"tracks_total": 0, "tracks_completed": 0, "tracks_failed": 0, "tracks_pending": 0}
+            try:
+                existing = json.loads(job.result_json or "{}")
+            except json.JSONDecodeError:
+                existing = {}
+            track_count = int(existing.get("track_count") or 0)
+            cleanup_by_track: dict[int, str] = {}
+            failed_tracks: set[int] = set()
+            track_ids: set[int] = set()
+            for item in self._items.list_for_job(session, job_id, limit=100_000, offset=0):
+                if item.track_id is None:
+                    continue
+                tid = int(item.track_id)
+                track_ids.add(tid)
+                if item.stage_name == STAGE_AUDIO_CLEANUP:
+                    cleanup_by_track[tid] = str(item.status)
+                elif item.status == "failed":
+                    failed_tracks.add(tid)
+            if track_count <= 0:
+                track_count = len(track_ids) or len(cleanup_by_track)
+            completed = failed = pending = 0
+            for tid in track_ids or set(cleanup_by_track.keys()):
+                cleanup_status = cleanup_by_track.get(tid)
+                if cleanup_status == "success":
+                    completed += 1
+                elif cleanup_status in ("failed", "cancelled"):
+                    failed += 1
+                elif tid in failed_tracks and cleanup_status in (
+                    None,
+                    "skipped",
+                    "pending",
+                    "blocked",
+                ):
+                    failed += 1
+                else:
+                    pending += 1
+            if track_count > 0 and completed + failed + pending != track_count:
+                pending = max(0, track_count - completed - failed)
+            return {
+                "tracks_total": track_count,
+                "tracks_completed": completed,
+                "tracks_failed": failed,
+                "tracks_pending": pending,
+            }
 
     def list_items(self, job_id: str, *, limit: int = 100, offset: int = 0) -> list[dict[str, Any]]:
         engine = get_engine()

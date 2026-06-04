@@ -16,9 +16,11 @@ from app.features.schemas import (
     AdvancedFailureOut,
 )
 from app.models_registry import ModelManager
+from app.models_registry.profile_scope import model_keys_for_default_profile
+from app.settings.config import settings
 
 
-_ADVANCED_FEATURE_NAMES: tuple[str, ...] = (
+_BASE_ADVANCED_FEATURE_NAMES: tuple[str, ...] = (
     "mood_aggressive_score",
     "mood_happy_score",
     "mood_party_score",
@@ -39,6 +41,27 @@ _ADVANCED_FEATURE_NAMES: tuple[str, ...] = (
     "energy_proxy",
 )
 
+_PROFILE_OPTIONAL_FEATURES: dict[str, frozenset[str]] = {
+    "phase6-recommended": frozenset({"arousal", "valence_tf"}),
+    "phase6-minimal": frozenset(
+        {"arousal", "valence_tf", "genre_discogs_519", "genre_discogs_519_top_k"}
+    ),
+}
+
+
+def advanced_coverage_feature_names() -> tuple[str, ...]:
+    """Feature names shown in coverage for the active Essentia profile."""
+    profile = settings.essentia_models_default_profile
+    optional = _PROFILE_OPTIONAL_FEATURES.get(profile, frozenset())
+    if optional:
+        return tuple(n for n in _BASE_ADVANCED_FEATURE_NAMES if n not in optional)
+    profile_keys = model_keys_for_default_profile()
+    if profile_keys and "deam_msd_musicnn_2" not in profile_keys:
+        return tuple(
+            n for n in _BASE_ADVANCED_FEATURE_NAMES if n not in ("arousal", "valence_tf")
+        )
+    return _BASE_ADVANCED_FEATURE_NAMES
+
 
 class AdvancedFeatureCoverageService:
     def __init__(
@@ -57,7 +80,7 @@ class AdvancedFeatureCoverageService:
         track_count = self._features.count_tracks_total(session)
         features_out: list[AdvancedCoverageFeatureOut] = []
 
-        for feature_name in _ADVANCED_FEATURE_NAMES:
+        for feature_name in advanced_coverage_feature_names():
             counts = self._status_counts_for_feature(session, feature_name)
             success = counts.get("success", 0) + counts.get("partial", 0)
             tracks_with = self._tracks_with_feature(session, feature_name, statuses=("success", "partial"))

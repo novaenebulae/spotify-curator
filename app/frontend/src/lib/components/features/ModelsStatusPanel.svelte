@@ -2,6 +2,7 @@
 	import CollapsibleSection from '$lib/components/common/CollapsibleSection.svelte';
 	import StatusBadge from '$lib/components/common/StatusBadge.svelte';
 	import { downloadProfile, type ModelsStatusResponse } from '$lib/modelsApi';
+	import { profileDisplayName, profileModelsFor } from '$lib/profileLabels';
 	import { ApiClientError } from '$lib/apiErrors';
 
 	type Props = {
@@ -21,6 +22,10 @@
 
 	const missingModels = $derived(
 		status?.models.filter((m) => m.status === 'missing').slice(0, 12) ?? []
+	);
+
+	const selectedProfileModels = $derived(
+		status ? profileModelsFor(selectedProfile, status.models) : []
 	);
 
 	async function confirmDownload() {
@@ -73,7 +78,7 @@
 		<div class="profiles">
 			{#each status.profiles as p}
 				<div class="profile-chip">
-					<strong>{p.name}</strong>
+					<strong>{profileDisplayName(p.name)}</strong>
 					<span class="muted">{p.available_count}/{p.available_count + p.missing_count}</span>
 					<StatusBadge variant={p.status === 'available' ? 'idle' : 'warning'} label={p.status} />
 				</div>
@@ -105,10 +110,13 @@
 			</label>
 			<div class="download-row">
 				<select bind:value={selectedProfile} disabled={downloadBusy}>
-					<option value="phase6-minimal">phase6-minimal</option>
-					<option value="phase6-recommended">phase6-recommended</option>
-					<option value="phase6-full">phase6-full</option>
+					<option value="phase6-minimal">{profileDisplayName('phase6-minimal')}</option>
+					<option value="phase6-recommended">{profileDisplayName('phase6-recommended')}</option>
+					<option value="phase6-full">{profileDisplayName('phase6-full')}</option>
 				</select>
+				{#if selectedProfileModels.length > 0}
+					<p class="muted profile-models">{selectedProfileModels.join(' · ')}</p>
+				{/if}
 				<button type="button" disabled={downloadBusy || !acceptLicense} onclick={confirmDownload}>
 					{downloadBusy ? 'Downloading…' : 'Download profile'}
 				</button>
@@ -173,6 +181,11 @@
 		flex-wrap: wrap;
 		gap: var(--space-sm);
 		align-items: center;
+	}
+	.profile-models {
+		width: 100%;
+		font-size: 0.8rem;
+		margin: 0.25rem 0 0;
 	}
 	.hint {
 		font-size: 0.85rem;

@@ -56,36 +56,84 @@ class GenreRunner:
         stub_used = False
         k = max(1, settings.advanced_features_top_k_genres)
 
-        available = self._mm.is_available(GENRE_EXTRACTOR_KEY) and self._mm.is_available(
-            GENRE_HEAD_KEY
-        )
+        extractor_ok = self._mm.is_available(GENRE_EXTRACTOR_KEY)
+        head_ok = self._mm.is_available(GENRE_HEAD_KEY)
+        ext_meta = self._mm.read_metadata(GENRE_EXTRACTOR_KEY) or {}
+        from app.audio.tensorflow.backend import _predictions_output
+
+        maest_direct = _predictions_output(ext_meta) is not None
+        available = extractor_ok and (head_ok or maest_direct)
         if not available:
             missing.append(GENRE_MODEL_KEY)
+            outputs[GENRE_MODEL_KEY] = {
+                "model_key": GENRE_MODEL_KEY,
+                "model_status": "missing",
+                "error_code": "MODEL_NOT_ON_DISK",
+                "error_message": (
+                    "MAEST extractor missing"
+                    if not extractor_ok
+                    else "Genre Discogs519 head missing"
+                ),
+                "top_k": [],
+            }
         elif self._backend is not None:
+            from pathlib import Path
+
+            from app.audio.wav_pad import (
+                MAEST_MIN_SECONDS,
+                ensure_min_wav_duration,
+                wav_duration_seconds,
+            )
+
+            wav_path_obj = Path(wav_path)
+            try:
+                wav_dur = wav_duration_seconds(wav_path_obj)
+            except Exception:  # noqa: BLE001
+                wav_dur = 0.0
+            if wav_dur < MAEST_MIN_SECONDS:
+                try:
+                    ensure_min_wav_duration(wav_path_obj)
+                except Exception:  # noqa: BLE001
+                    pass
             try:
                 activations = self._backend.classifier_activations(
                     wav_path, extractor_key=GENRE_EXTRACTOR_KEY, head_key=GENRE_HEAD_KEY
                 )
             except (InferenceError, Exception) as exc:  # noqa: BLE001
                 if _is_audio_too_short(exc):
-                    missing.append(GENRE_MODEL_KEY)
+                    outputs[GENRE_MODEL_KEY] = {
+                        "model_key": GENRE_MODEL_KEY,
+                        "model_status": "missing",
+                        "error_code": "AUDIO_TOO_SHORT",
+                        "error_message": str(exc),
+                        "top_k": [],
+                    }
                 else:
                     raise
             else:
                 ranked = sorted(activations, key=lambda pair: pair[1], reverse=True)[:k]
-                model_name, model_version = model_identity(self._mm, GENRE_HEAD_KEY)
-                outputs[GENRE_MODEL_KEY] = {
-                    "model_key": GENRE_MODEL_KEY,
-                    "model_status": "available",
-                    "top_k": [
-                        {"label": label, "score": float(score)} for label, score in ranked
-                    ],
-                    "model_name": model_name,
-                    "model_version": model_version,
-                    "inference_mode": "real",
-                    "wav_path_used": True,
-                }
-                real_used = True
+                if not ranked:
+                    outputs[GENRE_MODEL_KEY] = {
+                        "model_key": GENRE_MODEL_KEY,
+                        "model_status": "missing",
+                        "error_code": "NO_PREDICTIONS",
+                        "error_message": "Genre inference returned no labels",
+                        "top_k": [],
+                    }
+                else:
+                    model_name, model_version = model_identity(self._mm, GENRE_HEAD_KEY)
+                    outputs[GENRE_MODEL_KEY] = {
+                        "model_key": GENRE_MODEL_KEY,
+                        "model_status": "available",
+                        "top_k": [
+                            {"label": label, "score": float(score)} for label, score in ranked
+                        ],
+                        "model_name": model_name,
+                        "model_version": model_version,
+                        "inference_mode": "real",
+                        "wav_path_used": True,
+                    }
+                    real_used = True
         elif stubs_allowed():
             model_name, model_version = model_identity(self._mm, GENRE_HEAD_KEY)
             outputs[GENRE_MODEL_KEY] = {

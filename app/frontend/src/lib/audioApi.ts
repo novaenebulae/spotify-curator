@@ -34,6 +34,7 @@ export type WorkerInfo = {
 	current_job_id?: string | null;
 	current_item_id?: string | null;
 	last_seen_at: string | null;
+	metadata?: Record<string, unknown> | null;
 };
 
 export function downloadMissingSegments(

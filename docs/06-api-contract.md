@@ -562,11 +562,11 @@ Réponse (extrait) :
 }
 ```
 
-Sources d’échecs agrégées (`FailureInsightsService`) : `reccobeats`, `essentia_lowlevel`, `deezer_preview`, `audio_download`.
+Sources d’échecs agrégées (`FailureInsightsService`) : `reccobeats`, `essentia_lowlevel`, `deezer_preview`, `audio_download`, `track_advanced_features` (dédupliqué par `(track_id, feature_name)`), échecs `job_items` pipeline (`stage_name`, `feature_name`, `model_name` sur chaque entrée paginée `failures`).
 
 ### `GET /features/tracks/{track_id}`
 
-Retourne la ligne fusionnée active (`is_active=true`) et **toutes** les sources ayant une ligne `audio_features` pour ce titre (y compris sources inactives après merge).
+Retourne la ligne fusionnée active (`is_active=true`), **toutes** les sources `audio_features`, une entrée synthétique `essentia_tensorflow` dans `sources[]` si des données TF existent, le bloc `advanced` (compat), et **`resolved_features`** : liste produite par `FeatureResolver` + registre phase 6 (priorités playlist engine pour l’UI drawer onglet Features).
 
 Réponse (extrait) :
 
@@ -924,7 +924,7 @@ Règles :
 
 ### Extension `GET /features/tracks/{track_id}`
 
-**Implémenté (partiel).** Champ racine `advanced` : scalaires TF, genre Discogs top-k (tronqué), statut embedding. Query `include_embedding_vector=true` pour inclure le vecteur (défaut : absent).
+**Implémenté.** Champ racine `advanced` : scalaires TF, bloc `genre` (Discogs519) avec `top_k` limité à **3** entrées `{label, score}` pour l’UI, `status` / `missing_reason` (`MODEL_NOT_ON_DISK`, `AUDIO_TOO_SHORT`, `NO_PREDICTIONS`, …). Les alias registry genre redondants en `model_missing` sont omis dans `resolved_features` lorsque `top_k` est disponible. Query `include_embedding_vector=true` pour inclure le vecteur (défaut : absent).
 
 ### `GET /embeddings/tracks/{track_id}`
 
@@ -933,6 +933,30 @@ Non implémenté — utiliser `GET /features/tracks/{id}?include_embedding_vecto
 ### Jobs — compteurs par stage
 
 **Implémenté.** `GET /jobs/{job_id}` inclut `stages` pour les jobs `audio_analysis_pipeline` (compteurs live, pas seulement en fin de job). Détail items : `GET /jobs/{job_id}/items`.
+
+### Jobs — progression par titre (`tracks_progress`)
+
+**Implémenté.** Pour `audio_analysis_pipeline`, `GET /jobs/{job_id}` expose aussi :
+
+```json
+{
+  "tracks_progress": {
+    "tracks_total": 10,
+    "tracks_completed": 7,
+    "tracks_failed": 1,
+    "tracks_pending": 2
+  }
+}
+```
+
+Sémantique (agrégat **par `track_id`**, items `segment_download` uniquement) :
+
+- `tracks_total` : `result_json.track_count` du job si présent, sinon nombre de titres distincts vus dans les items ;
+- `tracks_completed` : item `audio_cleanup` du titre en `success` (pipeline entièrement terminée pour ce titre) ;
+- `tracks_failed` : `audio_cleanup` en `failed` / `cancelled`, ou échec terminal sur une stage sans cleanup réussi ;
+- `tracks_pending` : download / analyse en cours, ou cleanup pas encore `success`.
+
+`progress_current` / `progress_total` restent le nombre d’**items** pipeline (stages × segments) — à afficher en sous-texte / `<details>` uniquement, pas comme barre principale.
 
 ### `GET /jobs/{job_id}/events`
 

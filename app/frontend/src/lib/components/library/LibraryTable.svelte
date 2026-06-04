@@ -103,7 +103,7 @@
 				<th class="col-playlists" title="Playlist count">Playlists</th>
 				<th class="col-isrc">ISRC</th>
 				<th class="col-status">Status</th>
-				<th class="col-features" title="ReccoBeats, Essentia, Preview">Features</th>
+				<th class="col-features" title="ReccoBeats and local analysis">Features</th>
 			</tr>
 		</thead>
 		<tbody>
@@ -189,7 +189,7 @@
 					<td class="col-isrc"><code>{track.isrc ?? '—'}</code></td>
 					<td class="col-status">{track.availability_status}</td>
 					<td class="col-features">
-						<div class="features-badges" title="ReccoBeats / Essentia / Deezer preview">
+						<div class="features-badges" title="ReccoBeats and local analysis (low-level + TensorFlow)">
 							<span
 								class="feat-pill"
 								class:feat-ok={featureVariant(track.reccobeats_status) === 'ok'}
@@ -198,15 +198,11 @@
 							>
 							<span
 								class="feat-pill"
-								class:feat-ok={featureVariant(track.essentia_status) === 'ok'}
-								title="Essentia: {track.essentia_status ?? 'missing'}"
-								>Essentia {featureShort(track.essentia_status)}</span
-							>
-							<span
-								class="feat-pill"
-								class:feat-ok={track.preview_available}
-								title={track.preview_available ? 'Deezer preview OK' : 'No Deezer preview'}
-								>Preview {track.preview_available ? '✓' : '—'}</span
+								class:feat-ok={featureVariant(
+									track.local_analysis_status ?? track.essentia_status
+								) === 'ok'}
+								title="Local analysis: {track.local_analysis_status ?? track.essentia_status ?? 'missing'}"
+								>Local {featureShort(track.local_analysis_status ?? track.essentia_status)}</span
 							>
 						</div>
 					</td>

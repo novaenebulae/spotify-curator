@@ -48,8 +48,10 @@
 			<tr>
 				<th>When</th>
 				<th>Source</th>
+				<th>Stage</th>
+				<th>Feature</th>
+				<th>Model</th>
 				<th>Track</th>
-				<th>Artists</th>
 				<th>Status</th>
 				<th>Error</th>
 			</tr>
@@ -59,6 +61,9 @@
 				<tr>
 					<td class="when-col">{formatWhen(f.occurred_at)}</td>
 					<td class="source-col">{f.source ?? '—'}</td>
+					<td class="narrow">{f.stage_name ?? '—'}</td>
+					<td class="narrow">{f.feature_name ?? '—'}</td>
+					<td class="narrow">{f.model_name ?? '—'}</td>
 					<td class="track-col">
 						{#if onInspect}
 							<button type="button" class="title-inspect" onclick={() => onInspect(f)}>
@@ -68,7 +73,6 @@
 							{f.title || `Track #${f.track_id}`}
 						{/if}
 					</td>
-					<td class="artists-col">{f.artist_names.join(', ') || '—'}</td>
 					<td>
 						<StatusBadge variant={failureStatusVariant(f.status)} label={f.status} />
 					</td>
@@ -119,10 +123,6 @@
 	.track-col {
 		min-width: 12rem;
 		max-width: 20rem;
-	}
-	.artists-col {
-		min-width: 8rem;
-		max-width: 14rem;
 	}
 	.title-inspect {
 		background: none;

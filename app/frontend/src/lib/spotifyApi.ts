@@ -24,6 +24,13 @@ export type StageCounts = {
 	rate_limited?: number;
 };
 
+export type TracksProgress = {
+	tracks_total: number;
+	tracks_completed: number;
+	tracks_failed: number;
+	tracks_pending: number;
+};
+
 export type Job = {
 	id: string;
 	job_type: string;
@@ -37,6 +44,7 @@ export type Job = {
 	started_at: string | null;
 	finished_at: string | null;
 	stages?: Record<string, StageCounts>;
+	tracks_progress?: TracksProgress;
 };
 
 export type JobItem = {

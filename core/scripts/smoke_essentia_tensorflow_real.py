@@ -115,13 +115,21 @@ def run_smoke(
     )
 
     genre_top_label: str | None = None
+    genre_top_k_count = 0
+    genre_inference_mode = "skipped"
+    genre_extractor_ok = manager.is_available(GENRE_EXTRACTOR_KEY)
+    genre_head_ok = manager.is_available(GENRE_HEAD_KEY)
     if _genre_available(manager):
         genre = GenreRunner(model_manager=manager, backend=backend).run_for_segment(
             segment_id=track_id, wav_path=wav_path
         )
+        genre_inference_mode = genre.inference_mode
         top_k = genre.genre_outputs.get(GENRE_MODEL_KEY, {}).get("top_k") or []
+        genre_top_k_count = len(top_k)
         if top_k:
             genre_top_label = top_k[0].get("label")
+    else:
+        genre_inference_mode = "model_missing"
 
     emb_out = emb.embedding_outputs.get(EFFNET_MODEL_KEY, {})
     vector = emb_out.get("vector") or []
@@ -136,6 +144,10 @@ def run_smoke(
         "embedding_dimension": emb_out.get("dimension"),
         "classifier_count": len(clf.classifier_outputs),
         "genre_top_label": genre_top_label,
+        "genre_top_k_count": genre_top_k_count,
+        "genre_inference_mode": genre_inference_mode,
+        "genre_extractor_available": genre_extractor_ok,
+        "genre_head_available": genre_head_ok,
         "models_missing": sorted(set(emb.models_missing) | set(clf.models_missing)),
         "persisted": False,
     }

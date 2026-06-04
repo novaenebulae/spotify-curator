@@ -45,7 +45,24 @@ def test_map_arousal_valence() -> None:
     names = {m.feature_name: m.value for m in mapped}
     assert "arousal" in names
     assert "valence_tf" in names
-    assert names["valence_tf"] == pytest.approx(0.8)
+    assert names["arousal"] == pytest.approx(0.4)
+    assert names["valence_tf"] == pytest.approx(0.6)
+
+
+def test_map_arousal_valence_deam_scale() -> None:
+    """DEAM MusicNN head emits ~1..9, not 0..1 (runtime logs H4)."""
+    out = ClassifierSegmentOutput(
+        model_key="arousal_valence",
+        model_status="available",
+        arousal=6.227352343107524,
+        valence=5.780333493885241,
+    )
+    mapped = map_classifier_output("arousal_valence", out)
+    names = {m.feature_name: m.value for m in mapped}
+    assert names["arousal"] == pytest.approx((6.227352343107524 - 1.0) / 8.0, abs=1e-4)
+    assert names["valence_tf"] == pytest.approx((5.780333493885241 - 1.0) / 8.0, abs=1e-4)
+    assert names["arousal"] < 1.0
+    assert names["valence_tf"] < 1.0
 
 
 def test_map_voice_instrumental() -> None:

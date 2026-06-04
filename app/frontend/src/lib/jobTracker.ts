@@ -91,7 +91,8 @@ export async function trackJob(
 
 		await pollJobUntilDone(jobId, (j) => {
 			jobTracker.update((state) => {
-				const prev = state.activeJob?.progress_current ?? 0;
+				const sameJob = state.activeJob?.id === j.id;
+				const prev = sameJob ? (state.activeJob?.progress_current ?? 0) : 0;
 				const next = Math.max(prev, j.progress_current);
 				return { ...state, activeJob: { ...j, progress_current: next } };
 			});
@@ -105,6 +106,13 @@ export async function trackJob(
 			busy: false
 		});
 		clearPersisted();
+		if (
+			job.job_type === 'audio_analysis_pipeline' &&
+			typeof sessionStorage !== 'undefined' &&
+			['succeeded', 'success', 'partial', 'failed', 'cancelled'].includes(job.status)
+		) {
+			sessionStorage.removeItem('spotify_curator_analysis_session_start');
+		}
 		await options?.onComplete?.(job);
 		return job;
 	} catch (e) {

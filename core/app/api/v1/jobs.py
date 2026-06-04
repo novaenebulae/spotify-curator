@@ -72,6 +72,7 @@ def get_job(job_id: str) -> dict:
             stage: {status: stage_counts.get(stage, {}).get(status, 0) for status in STAGE_STATUSES}
             for stage in ALL_PIPELINE_STAGES
         }
+        payload["tracks_progress"] = _items.pipeline_track_progress(job_id)
     return payload
 
 

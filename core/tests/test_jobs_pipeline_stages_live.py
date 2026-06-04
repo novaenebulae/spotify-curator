@@ -30,3 +30,5 @@ def test_running_pipeline_job_exposes_live_stages(client) -> None:
     assert "stages" in job
     assert STAGE_SEGMENT_DOWNLOAD in job["stages"]
     assert sum(job["stages"][STAGE_SEGMENT_DOWNLOAD].values()) >= 1
+    assert "tracks_progress" in job
+    assert job["tracks_progress"]["tracks_total"] >= 1

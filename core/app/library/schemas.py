@@ -54,6 +54,7 @@ class TrackListItem(BaseModel):
     preview_url: str | None = None
     reccobeats_status: str = "missing"
     essentia_status: str = "missing"
+    local_analysis_status: str = "missing"
     preview_available: bool = False
 
 

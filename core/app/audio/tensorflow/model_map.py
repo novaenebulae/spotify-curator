@@ -25,7 +25,7 @@ class ClassifierSpec:
     legacy_key: str
     extractor_key: str
     head_key: str
-    kind: str  # "binary" | "two_class" | "arousal_valence"
+    kind: str  # "binary" | "regression_unit" | "two_class" | "arousal_valence"
     positive_label: str | None = None
 
 
@@ -92,13 +92,13 @@ CLASSIFIER_SPECS: tuple[ClassifierSpec, ...] = (
         legacy_key="approachability",
         extractor_key=EMBEDDINGS_EXTRACTOR_KEY,
         head_key="approachability_regression_discogs_effnet",
-        kind="binary",
+        kind="regression_unit",
     ),
     ClassifierSpec(
         legacy_key="engagement",
         extractor_key=EMBEDDINGS_EXTRACTOR_KEY,
         head_key="engagement_regression_discogs_effnet",
-        kind="binary",
+        kind="regression_unit",
     ),
     ClassifierSpec(
         legacy_key="voice_instrumental",

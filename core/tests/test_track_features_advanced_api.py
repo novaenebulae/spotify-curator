@@ -67,7 +67,11 @@ def test_track_features_includes_advanced_block(client, audio_db) -> None:
     res = client.get("/api/v1/features/tracks/1")
     assert res.status_code == 200
     body = res.json()
+    assert "resolved_features" in body
+    assert isinstance(body["resolved_features"], list)
     assert body["availability"]["has_essentia_tensorflow"] is True
+    tf_sources = [s for s in body["sources"] if s["source_name"] == "essentia_tensorflow"]
+    assert len(tf_sources) == 1
     adv = body["advanced"]
     assert adv is not None
     assert adv["status"] == "success"
@@ -76,6 +80,7 @@ def test_track_features_includes_advanced_block(client, audio_db) -> None:
     assert adv["embedding"]["dimension"] == 1280
     assert adv["embedding"]["vector"] is None
     assert len(adv["genre"]["top_k"]) == 1
+    assert adv["genre"].get("status") in ("success", "partial", "missing")
 
     res_vec = client.get("/api/v1/features/tracks/1?include_embedding_vector=true")
     assert res_vec.status_code == 200

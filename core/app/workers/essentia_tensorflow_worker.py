@@ -130,6 +130,14 @@ class EssentiaTensorflowWorker(BaseWorker):
             )
             return
 
+        from app.audio.wav_pad import MAEST_MIN_SECONDS, ensure_min_wav_duration, wav_duration_seconds
+
+        try:
+            if wav_duration_seconds(wav) < MAEST_MIN_SECONDS:
+                ensure_min_wav_duration(wav, min_seconds=MAEST_MIN_SECONDS)
+        except Exception:  # noqa: BLE001
+            pass
+
         self._heartbeat_running(
             current_job_id=item.job_id,
             current_item_id=item.id,
@@ -167,6 +175,8 @@ class EssentiaTensorflowWorker(BaseWorker):
                 genre_missing: list[str] = []
                 genre_outputs: dict = {}
                 genre_mode = "none"
+                from app.audio.tensorflow.genre_runner import GENRE_MODEL_KEY
+
                 try:
                     genre = (
                         self._genre_runner
@@ -177,13 +187,23 @@ class EssentiaTensorflowWorker(BaseWorker):
                     genre_mode = genre.inference_mode
                 except (InferenceError, ModelManagerError) as genre_exc:
                     if _is_audio_too_short(genre_exc):
-                        from app.audio.tensorflow.genre_runner import GENRE_MODEL_KEY
-
-                        genre_missing = [GENRE_MODEL_KEY]
+                        genre_missing = []
+                        genre_outputs = {
+                            GENRE_MODEL_KEY: {
+                                "model_key": GENRE_MODEL_KEY,
+                                "model_status": "missing",
+                                "error_code": "AUDIO_TOO_SHORT",
+                                "error_message": str(genre_exc),
+                                "top_k": [],
+                            }
+                        }
                     else:
                         raise
                 result["genre_outputs"] = genre_outputs
                 result["genre_inference"] = genre_mode
+                go = genre_outputs.get(GENRE_MODEL_KEY) if isinstance(genre_outputs, dict) else None
+                if isinstance(go, dict) and go.get("top_k"):
+                    genre_missing = [m for m in genre_missing if m != GENRE_MODEL_KEY]
                 result["models_missing"] = sorted(
                     set(emb.models_missing) | set(genre_missing)
                 )

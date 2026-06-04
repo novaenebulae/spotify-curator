@@ -144,6 +144,9 @@ class TrackSearchService:
                             preview_url=row.preview_url,
                             reccobeats_status=str(fs.get("reccobeats_status", "missing")),
                             essentia_status=str(fs.get("essentia_status", "missing")),
+                            local_analysis_status=str(
+                                fs.get("local_analysis_status", fs.get("essentia_status", "missing"))
+                            ),
                             preview_available=bool(fs.get("preview_available", False)),
                         )
                     )

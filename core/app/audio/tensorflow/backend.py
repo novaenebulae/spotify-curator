@@ -153,12 +153,12 @@ class EssentiaTensorflowBackend:
         import essentia.standard as es  # type: ignore[import-not-found]
 
         head_meta = self._mm.read_metadata(head_key) or {}
-
-        # Some extractors (e.g. MAEST) are self-contained classifiers that emit a
-        # rank-2 ``predictions`` output directly. Chaining them into a 2D head
-        # fails ("cannot convert TENSOR_REAL to MATRIX_REAL"), so run single-stage.
         ext_meta = self._mm.read_metadata(extractor_key) or {}
-        if _predictions_output(ext_meta) is not None:
+
+        # MAEST (and same-key models) expose ``predictions`` on the extractor graph.
+        # EffNet also has a 400-class ``predictions`` output, but mood/danceability
+        # heads must run TensorflowPredict2D on embeddings (PartitionedCall:1).
+        if _use_direct_extractor_predictions(extractor_key, head_key, ext_meta):
             return self._direct_predictions(
                 wav_path, extractor_key, fallback_classes=_meta_classes(head_meta)
             )
@@ -223,6 +223,17 @@ def _meta_algorithm(meta: dict) -> str | None:
         if isinstance(algo, str) and algo:
             return algo
     return None
+
+
+def _use_direct_extractor_predictions(
+    extractor_key: str, head_key: str, ext_meta: dict
+) -> bool:
+    """True only for self-contained extractors (MAEST), not EffNet + separate head."""
+    if _predictions_output(ext_meta) is None:
+        return False
+    if extractor_key == head_key:
+        return True
+    return "maest" in extractor_key.lower()
 
 
 def _predictions_output(meta: dict) -> str | None:
