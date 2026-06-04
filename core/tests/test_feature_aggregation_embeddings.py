@@ -17,7 +17,6 @@ from app.database.models_library import Track
 from app.database.models_track_embeddings import TrackEmbedding
 from app.jobs.items.constants import WORKER_TYPE_ESSENTIA_TENSORFLOW
 from app.jobs.items.service import JobItemService
-from app.models_registry import ModelRegistry
 from app.workers.essentia_tensorflow_worker import EssentiaTensorflowWorker
 
 
@@ -44,20 +43,22 @@ def _seed_track(session: Session, track_id: int = 1) -> None:
     session.flush()
 
 
-def test_aggregation_persists_embeddings_and_genre(tmp_path, monkeypatch) -> None:
+def test_aggregation_persists_embeddings_and_genre(
+    tmp_path, monkeypatch, build_tf_models, make_tf_manager, fake_tf_backend
+) -> None:
     db_path = tmp_path / "agg_emb.sqlite"
     fixture = Path(__file__).parent / "fixtures" / "essentia_lowlevel_sample.json"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
     cache_root = _patch_cache(monkeypatch, tmp_path)
-    models_dir = tmp_path / "models"
-    for rel in (
-        "discogs_effnet/discogs-effnet-bs64-1.pb",
-        "discogs_maest/genre_discogs519-discogs-maest-30s-pw-519l.pb",
-        "tensorflow/mood_happy.pb",
-    ):
-        p = models_dir / rel
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_bytes(b"m")
+    models_dir = build_tf_models(
+        [
+            "discogs_effnet_bs64",
+            "discogs_maest_30s_pw_519l",
+            "genre_discogs519_maest_519l",
+            "mood_happy_discogs_effnet",
+        ]
+    )
+    mm = make_tf_manager(models_dir)
 
     reset_engine()
     init_db()
@@ -97,8 +98,9 @@ def test_aggregation_persists_embeddings_and_genre(tmp_path, monkeypatch) -> Non
         if row["stage_name"] in ("segment_download", "essentia_lowlevel"):
             items.mark_success(row["id"])
 
-    registry = ModelRegistry(models_dir=str(models_dir))
-    worker = EssentiaTensorflowWorker(registry=registry, status_only=False)
+    worker = EssentiaTensorflowWorker(
+        model_manager=mm, backend=fake_tf_backend, status_only=False
+    )
     while True:
         reserved = items.reserve_next(worker_id="tf", worker_type=WORKER_TYPE_ESSENTIA_TENSORFLOW)
         if reserved is None:

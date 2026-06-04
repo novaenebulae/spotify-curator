@@ -4,14 +4,16 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from app.audio.paths import segment_absolute_path
 from app.audio.pipeline.constants import (
     JOB_TYPE_AUDIO_ANALYSIS_PIPELINE,
     STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
     STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
 )
-from app.audio.paths import segment_absolute_path
+from app.audio.tensorflow.backend import EssentiaTensorflowBackend, TensorflowInferenceBackend
 from app.audio.tensorflow.classifier_runner import ClassifierRunner
 from app.audio.tensorflow.embeddings_runner import EmbeddingsRunner
+from app.audio.tensorflow.errors import MODEL_INVALID, InferenceError
 from app.audio.tensorflow.genre_runner import GenreRunner
 from app.database.engine import get_engine
 from app.database.models_job_items import JobItem
@@ -20,6 +22,7 @@ from app.database.repositories.track_segments import TrackSegmentsRepository
 from app.jobs.items.constants import WORKER_TYPE_ESSENTIA_TENSORFLOW
 from app.jobs.items.service import ReservedJobItem
 from app.models_registry import ModelRegistry
+from app.models_registry.manager import ModelManager, ModelManagerError
 from app.observability.redact import redact_dict
 from app.settings.config import settings
 from app.workers.base_worker import BaseWorker
@@ -34,6 +37,8 @@ class EssentiaTensorflowWorker(BaseWorker):
         self,
         *,
         registry: ModelRegistry | None = None,
+        model_manager: ModelManager | None = None,
+        backend: TensorflowInferenceBackend | None = None,
         segments: TrackSegmentsRepository | None = None,
         status_only: bool | None = None,
         classifier_runner: ClassifierRunner | None = None,
@@ -41,21 +46,25 @@ class EssentiaTensorflowWorker(BaseWorker):
         genre_runner: GenreRunner | None = None,
     ) -> None:
         super().__init__()
-        self._registry = registry or ModelRegistry()
+        self._registry = registry  # retained for backward compatibility; gating uses ModelManager
+        self._mm = model_manager or ModelManager()
+        self._backend = backend or EssentiaTensorflowBackend(model_manager=self._mm)
         self._segments = segments or TrackSegmentsRepository()
         self._classifier_runner = classifier_runner
         self._embeddings_runner = embeddings_runner
         self._genre_runner = genre_runner
         self._status_only = (
-            status_only
-            if status_only is not None
-            else self._registry.should_run_status_only()
+            status_only if status_only is not None else self._should_run_status_only()
         )
-        self._models_summary: dict[str, int] = {}
+        self._models_summary: dict[str, object] = {}
+
+    def _should_run_status_only(self) -> bool:
+        if settings.essentia_tensorflow_status_only:
+            return True
+        return not bool(self._mm.get_status()["summary"].get("real_inference_ready"))
 
     def run_forever(self) -> None:
-        _, summary = self._registry.scan()
-        self._models_summary = summary.to_dict()
+        self._models_summary = self._mm.get_status()["summary"]
         if self._status_only:
             logger.info(
                 "essentia-tensorflow-worker starting in status_only mode",
@@ -121,9 +130,6 @@ class EssentiaTensorflowWorker(BaseWorker):
             )
             return
 
-        pipeline_version = (
-            job_item.pipeline_version or settings.essentia_tensorflow_pipeline_version
-        )
         self._heartbeat_running(
             current_job_id=item.job_id,
             current_item_id=item.id,
@@ -131,7 +137,7 @@ class EssentiaTensorflowWorker(BaseWorker):
                 {
                     "stage_name": job_item.stage_name,
                     "segment_id": item.segment_id,
-                    "mode": "stub",
+                    "mode": "real" if self._backend is not None else "stub",
                 }
             ),
         )
@@ -139,31 +145,54 @@ class EssentiaTensorflowWorker(BaseWorker):
         result: dict = {
             "segment_id": item.segment_id,
             "stage_name": job_item.stage_name,
-            "pipeline_version": pipeline_version,
             "status_only": False,
         }
 
-        if job_item.stage_name == STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS:
-            runner = self._classifier_runner or ClassifierRunner(registry=self._registry)
-            clf = runner.run_for_segment(segment_id=item.segment_id, wav_path=str(wav))
-            result["inference"] = clf.inference_mode
-            result["classifier_outputs"] = clf.classifier_outputs
-            result["models_missing"] = clf.models_missing
-        else:
-            emb = (self._embeddings_runner or EmbeddingsRunner(registry=self._registry)).run_for_segment(
-                segment_id=item.segment_id, wav_path=str(wav)
+        try:
+            if job_item.stage_name == STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS:
+                runner = self._classifier_runner or ClassifierRunner(
+                    model_manager=self._mm, backend=self._backend
+                )
+                clf = runner.run_for_segment(segment_id=item.segment_id, wav_path=str(wav))
+                result["inference"] = clf.inference_mode
+                result["classifier_outputs"] = clf.classifier_outputs
+                result["models_missing"] = clf.models_missing
+            else:
+                emb = (
+                    self._embeddings_runner
+                    or EmbeddingsRunner(model_manager=self._mm, backend=self._backend)
+                ).run_for_segment(segment_id=item.segment_id, wav_path=str(wav))
+                genre = (
+                    self._genre_runner
+                    or GenreRunner(model_manager=self._mm, backend=self._backend)
+                ).run_for_segment(segment_id=item.segment_id, wav_path=str(wav))
+                result["inference"] = emb.inference_mode
+                result["embedding_outputs"] = emb.embedding_outputs
+                result["genre_outputs"] = genre.genre_outputs
+                result["models_missing"] = sorted(
+                    set(emb.models_missing) | set(genre.models_missing)
+                )
+        except InferenceError as exc:
+            self._items.mark_failed(
+                item.id, error_code=exc.code, error_message=exc.message
             )
-            genre = (self._genre_runner or GenreRunner(registry=self._registry)).run_for_segment(
-                segment_id=item.segment_id, wav_path=str(wav)
+            return
+        except ModelManagerError as exc:
+            self._items.mark_failed(
+                item.id, error_code=MODEL_INVALID, error_message=exc.message
             )
-            result["inference"] = emb.inference_mode
-            result["embedding_outputs"] = emb.embedding_outputs
-            result["genre_outputs"] = genre.genre_outputs
-            result["models_missing"] = sorted(
-                set(emb.models_missing) | set(genre.models_missing)
-            )
+            return
 
+        result["pipeline_version"] = self._pipeline_version(job_item, result["inference"])
         self._items.mark_success(item.id, result_json=result)
+
+    @staticmethod
+    def _pipeline_version(job_item: JobItem, inference_mode: str) -> str:
+        if job_item.pipeline_version:
+            return job_item.pipeline_version
+        if inference_mode == "real":
+            return settings.essentia_tf_pipeline_version
+        return settings.essentia_tensorflow_pipeline_version
 
     def _heartbeat_running(
         self,

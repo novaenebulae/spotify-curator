@@ -103,6 +103,16 @@ class Settings(BaseSettings):
     model_hash_check_enabled: bool = True
     model_download_enabled: bool = False
 
+    # Runtime environment marker (controls stub guard, see phase 6.8B)
+    app_env: str = "development"
+
+    # Essentia TensorFlow real inference (phase 6.8B)
+    essentia_tf_real_inference_enabled: bool = True
+    essentia_tf_allow_stubs_in_tests: bool = False
+    essentia_tf_require_models_for_advanced: bool = False
+    essentia_tf_fail_on_stub_in_production: bool = True
+    essentia_tf_pipeline_version: str = "phase6_tf_real_v1"
+
     # Essentia TensorFlow model management (phase 6.8A)
     essentia_models_dir: str = "/app/models/essentia"
     essentia_models_manifest: str = "/app/core/app/models_registry/essentia_models_manifest.yaml"

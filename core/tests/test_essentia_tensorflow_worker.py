@@ -6,9 +6,9 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.audio.pipeline.constants import (
+    STAGE_ESSENTIA_LOWLEVEL,
     STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
     STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
-    STAGE_ESSENTIA_LOWLEVEL,
     STAGE_FEATURE_AGGREGATION,
     STAGE_SEGMENT_DOWNLOAD,
 )
@@ -19,7 +19,6 @@ from app.database.models_audio import TrackSegment
 from app.database.models_library import Track
 from app.jobs.items.constants import WORKER_TYPE_ESSENTIA_TENSORFLOW
 from app.jobs.items.service import JobItemService
-from app.models_registry import ModelRegistry
 from app.workers.essentia_tensorflow_worker import EssentiaTensorflowWorker
 
 
@@ -140,17 +139,16 @@ def test_worker_status_only_skips_and_unblocks_aggregation(tmp_path, monkeypatch
     assert agg["status"] in ("pending", "success")
 
 
-def test_worker_stub_success_with_fake_models(tmp_path, monkeypatch) -> None:
-    db_path = tmp_path / "tf_stub.sqlite"
+def test_worker_real_success_with_fake_backend(
+    tmp_path, monkeypatch, build_tf_models, make_tf_manager, fake_tf_backend
+) -> None:
+    db_path = tmp_path / "tf_real.sqlite"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
     cache_root = _patch_cache(monkeypatch, tmp_path)
-    models_dir = tmp_path / "models"
-    effnet = models_dir / "discogs_effnet" / "discogs-effnet-bs64-1.pb"
-    effnet.parent.mkdir(parents=True)
-    effnet.write_bytes(b"effnet")
-    genre = models_dir / "discogs_maest" / "genre_discogs519-discogs-maest-30s-pw-519l.pb"
-    genre.parent.mkdir(parents=True)
-    genre.write_bytes(b"genre")
+    models_dir = build_tf_models(
+        ["discogs_effnet_bs64", "discogs_maest_30s_pw_519l", "genre_discogs519_maest_519l"]
+    )
+    mm = make_tf_manager(models_dir)
 
     reset_engine()
     init_db()
@@ -175,7 +173,7 @@ def test_worker_stub_success_with_fake_models(tmp_path, monkeypatch) -> None:
         session.flush()
         session.commit()
     (cache_root / "audio_segments" / "1" / "seg.wav").parent.mkdir(parents=True, exist_ok=True)
-    (cache_root / "audio_segments" / "1" / "seg.wav").write_bytes(b"\x00\x00")
+    (cache_root / "audio_segments" / "1" / "seg.wav").write_bytes(b"\x00\x01\x02\x03")
 
     job_id = AnalysisPipelineOrchestrator().create_pipeline_job(
         [TrackSegmentPlan(track_id=1, segment_ids=[10])],
@@ -187,29 +185,29 @@ def test_worker_stub_success_with_fake_models(tmp_path, monkeypatch) -> None:
     for download in [i for i in items.list_items(job_id) if i["stage_name"] == STAGE_SEGMENT_DOWNLOAD]:
         items.mark_success(download["id"])
 
-    registry = ModelRegistry(models_dir=str(models_dir))
-    worker = EssentiaTensorflowWorker(registry=registry, status_only=False)
+    worker = EssentiaTensorflowWorker(
+        model_manager=mm, backend=fake_tf_backend, status_only=False
+    )
     reserved = items.reserve_next(worker_id="tf", worker_type=WORKER_TYPE_ESSENTIA_TENSORFLOW)
     assert reserved is not None
     worker.process_item(reserved)
 
     row = next(i for i in items.list_items(job_id) if i["id"] == reserved.id)
     assert row["status"] == "success"
-    assert row["result"]["inference"] == "stub"
+    assert row["result"]["inference"] == "real"
+    assert row["result"]["pipeline_version"]
 
 
-def test_worker_embeddings_emit_structured_outputs(tmp_path, monkeypatch) -> None:
+def test_worker_embeddings_emit_structured_outputs(
+    tmp_path, monkeypatch, build_tf_models, make_tf_manager, fake_tf_backend
+) -> None:
     db_path = tmp_path / "tf_emb_out.sqlite"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
     cache_root = _patch_cache(monkeypatch, tmp_path)
-    models_dir = tmp_path / "models"
-    for rel in (
-        "discogs_effnet/discogs-effnet-bs64-1.pb",
-        "discogs_maest/genre_discogs519-discogs-maest-30s-pw-519l.pb",
-    ):
-        p = models_dir / rel
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_bytes(b"m")
+    models_dir = build_tf_models(
+        ["discogs_effnet_bs64", "discogs_maest_30s_pw_519l", "genre_discogs519_maest_519l"]
+    )
+    mm = make_tf_manager(models_dir)
 
     reset_engine()
     init_db()
@@ -233,7 +231,7 @@ def test_worker_embeddings_emit_structured_outputs(tmp_path, monkeypatch) -> Non
         session.commit()
     wav_path = cache_root / "audio_segments" / "1" / "seg.wav"
     wav_path.parent.mkdir(parents=True, exist_ok=True)
-    wav_path.write_bytes(b"\x00")
+    wav_path.write_bytes(b"\x00\x07\x08")
 
     job_id = AnalysisPipelineOrchestrator().create_pipeline_job(
         [TrackSegmentPlan(track_id=1, segment_ids=[10])],
@@ -245,7 +243,7 @@ def test_worker_embeddings_emit_structured_outputs(tmp_path, monkeypatch) -> Non
         items.mark_success(download["id"])
 
     worker = EssentiaTensorflowWorker(
-        registry=ModelRegistry(models_dir=str(models_dir)), status_only=False
+        model_manager=mm, backend=fake_tf_backend, status_only=False
     )
     reserved = items.reserve_next(worker_id="tf", worker_type=WORKER_TYPE_ESSENTIA_TENSORFLOW)
     assert reserved is not None
@@ -255,23 +253,19 @@ def test_worker_embeddings_emit_structured_outputs(tmp_path, monkeypatch) -> Non
         i for i in items.list_items(job_id) if i["stage_name"] == STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS
     )
     assert emb_row["status"] == "success"
+    assert emb_row["result"]["inference"] == "real"
     assert "embedding_outputs" in emb_row["result"]
     assert "genre_outputs" in emb_row["result"]
 
 
-def test_worker_classifiers_emit_classifier_outputs(tmp_path, monkeypatch) -> None:
+def test_worker_classifiers_emit_classifier_outputs(
+    tmp_path, monkeypatch, build_tf_models, make_tf_manager, fake_tf_backend
+) -> None:
     db_path = tmp_path / "tf_clf.sqlite"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
     cache_root = _patch_cache(monkeypatch, tmp_path)
-    models_dir = tmp_path / "models"
-    for rel in (
-        "discogs_effnet/discogs-effnet-bs64-1.pb",
-        "discogs_maest/genre_discogs519-discogs-maest-30s-pw-519l.pb",
-        "tensorflow/mood_happy.pb",
-    ):
-        path = models_dir / rel
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(b"model")
+    models_dir = build_tf_models(["discogs_effnet_bs64", "mood_happy_discogs_effnet"])
+    mm = make_tf_manager(models_dir)
 
     reset_engine()
     init_db()
@@ -296,7 +290,7 @@ def test_worker_classifiers_emit_classifier_outputs(tmp_path, monkeypatch) -> No
         session.commit()
     wav_path = cache_root / "audio_segments" / "1" / "seg.wav"
     wav_path.parent.mkdir(parents=True, exist_ok=True)
-    wav_path.write_bytes(b"\x00\x00")
+    wav_path.write_bytes(b"\x00\x05\x06\x07")
 
     job_id = AnalysisPipelineOrchestrator().create_pipeline_job(
         [TrackSegmentPlan(track_id=1, segment_ids=[10])],
@@ -307,8 +301,9 @@ def test_worker_classifiers_emit_classifier_outputs(tmp_path, monkeypatch) -> No
     for download in [i for i in items.list_items(job_id) if i["stage_name"] == STAGE_SEGMENT_DOWNLOAD]:
         items.mark_success(download["id"])
 
-    registry = ModelRegistry(models_dir=str(models_dir))
-    worker = EssentiaTensorflowWorker(registry=registry, status_only=False)
+    worker = EssentiaTensorflowWorker(
+        model_manager=mm, backend=fake_tf_backend, status_only=False
+    )
     reserved_emb = items.reserve_next(worker_id="tf", worker_type=WORKER_TYPE_ESSENTIA_TENSORFLOW)
     assert reserved_emb is not None
     worker.process_item(reserved_emb)
@@ -320,6 +315,7 @@ def test_worker_classifiers_emit_classifier_outputs(tmp_path, monkeypatch) -> No
         i for i in items.list_items(job_id) if i["stage_name"] == STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS
     )
     assert clf_row["status"] == "success"
+    assert clf_row["result"]["inference"] == "real"
     assert "classifier_outputs" in clf_row["result"]
     assert "mood_happy" in clf_row["result"]["classifier_outputs"]
     assert isinstance(clf_row["result"].get("models_missing"), list)

@@ -345,9 +345,9 @@ Statut : PARTIAL — le registry déclare les modèles, mais ne sait pas encore 
 
 ## 6.6 — Embeddings et Genre Discogs519
 
-Statut : PARTIAL — persistance et agrégation en place, mais inférence encore en stub.
+Statut : DONE (inférence réelle livrée en 6.8B).
 
-Note : persistance `track_embeddings` + genre dans `track_advanced_features` ; intégré à l'agrégation pipeline commune avec §6.7. L'inférence embeddings/genre reste un **stub déterministe** à remplacer par une vraie inférence (cf. 6.8B).
+Note : persistance `track_embeddings` + genre dans `track_advanced_features` ; intégré à l'agrégation pipeline commune avec §6.7. L'inférence embeddings/genre réelle est livrée en 6.8B (backend Essentia injectable, `inference_mode="real"`, `model_missing` si modèle absent).
 
 ### Sous-tâches
 
@@ -392,9 +392,9 @@ Note : persistance `track_embeddings` + genre dans `track_advanced_features` ; i
 
 ## 6.7 — Classifiers avancés
 
-Statut : PARTIAL — le contrat de mapping est en place, mais les sorties restent déterministes/stub.
+Statut : DONE (inférence réelle livrée en 6.8B).
 
-Note : le contrat `classifier_outputs` → `track_advanced_features` est en place. L'inférence Essentia TensorFlow sur WAV reste un **stub déterministe** à remplacer par une vraie inférence (cf. 6.8B).
+Note : le contrat `classifier_outputs` → `track_advanced_features` est en place. L'inférence Essentia TensorFlow réelle sur WAV est livrée en 6.8B (backend injectable, garde stub `STUB_INFERENCE_FORBIDDEN` hors test).
 
 ### Features obligatoires
 
@@ -473,7 +473,7 @@ Livrables : manifeste versionné [`core/app/models_registry/essentia_models_mani
 
 ## 6.8B — Inférence réelle Essentia TensorFlow
 
-Statut : TODO — BLOQUANT
+Statut : DONE
 
 ### Critères
 
@@ -483,17 +483,21 @@ Statut : TODO — BLOQUANT
 - les tests prouvent que `wav_path` est lu ;
 - les modèles absents donnent `model_missing`.
 
+Livrables : backend d'inférence injectable [`core/app/audio/tensorflow/backend.py`](../core/app/audio/tensorflow/backend.py) (`EssentiaTensorflowBackend`, import `essentia` paresseux ; `Protocol` mocké en test), garde stub [`guard.py`](../core/app/audio/tensorflow/guard.py) + erreurs [`errors.py`](../core/app/audio/tensorflow/errors.py) (`STUB_INFERENCE_FORBIDDEN`, `TENSORFLOW_INFERENCE_FAILED`, `MODEL_MISSING`, `MODEL_INVALID`), pont clés legacy↔manifeste [`model_map.py`](../core/app/audio/tensorflow/model_map.py), runners réécrits (`EmbeddingsRunner`/`GenreRunner`/`ClassifierRunner` pilotés par `ModelManager` + backend, `inference_mode` réel/stub/none, `model_missing`), worker [`essentia_tensorflow_worker.py`](../core/app/workers/essentia_tensorflow_worker.py) (backend réel par défaut, gating `ModelManager.real_inference_ready`, capture `InferenceError`→`mark_failed`), settings `app_env` + `essentia_tf_*`, accès publics `ModelManager` (`get_entry`/`weights_path`/`metadata_path`/`is_available`) + champs `output`/`sample_rate`/`backend`. Tests : `test_tf_stub_guard.py`, `test_essentia_tf_real_runners.py`, `test_essentia_tf_model_missing.py`, `test_embeddings_runner.py` (réécrit), `test_essentia_tensorflow_worker.py` + `test_feature_aggregation_*` (backend factice → mode `real`). Suite : 277 pytest verts. Stub uniquement si `APP_ENV=test` + `ESSENTIA_TF_ALLOW_STUBS_IN_TESTS=true`.
+
 ---
 
 ## 6.8C — Smoke tests inférence réelle
 
-Statut : TODO — BLOQUANT
+Statut : DONE
 
 ### Critères
 
 - si modèles absents, le smoke indique `model_missing` ;
 - si modèles présents, le smoke produit au moins une vraie sortie ;
 - le smoke est documenté dans [`docs/10-testing-strategy.md`](../docs/10-testing-strategy.md).
+
+Livrables : script [`core/scripts/smoke_essentia_tensorflow_real.py`](../core/scripts/smoke_essentia_tensorflow_real.py) (`run_smoke` réutilisable + `main`, génération d'un WAV court 16 kHz mono ≤ 30 s, exécution des runners réels du profil `phase6-minimal` via `ModelManager` + `EssentiaTensorflowBackend`, validation `inference_mode="real"` + sortie non vide, persistance optionnelle de l'embedding via `TrackEmbeddingsRepository`). Options : `--require-models`, `--allow-missing`, `--track-id`, `--wav-path`, `--profile`, `--persist`. Codes : réel=0, `model_missing`=1 si `--require-models` (0 sinon/`--allow-missing`), erreur inférence=2. Tests : [`core/tests/test_smoke_essentia_tf_real.py`](../core/tests/test_smoke_essentia_tf_real.py) (backend factice : `model_missing`, sortie réelle, codes de sortie `main`). Doc : section "Smoke inférence réelle" de [`docs/10-testing-strategy.md`](../docs/10-testing-strategy.md).
 
 ---
 

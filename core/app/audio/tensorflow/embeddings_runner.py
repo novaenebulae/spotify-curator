@@ -4,18 +4,19 @@ import hashlib
 from dataclasses import dataclass
 from typing import Any
 
-from app.models_registry import ModelRegistry
-from app.models_registry.definitions import MODEL_DEFINITIONS
-from app.models_registry.types import ModelStatus
+from app.audio.tensorflow.backend import (
+    DEFAULT_EMBEDDING_DIM,
+    TensorflowInferenceBackend,
+    model_identity,
+)
+from app.audio.tensorflow.guard import ensure_stub_allowed, stubs_allowed
+from app.audio.tensorflow.model_map import (
+    EMBEDDINGS_EXTRACTOR_KEY,
+    EMBEDDINGS_LEGACY_KEY,
+)
+from app.models_registry.manager import ModelManager
 
-EFFNET_MODEL_KEY = "discogs_effnet_embeddings"
-
-
-def _definition_dimension(model_key: str) -> int:
-    for d in MODEL_DEFINITIONS:
-        if d.model_key == model_key and d.dimension is not None:
-            return d.dimension
-    return 1280
+EFFNET_MODEL_KEY = EMBEDDINGS_LEGACY_KEY
 
 
 def _deterministic_vector(segment_id: int, model_key: str, dimension: int) -> list[float]:
@@ -34,34 +35,72 @@ class EmbeddingsRunResult:
 
 
 class EmbeddingsRunner:
-    """Stub embedding inference (phase 6.6) until real Essentia TF is wired."""
+    """Discogs EffNet embedding inference (phase 6.8B).
 
-    def __init__(self, *, registry: ModelRegistry | None = None) -> None:
-        self._registry = registry or ModelRegistry()
+    Real inference uses the injected backend; stubs are only produced inside the
+    test environment (see :func:`stubs_allowed`).
+    """
+
+    def __init__(
+        self,
+        *,
+        model_manager: ModelManager | None = None,
+        backend: TensorflowInferenceBackend | None = None,
+    ) -> None:
+        self._mm = model_manager or ModelManager()
+        self._backend = backend
 
     def run_for_segment(self, *, segment_id: int, wav_path: str) -> EmbeddingsRunResult:
-        del wav_path
-        statuses, _ = self._registry.scan()
-        by_key = {s.model_key: s for s in statuses}
         outputs: dict[str, dict[str, Any]] = {}
         missing: list[str] = []
+        real_used = False
+        stub_used = False
 
-        status = by_key.get(EFFNET_MODEL_KEY)
-        if status is None or status.status != "available":
+        if not self._mm.is_available(EMBEDDINGS_EXTRACTOR_KEY):
             missing.append(EFFNET_MODEL_KEY)
-        else:
-            dim = status.dimension or _definition_dimension(EFFNET_MODEL_KEY)
+        elif self._backend is not None:
+            vector = self._backend.embeddings(wav_path, extractor_key=EMBEDDINGS_EXTRACTOR_KEY)
+            if not vector:
+                raise ValueError("Embeddings backend returned an empty vector")
+            model_name, model_version = model_identity(self._mm, EMBEDDINGS_EXTRACTOR_KEY)
             outputs[EFFNET_MODEL_KEY] = {
                 "model_key": EFFNET_MODEL_KEY,
                 "model_status": "available",
-                "dimension": dim,
-                "vector": _deterministic_vector(segment_id, EFFNET_MODEL_KEY, dim),
-                "model_name": status.model_name,
-                "model_version": status.version,
+                "dimension": len(vector),
+                "vector": [float(v) for v in vector],
+                "model_name": model_name,
+                "model_version": model_version,
+                "inference_mode": "real",
+                "wav_path_used": True,
             }
+            real_used = True
+        elif stubs_allowed():
+            model_name, model_version = model_identity(self._mm, EMBEDDINGS_EXTRACTOR_KEY)
+            outputs[EFFNET_MODEL_KEY] = {
+                "model_key": EFFNET_MODEL_KEY,
+                "model_status": "available",
+                "dimension": DEFAULT_EMBEDDING_DIM,
+                "vector": _deterministic_vector(
+                    segment_id, EFFNET_MODEL_KEY, DEFAULT_EMBEDDING_DIM
+                ),
+                "model_name": model_name,
+                "model_version": model_version,
+                "inference_mode": "stub",
+            }
+            stub_used = True
+        else:
+            ensure_stub_allowed(model_key=EFFNET_MODEL_KEY)
 
         return EmbeddingsRunResult(
             embedding_outputs=outputs,
             models_missing=missing,
-            inference_mode="stub",
+            inference_mode=_resolve_mode(real_used, stub_used),
         )
+
+
+def _resolve_mode(real_used: bool, stub_used: bool) -> str:
+    if real_used:
+        return "real"
+    if stub_used:
+        return "stub"
+    return "none"

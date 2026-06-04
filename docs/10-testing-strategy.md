@@ -167,7 +167,7 @@ Smoke library (volume Docker vide) : `docker exec -e PYTHONPATH=/app spotify-cur
 
 UI manuelle : `/features` (Last runs repliable, failures multi-sources, Clear list), `/library` (colonnes Features, resolve Deezer previews).
 
-Jobs / workers : [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md).
+Jobs / workers : `[16-job-execution-model-and-worker-parallelism.md](16-job-execution-model-and-worker-parallelism.md)`.
 
 ### Phase 3
 
@@ -361,7 +361,18 @@ Cas à couvrir :
 docker compose --profile audio --profile advanced-analysis up -d --build
 docker compose exec core-api uv run python scripts/download_essentia_models.py --profile phase6-minimal --accept-license
 docker compose exec core-api uv run python scripts/download_essentia_models.py --verify-only
-docker compose exec core-api uv run python scripts/smoke_essentia_tensorflow_real.py
+docker compose exec core-api uv run python scripts/smoke_essentia_tensorflow_real.py --require-models
+```
+
+Options du smoke : `--require-models` (échoue si modèles absents), `--allow-missing` (tolère l'absence), `--track-id`, `--wav-path` (sinon un WAV court 16 kHz est généré), `--profile` (défaut `phase6-minimal`), `--persist` (écrit l'embedding réel via `TrackEmbeddingsRepository`, sinon dry-run).
+
+Codes de sortie : `0` inférence réelle OK ; `1` `model_missing` avec `--require-models` ; `2` échec d'inférence Essentia.
+
+Test unitaire (backend mocké, sans Essentia) :
+
+```bash
+cd core
+uv run pytest tests/test_smoke_essentia_tf_real.py -q
 ```
 
 Résultats attendus :
@@ -369,7 +380,7 @@ Résultats attendus :
 - si modèles absents : sortie claire `model_missing` ;
 - si modèles présents : au moins une vraie inférence `inference_mode=real` ;
 - aucune écriture de feature fake ;
-- API `/features/advanced/coverage` cohérente.
+- API `/features/ advanced/coverage` cohérente.
 
 Phase 7+ :
 

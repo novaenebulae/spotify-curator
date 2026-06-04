@@ -55,6 +55,9 @@ class ModelEntry:
     license: str = LICENSE_NAME
     expected_sha256: str | None = None
     size_bytes: int | None = None
+    output: str | None = None
+    sample_rate: int | None = None
+    backend: str | None = None
 
 
 def _http_download(url: str, dest: Path, timeout: int) -> int:
@@ -136,6 +139,9 @@ class ModelManager:
                     else None
                 ),
                 size_bytes=value.get("size_bytes"),
+                output=(str(value["output"]) if value.get("output") else None),
+                sample_rate=value.get("sample_rate"),
+                backend=(str(value["backend"]) if value.get("backend") else None),
             )
         self._models = models
 
@@ -164,6 +170,23 @@ class ModelManager:
                 status_code=404,
             )
         return entry
+
+    def get_entry(self, model_key: str) -> ModelEntry:
+        """Public accessor for a manifest model entry (raises if unknown)."""
+        return self._require_model(model_key)
+
+    def weights_path(self, model_key: str) -> Path:
+        """Absolute path to the model weights file (.pb)."""
+        return self._paths_for(self._require_model(model_key))[0]
+
+    def metadata_path(self, model_key: str) -> Path:
+        """Absolute path to the model metadata file (.json)."""
+        return self._paths_for(self._require_model(model_key))[1]
+
+    def is_available(self, model_key: str) -> bool:
+        """True only when weights + metadata exist and the hash check passes."""
+        status, _ = self._status_for(self._require_model(model_key))
+        return status == "available"
 
     def resolve_profile(self, profile: str) -> list[str]:
         """Resolve a profile to an ordered, de-duplicated list of model keys (deps first)."""
