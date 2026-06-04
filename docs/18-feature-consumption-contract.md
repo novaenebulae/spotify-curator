@@ -9,8 +9,8 @@ Définir le contrat unique par lequel les modules applicatifs consomment les fea
 Ce document s'applique à :
 
 - phase 5 — Playlist generator v1 ;
-- phase 6 — clustering visuel UMAP/HDBSCAN ;
-- phase 7 — Essentia TensorFlow, embeddings, moods, voice/instrumental ;
+- phase 6 — pipeline parallèle, Essentia TensorFlow, embeddings, moods, genres, fallbacks locaux ;
+- phase 7 — clustering visuel UMAP/HDBSCAN ;
 - phase 8 — playlist engine avancé.
 
 Règle fondamentale :
@@ -45,7 +45,7 @@ Sans contrat commun, le moteur de playlists et le clustering risquent de dépend
 - de noms de modèles TensorFlow ;
 - d'une phase spécifique du projet.
 
-Ce couplage rendrait la phase 7 coûteuse à intégrer.
+Ce couplage rendrait les phases 6 et 7 coûteuses à intégrer.
 
 ---
 
@@ -159,29 +159,42 @@ artist_id
 album_id
 ```
 
-### 3.4 Features phase 7 futures
+### 3.4 Features phase 6 (cible TensorFlow / embeddings)
 
 ```text
-embedding_similarity
-mood_happy_score
-mood_sad_score
+style_embedding
+timbre_embedding
+genre_discogs_519
+genre_discogs_519_top_label
+genre_discogs_519_top_score
+genre_discogs_519_top_k
+approachability
+engagement
 mood_aggressive_score
-mood_relaxed_score
+mood_happy_score
 mood_party_score
-mood_dark_score
-arousal
-valence_tf
+mood_relaxed_score
+mood_sad_score
+electronic_profile_score
+acoustic_profile_score
 voice_probability
 vocal_presence_score
 instrumental_focus_score
-acoustic_profile_score
-electronic_profile_score
-timbre_embedding
-style_embedding
-genre_discogs_519
+danceability_tf
+valence_tf
+energy_proxy
 ```
 
-### 3.5 Alias
+**État juin 2026 (6.6–6.7 livrés)** : descriptors phase 6 dans `FeatureRegistry` ; persistance `track_embeddings` (vecteurs) et `track_advanced_features` (classifiers, genre, `energy_proxy`). `FeatureResolver` charge embeddings (`style_embedding`, `timbre_embedding`), genre Discogs519, fallbacks ReccoBeats → proxies locaux, et statut `model_missing` si modèle absent. Inférence TF sur WAV reste stub tant que les `.pb` ne sont pas branchés.
+
+### 3.5 Features phase 7 (clustering)
+
+```text
+embedding_similarity
+mood_dark_score
+```
+
+### 3.6 Alias
 
 Le registry doit accepter des alias historiques ou utilisateur.
 
@@ -190,8 +203,13 @@ Exemples :
 ```text
 tempo → bpm
 valence_inverse → 1 - valence
-energy_profile_score → energy, puis dérivé phase 7/8
-instrumental_focus_score → instrumentalness, puis voice/instrumental phase 7
+genre_discogs519 → genre_discogs_519
+mood_electronic → electronic_profile_score
+mood_acoustic → acoustic_profile_score
+instrumental → instrumental_focus_score
+acoustic → acoustic_profile_score
+valence_local → valence_tf
+danceability_local → danceability_tf
 ```
 
 Les alias doivent être résolus avant validation des règles.
@@ -238,7 +256,9 @@ Exceptions possibles :
 - `danceability`, `energy`, `valence` peuvent rester ReccoBeats en phase 5 si Essentia low-level ne produit pas un équivalent fiable.
 - `bpm`, `key`, `mode`, `loudness` peuvent privilégier Essentia low-level si confidence suffisante.
 - `embedding_similarity` est obligatoirement `track_embeddings`.
-- `voice_probability` et `mood_*` sont obligatoirement phase 7 ou dérivés ultérieurs.
+- `mood_*`, `genre_discogs_519` : Essentia TensorFlow (phase 6).
+- `energy` : ReccoBeats → `energy_proxy` ; `danceability` / `valence` : ReccoBeats → `danceability_tf` / `valence_tf`.
+- `embedding_similarity` : `track_embeddings` (phase 7 clustering).
 
 ### 4.3 Sortie attendue
 
@@ -321,7 +341,7 @@ TRACK_NOT_ANALYZED
 | Feature présente et valide | appliquer le filtre |
 | Feature absente + `required=true` | exclure |
 | Feature absente + `required=false` | garder avec warning |
-| Feature future phase 7 | warning `FEATURE_NOT_AVAILABLE_YET` |
+| Feature future / phase non livrée | warning `FEATURE_NOT_AVAILABLE_YET` |
 | Confidence insuffisante | exclure si filtre confidence strict, sinon warning |
 
 ### 6.2 Scoring
@@ -403,21 +423,25 @@ HDBSCAN labels
 cluster memberships
 ```
 
-Les profils phase 6 doivent pouvoir inclure des features futures désactivées jusqu'à la phase 7.
+Les profils clustering phase 7 consomment les features phase 6 via `TrackFeatureView`.
 
 ---
 
-## 9. Compatibilité phase 7
+## 9. Compatibilité phase 6 et 7
 
-La phase 7 ne doit pas modifier le contrat `PlaylistRule` ni le pipeline principal de phase 5.
+La phase 6 ne doit pas modifier le contrat `PlaylistRule` ni le pipeline principal de phase 5.
 
-Elle doit seulement :
+Phase 6 doit :
 
-1. ajouter des descriptors dans `FeatureRegistry` ;
-2. enrichir `FeatureResolver` ;
-3. écrire `track_embeddings` et features avancées ;
-4. ajouter des profils de clustering ;
-5. ajouter ou améliorer des presets de playlist.
+1. enrichir `FeatureRegistry` et `FeatureResolver` ;
+2. persister `track_embeddings` et features avancées ;
+3. exposer statuts `model_missing` / `not_available` sans crash.
+
+La phase 7 (clustering) doit :
+
+1. ajouter des profils de clustering (`FeatureProfile`) ;
+2. construire la matrice via `TrackFeatureView[]`, pas les payloads bruts ;
+3. ajouter ou améliorer des presets de playlist exploitant phase 6.
 
 Interdit :
 
@@ -475,6 +499,6 @@ Le contrat est accepté si :
 - le moteur de playlists ne dépend pas des payloads bruts ;
 - le clustering utilise le même resolver ;
 - les features futures peuvent être déclarées sans casser la phase 5 ;
-- les règles mentionnant des features phase 7 produisent des warnings, pas des crashes ;
+- les règles mentionnant des features non encore livrées produisent des warnings, pas des crashes ;
 - les scores restent explicables ;
 - les tests couvrent features manquantes, futures et faibles confiances.

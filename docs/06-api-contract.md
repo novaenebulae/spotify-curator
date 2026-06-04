@@ -769,17 +769,185 @@ Crée un job UMAP/HDBSCAN.
 
 Retourne points UMAP filtrables.
 
-## Phase 7 — Analyse avancée
+## Phase 6 — Modèles Essentia TensorFlow
 
-### `POST /audio/analysis/tensorflow`
-
-Crée un job embeddings/moods.
-
-### `GET /embeddings/tracks/{track_id}`
+Gestion des modèles Essentia TensorFlow : déclaration, téléchargement explicite, vérification. Voir [`19-essentia-tensorflow-model-management.md`](19-essentia-tensorflow-model-management.md).
 
 ### `GET /models/status`
 
-Liste modèles disponibles, versions, hash.
+**Implémenté** ([`core/app/api/v1/models.py`](../core/app/api/v1/models.py)). Retourne le statut des modèles déclarés et des profils.
+
+Réponse :
+
+```json
+{
+  "summary": {
+    "total": 18,
+    "available": 2,
+    "missing": 16,
+    "invalid_hash": 0,
+    "disabled": 0,
+    "real_inference_ready": false,
+    "default_profile": "phase6-recommended"
+  },
+  "profiles": [
+    {
+      "name": "phase6-minimal",
+      "status": "partial",
+      "available_count": 1,
+      "missing_count": 11,
+      "description": "Discogs EffNet + classifiers principaux"
+    },
+    {
+      "name": "phase6-recommended",
+      "status": "missing",
+      "available_count": 1,
+      "missing_count": 13,
+      "description": "Profil phase 6 complet avec Genre Discogs519"
+    },
+    {
+      "name": "phase6-full",
+      "status": "missing",
+      "available_count": 1,
+      "missing_count": 16,
+      "description": "Ajoute MusicNN + DEAM/MuSe pour arousal/valence"
+    }
+  ],
+  "models": [
+    {
+      "model_key": "discogs_effnet_bs64",
+      "display_name": "Discogs EffNet BS64",
+      "task": "embedding",
+      "status": "available",
+      "required_for": ["style_embedding", "timbre_embedding"],
+      "license": "CC BY-NC-SA 4.0",
+      "local_weights_path": "essentia/feature-extractors/discogs-effnet/discogs-effnet-bs64-1.pb",
+      "local_metadata_path": "essentia/feature-extractors/discogs-effnet/discogs-effnet-bs64-1.json",
+      "sha256": "computed-local-hash",
+      "expected_sha256": null,
+      "size_bytes": 18366619
+    }
+  ]
+}
+```
+
+### `POST /models/download`
+
+Body :
+
+```json
+{
+  "model_key": "discogs_effnet_bs64",
+  "accept_license": true,
+  "force": false
+}
+```
+
+### `POST /models/download-profile`
+
+Body :
+
+```json
+{
+  "profile": "phase6-recommended",
+  "accept_license": true,
+  "force": false
+}
+```
+
+Règles :
+
+- `accept_license=true` obligatoire ;
+- le téléchargement est explicite ;
+- jamais de téléchargement automatique au démarrage ;
+- seuls les modèles déclarés dans le manifest sont téléchargeables.
+
+### `POST /models/verify`
+
+Body :
+
+```json
+{
+  "model_key": "discogs_effnet_bs64"
+}
+```
+
+Réponse :
+
+```json
+{
+  "model_key": "discogs_effnet_bs64",
+  "status": "available",
+  "weights_exists": true,
+  "metadata_exists": true,
+  "sha256": "computed-local-hash",
+  "expected_sha256": null
+}
+```
+
+## Phase 6 — Analyse avancée
+
+### `POST /audio/analysis/advanced`
+
+Crée un job `audio_analysis_pipeline`.
+
+Body :
+
+```json
+{
+  "track_ids": [1, 2, 3],
+  "filter": {},
+  "only_missing": true,
+  "force_refresh": false,
+  "analysis_mode": "fast",
+  "include_lowlevel": true,
+  "include_tensorflow": true,
+  "pipeline_mode": "streaming",
+  "model_profile": "phase6-recommended",
+  "require_real_tensorflow": false
+}
+```
+
+Réponse : `{ "job_id": "job_...", "status": "pending" }`.
+
+Règles :
+
+- si `require_real_tensorflow=true` et modèles absents → erreur `MODEL_MISSING` avant téléchargement audio ;
+- si `require_real_tensorflow=false` et modèles absents → stages TensorFlow `skipped`/`model_missing`, low-level peut continuer ;
+- jamais de stub en production.
+
+### `GET /features/advanced/coverage`
+
+Couverture embeddings, genres, moods, modèles manquants, échecs récents.
+
+### Extension `GET /features/tracks/{track_id}`
+
+Source `essentia_tensorflow` avec champs moods, `genre_discogs_519_*`, embedding status dans `extended`.
+
+### `GET /embeddings/tracks/{track_id}`
+
+Détail embedding persisté (dimension, modèle, agrégation).
+
+### Jobs — compteurs par stage
+
+`GET /jobs/{job_id}` peut exposer `items` par `stage_name` (pending/running/success/failed).
+
+### Erreurs phase 6
+
+| Code | Usage |
+|---|---|
+| `MODEL_MISSING` | Modèle absent |
+| `MODEL_INVALID_HASH` | Hash non conforme |
+| `MODEL_METADATA_MISSING` | Metadata `.json` absente |
+| `MODEL_WEIGHTS_MISSING` | Poids `.pb` absent |
+| `MODEL_LICENSE_NOT_ACCEPTED` | Téléchargement refusé sans acceptation licence |
+| `MODEL_DOWNLOAD_FAILED` | Téléchargement impossible |
+| `TENSORFLOW_INFERENCE_FAILED` | Inférence échouée |
+| `STUB_INFERENCE_FORBIDDEN` | Runner stub appelé hors test |
+| `EMBEDDING_SHAPE_INVALID` | Dimension inattendue |
+| `ANALYSIS_STAGE_BLOCKED` | Dépendance non terminée |
+| `SEGMENT_CONSUMER_PENDING` | Cleanup bloqué |
+| `ADVANCED_ANALYSIS_DISABLED` | Désactivé par config |
 
 ## Phase 8 — Playlist avancée
 

@@ -8,6 +8,8 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 from app.database.models import Base
 from app.database.url import resolve_database_url
+from app.database.models_advanced_features import TrackAdvancedFeature  # noqa: F401
+from app.database.models_track_embeddings import TrackEmbedding  # noqa: F401
 from app.database.models_features import (  # noqa: F401
     AudioFeature,
     AudioFeatureRawPayload,

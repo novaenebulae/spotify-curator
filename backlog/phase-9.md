@@ -1,101 +1,89 @@
-# Phase 9 — Packaging et polish
+# Phase 9 — Packaging, maintenance et stabilisation
 
-Tags: #backlog #phase-9 #packaging #windows #polish
+Tags: #backlog #phase-9 #packaging #windows #maintenance #backup
 
 ## But
 
-Stabiliser une version locale utilisable sur Windows.
-
+Stabiliser l'application desktop locale, documenter l'installation, ajouter backup/restore et finaliser la maintenance utilisateur.
 
 ## Definition of Done phase
 
-- Les livrables de phase sont présents.
-- Les tests minimum passent.
-- Les commandes de validation sont documentées.
-- La documentation est à jour.
-- Aucun secret, cache, modèle lourd ou fichier audio n’est commité.
-- Aucune régression sur les phases précédentes.
+- Build Windows documenté.
+- Guide d'installation utilisateur.
+- Docker Compose/profils documentés.
+- Backup/restore SQLite fonctionnel.
+- Nettoyage cache/audio/modèles/logs.
+- Rapport système redacted.
+- Tests finaux.
+- Aucun secret ni donnée personnelle n'est commité.
 
-
-## 9.1 — Build Windows
-
-Statut : TODO
-
-### Sous-tâches
-
-- Config Tauri.
-- Icônes.
-- Version.
-- Build installer.
-- Smoke install.
-
-## 9.2 — Démarrage Docker guidé
+## 9.1 — Packaging Windows
 
 Statut : TODO
 
 ### Sous-tâches
 
-- Détection Docker absent.
-- Guide UI.
-- Commandes.
-- Diagnostics.
-- Restart core.
+- Build Tauri.
+- Vérifier lancement core/API.
+- Vérifier dépendances Docker Desktop.
+- Documenter limitations Windows/WSL2.
 
-## 9.3 — Backup/restore
+## 9.2 — Docker guide
+
+Statut : TODO
+
+### Sous-tâches
+
+- Profil minimal.
+- Profil audio.
+- Profil advanced-analysis.
+- Workers scaling.
+- Volumes.
+- Migrations.
+- Troubleshooting.
+
+## 9.3 — Backup / restore
 
 Statut : TODO
 
 ### Sous-tâches
 
 - Backup SQLite.
-- Backup exports.
+- Backup settings non sensibles.
 - Restore validé.
-- Vérification version schéma.
-- Tests restore.
+- Warnings si version schéma incompatible.
+- Dry-run restore si possible.
 
-## 9.4 — Nettoyage cache
+## 9.4 — Cache cleanup
 
 Statut : TODO
 
 ### Sous-tâches
 
-- Segments audio.
+- Audio segments.
 - JSON cache.
-- Logs anciens.
-- Exports anciens optionnels.
-- UI nettoyage.
+- Failed segments debug.
+- Models status.
+- Logs rotation.
+- UI maintenance.
 
-## 9.5 — Documentation utilisateur
-
-Statut : TODO
-
-### Sous-tâches
-
-- Installation Windows.
-- Docker Desktop.
-- Spotify OAuth.
-- Import.
-- Enrichissement.
-- Playlist generation.
-- Backup/restore.
-- Troubleshooting.
-
-## 9.6 — Tests finaux
+## 9.5 — System report
 
 Statut : TODO
 
 ### Sous-tâches
 
-- E2E minimal.
-- Dataset fictif.
-- Smoke Docker.
-- Smoke UI.
-- Rapport système.
+- Core version.
+- DB revision.
+- Docker services.
+- Workers heartbeat.
+- Jobs récents.
+- Models status.
+- Cache size.
+- Redaction secrets/paths sensibles.
 
 ## Critères phase
 
-- Application installable.
-- Documentation utilisateur complète.
-- Backup/restore testé.
-- Cache nettoyable.
-- MVP stable.
+- L'application peut être installée et diagnostiquée proprement.
+- Les données utilisateur peuvent être sauvegardées/restaurées.
+- Le projet est documenté pour une utilisation locale stable.

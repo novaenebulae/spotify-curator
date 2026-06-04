@@ -7,6 +7,7 @@ from app.api.v1.features import router as features_router
 from app.api.v1.health import router as health_router
 from app.api.v1.jobs import router as jobs_router
 from app.api.v1.library import router as library_router
+from app.api.v1.models import router as models_router
 from app.api.v1.previews import router as previews_router
 from app.api.v1.runtime import router as runtime_router
 from app.api.v1.snapshots import router as snapshots_router
@@ -29,6 +30,7 @@ router.include_router(spotify_auth_router, tags=["spotify_auth"])
 router.include_router(spotify_import_router, tags=["spotify_import"])
 router.include_router(exports_router, tags=["exports"])
 router.include_router(features_router, tags=["features"])
+router.include_router(models_router, tags=["models"])
 router.include_router(audio_router, tags=["audio"])
 router.include_router(previews_router, tags=["previews"])
 router.include_router(workers_router, tags=["workers"])

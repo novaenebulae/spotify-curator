@@ -1,0 +1,185 @@
+from __future__ import annotations
+
+import logging
+
+from sqlalchemy.orm import Session
+
+from app.audio.pipeline.constants import (
+    JOB_TYPE_AUDIO_ANALYSIS_PIPELINE,
+    STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
+    STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
+)
+from app.audio.paths import segment_absolute_path
+from app.audio.tensorflow.classifier_runner import ClassifierRunner
+from app.audio.tensorflow.embeddings_runner import EmbeddingsRunner
+from app.audio.tensorflow.genre_runner import GenreRunner
+from app.database.engine import get_engine
+from app.database.models_job_items import JobItem
+from app.database.models_jobs import Job
+from app.database.repositories.track_segments import TrackSegmentsRepository
+from app.jobs.items.constants import WORKER_TYPE_ESSENTIA_TENSORFLOW
+from app.jobs.items.service import ReservedJobItem
+from app.models_registry import ModelRegistry
+from app.observability.redact import redact_dict
+from app.settings.config import settings
+from app.workers.base_worker import BaseWorker
+
+logger = logging.getLogger(__name__)
+
+
+class EssentiaTensorflowWorker(BaseWorker):
+    worker_type = WORKER_TYPE_ESSENTIA_TENSORFLOW
+
+    def __init__(
+        self,
+        *,
+        registry: ModelRegistry | None = None,
+        segments: TrackSegmentsRepository | None = None,
+        status_only: bool | None = None,
+        classifier_runner: ClassifierRunner | None = None,
+        embeddings_runner: EmbeddingsRunner | None = None,
+        genre_runner: GenreRunner | None = None,
+    ) -> None:
+        super().__init__()
+        self._registry = registry or ModelRegistry()
+        self._segments = segments or TrackSegmentsRepository()
+        self._classifier_runner = classifier_runner
+        self._embeddings_runner = embeddings_runner
+        self._genre_runner = genre_runner
+        self._status_only = (
+            status_only
+            if status_only is not None
+            else self._registry.should_run_status_only()
+        )
+        self._models_summary: dict[str, int] = {}
+
+    def run_forever(self) -> None:
+        _, summary = self._registry.scan()
+        self._models_summary = summary.to_dict()
+        if self._status_only:
+            logger.info(
+                "essentia-tensorflow-worker starting in status_only mode",
+                extra={"models_summary": self._models_summary},
+            )
+        else:
+            logger.info(
+                "essentia-tensorflow-worker starting with required models available",
+                extra={"models_summary": self._models_summary},
+            )
+        super().run_forever()
+
+    def process_item(self, item: object) -> None:
+        assert isinstance(item, ReservedJobItem)
+        if item.track_id is None:
+            self._items.mark_failed(
+                item.id, error_code="INVALID_ITEM", error_message="Missing track_id"
+            )
+            return
+
+        engine = get_engine()
+        with Session(engine) as session:
+            job = session.get(Job, item.job_id)
+            job_item = session.get(JobItem, item.id)
+
+        if (
+            job is None
+            or job_item is None
+            or job.job_type != JOB_TYPE_AUDIO_ANALYSIS_PIPELINE
+            or job_item.stage_name
+            not in (STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS, STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS)
+        ):
+            self._items.mark_skipped(item.id, reason="Not a pipeline tensorflow stage item")
+            return
+
+        if self._status_only:
+            self._items.mark_skipped(
+                item.id,
+                reason="tensorflow_status_only: required models missing or disabled",
+            )
+            return
+
+        if item.segment_id is None:
+            self._items.mark_failed(
+                item.id,
+                error_code="INVALID_ITEM",
+                error_message="Pipeline tensorflow item missing segment_id",
+            )
+            return
+
+        with Session(engine) as session:
+            seg = self._segments.get(session, item.segment_id)
+        if seg is None or seg.deleted_at is not None:
+            self._items.mark_skipped(item.id, reason="Segment not found or deleted")
+            return
+
+        wav = segment_absolute_path(seg.temporary_path or "")
+        if not wav.is_file():
+            self._items.mark_failed(
+                item.id,
+                error_code="SEGMENT_FILE_MISSING",
+                error_message="Segment audio file not found for tensorflow stage",
+            )
+            return
+
+        pipeline_version = (
+            job_item.pipeline_version or settings.essentia_tensorflow_pipeline_version
+        )
+        self._heartbeat_running(
+            current_job_id=item.job_id,
+            current_item_id=item.id,
+            metadata=redact_dict(
+                {
+                    "stage_name": job_item.stage_name,
+                    "segment_id": item.segment_id,
+                    "mode": "stub",
+                }
+            ),
+        )
+
+        result: dict = {
+            "segment_id": item.segment_id,
+            "stage_name": job_item.stage_name,
+            "pipeline_version": pipeline_version,
+            "status_only": False,
+        }
+
+        if job_item.stage_name == STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS:
+            runner = self._classifier_runner or ClassifierRunner(registry=self._registry)
+            clf = runner.run_for_segment(segment_id=item.segment_id, wav_path=str(wav))
+            result["inference"] = clf.inference_mode
+            result["classifier_outputs"] = clf.classifier_outputs
+            result["models_missing"] = clf.models_missing
+        else:
+            emb = (self._embeddings_runner or EmbeddingsRunner(registry=self._registry)).run_for_segment(
+                segment_id=item.segment_id, wav_path=str(wav)
+            )
+            genre = (self._genre_runner or GenreRunner(registry=self._registry)).run_for_segment(
+                segment_id=item.segment_id, wav_path=str(wav)
+            )
+            result["inference"] = emb.inference_mode
+            result["embedding_outputs"] = emb.embedding_outputs
+            result["genre_outputs"] = genre.genre_outputs
+            result["models_missing"] = sorted(
+                set(emb.models_missing) | set(genre.models_missing)
+            )
+
+        self._items.mark_success(item.id, result_json=result)
+
+    def _heartbeat_running(
+        self,
+        *,
+        current_job_id: str | None = None,
+        current_item_id: str | None = None,
+        metadata: dict | None = None,
+    ) -> None:
+        meta = dict(metadata or {})
+        meta.setdefault("status_only", self._status_only)
+        meta.setdefault("models_summary", self._models_summary)
+        self._heartbeat.register_or_update(
+            worker_id=self._worker_id,
+            worker_type=self.worker_type,
+            status="running",
+            current_job_id=current_job_id,
+            current_item_id=current_item_id,
+            metadata=redact_dict(meta),
+        )

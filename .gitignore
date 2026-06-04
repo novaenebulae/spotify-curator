@@ -12,6 +12,12 @@ exports/*
 !exports/.gitkeep
 models/*
 !models/.gitkeep
+*.pb
+*.onnx
+*.h5
+*.tflite
+*.tfjs
+*.zip
 .log
 exports/*.json
 exports/*.csv

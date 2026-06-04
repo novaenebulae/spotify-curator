@@ -89,15 +89,25 @@ _PHASE5_FEATURES: tuple[FeatureDescriptor, ...] = (
     ),
 )
 
-_PHASE7_FEATURES: tuple[FeatureDescriptor, ...] = (
+_PHASE6_ADVANCED_FEATURES: tuple[FeatureDescriptor, ...] = (
     FeatureDescriptor(
-        "embedding_similarity",
-        "Embedding similarity",
+        "approachability",
+        "Approachability",
         "float",
         0.0,
         1.0,
-        future_sources=("track_embeddings",),
-        phase_available=7,
+        ("essentia_tensorflow",),
+        phase_available=6,
+        missing_policy="warn_until_available",
+    ),
+    FeatureDescriptor(
+        "engagement",
+        "Engagement",
+        "float",
+        0.0,
+        1.0,
+        ("essentia_tensorflow",),
+        phase_available=6,
         missing_policy="warn_until_available",
     ),
     FeatureDescriptor(
@@ -106,8 +116,8 @@ _PHASE7_FEATURES: tuple[FeatureDescriptor, ...] = (
         "float",
         0.0,
         1.0,
-        future_sources=("essentia_tensorflow",),
-        phase_available=7,
+        ("essentia_tensorflow",),
+        phase_available=6,
         missing_policy="warn_until_available",
     ),
     FeatureDescriptor(
@@ -116,8 +126,8 @@ _PHASE7_FEATURES: tuple[FeatureDescriptor, ...] = (
         "float",
         0.0,
         1.0,
-        future_sources=("essentia_tensorflow",),
-        phase_available=7,
+        ("essentia_tensorflow",),
+        phase_available=6,
         missing_policy="warn_until_available",
     ),
     FeatureDescriptor(
@@ -126,8 +136,8 @@ _PHASE7_FEATURES: tuple[FeatureDescriptor, ...] = (
         "float",
         0.0,
         1.0,
-        future_sources=("essentia_tensorflow",),
-        phase_available=7,
+        ("essentia_tensorflow",),
+        phase_available=6,
         missing_policy="warn_until_available",
     ),
     FeatureDescriptor(
@@ -136,8 +146,8 @@ _PHASE7_FEATURES: tuple[FeatureDescriptor, ...] = (
         "float",
         0.0,
         1.0,
-        future_sources=("essentia_tensorflow",),
-        phase_available=7,
+        ("essentia_tensorflow",),
+        phase_available=6,
         missing_policy="warn_until_available",
     ),
     FeatureDescriptor(
@@ -146,7 +156,163 @@ _PHASE7_FEATURES: tuple[FeatureDescriptor, ...] = (
         "float",
         0.0,
         1.0,
-        future_sources=("essentia_tensorflow",),
+        ("essentia_tensorflow",),
+        phase_available=6,
+        missing_policy="warn_until_available",
+    ),
+    FeatureDescriptor(
+        "arousal",
+        "Arousal",
+        "float",
+        0.0,
+        1.0,
+        ("essentia_tensorflow",),
+        phase_available=6,
+        missing_policy="warn_until_available",
+    ),
+    FeatureDescriptor(
+        "valence_tf",
+        "Valence (TF)",
+        "float",
+        0.0,
+        1.0,
+        ("essentia_tensorflow",),
+        phase_available=6,
+        missing_policy="warn_until_available",
+    ),
+    FeatureDescriptor(
+        "danceability_tf",
+        "Danceability (TF)",
+        "float",
+        0.0,
+        1.0,
+        ("essentia_tensorflow",),
+        phase_available=6,
+        missing_policy="warn_until_available",
+    ),
+    FeatureDescriptor(
+        "voice_probability",
+        "Voice probability",
+        "float",
+        0.0,
+        1.0,
+        ("essentia_tensorflow",),
+        phase_available=6,
+        missing_policy="warn_until_available",
+    ),
+    FeatureDescriptor(
+        "vocal_presence_score",
+        "Vocal presence",
+        "float",
+        0.0,
+        1.0,
+        ("essentia_tensorflow",),
+        phase_available=6,
+        missing_policy="warn_until_available",
+    ),
+    FeatureDescriptor(
+        "instrumental_focus_score",
+        "Instrumental focus",
+        "float",
+        0.0,
+        1.0,
+        ("essentia_tensorflow", "derived"),
+        phase_available=6,
+        missing_policy="warn_until_available",
+    ),
+    FeatureDescriptor(
+        "acoustic_profile_score",
+        "Acoustic profile",
+        "float",
+        0.0,
+        1.0,
+        ("essentia_tensorflow",),
+        phase_available=6,
+        missing_policy="warn_until_available",
+    ),
+    FeatureDescriptor(
+        "electronic_profile_score",
+        "Electronic profile",
+        "float",
+        0.0,
+        1.0,
+        ("essentia_tensorflow",),
+        phase_available=6,
+        missing_policy="warn_until_available",
+    ),
+    FeatureDescriptor(
+        "energy_proxy",
+        "Energy proxy",
+        "float",
+        0.0,
+        1.0,
+        ("derived", "essentia_lowlevel"),
+        phase_available=6,
+        missing_policy="warn_until_available",
+    ),
+)
+
+_PHASE6_EMBEDDING_FEATURES: tuple[FeatureDescriptor, ...] = (
+    FeatureDescriptor(
+        "style_embedding",
+        "Style embedding",
+        "vector",
+        phase_available=6,
+        available_sources=("track_embeddings",),
+        missing_policy="warn_until_available",
+    ),
+    FeatureDescriptor(
+        "timbre_embedding",
+        "Timbre embedding",
+        "vector",
+        phase_available=6,
+        available_sources=("track_embeddings",),
+        missing_policy="warn_until_available",
+    ),
+    FeatureDescriptor(
+        "genre_discogs_519",
+        "Genre Discogs519",
+        "list",
+        phase_available=6,
+        available_sources=("essentia_tensorflow",),
+        missing_policy="warn_until_available",
+    ),
+    FeatureDescriptor(
+        "genre_discogs_519_top_label",
+        "Genre top label",
+        "string",
+        phase_available=6,
+        available_sources=("essentia_tensorflow",),
+        missing_policy="warn_until_available",
+    ),
+    FeatureDescriptor(
+        "genre_discogs_519_top_score",
+        "Genre top score",
+        "float",
+        0.0,
+        1.0,
+        ("essentia_tensorflow",),
+        phase_available=6,
+        missing_policy="warn_until_available",
+    ),
+    FeatureDescriptor(
+        "genre_discogs_519_top_k",
+        "Genre top-k",
+        "list",
+        phase_available=6,
+        available_sources=("essentia_tensorflow",),
+        missing_policy="warn_until_available",
+    ),
+)
+
+_PHASE7_FEATURES: tuple[FeatureDescriptor, ...] = (
+    FeatureDescriptor(
+        "embedding_similarity",
+        "Embedding similarity",
+        "float",
+        0.0,
+        1.0,
+        future_sources=("track_embeddings",),
         phase_available=7,
         missing_policy="warn_until_available",
     ),
@@ -160,76 +326,10 @@ _PHASE7_FEATURES: tuple[FeatureDescriptor, ...] = (
         phase_available=7,
         missing_policy="warn_until_available",
     ),
-    FeatureDescriptor(
-        "arousal",
-        "Arousal",
-        "float",
-        0.0,
-        1.0,
-        future_sources=("essentia_tensorflow",),
-        phase_available=7,
-        missing_policy="warn_until_available",
-    ),
-    FeatureDescriptor(
-        "valence_tf",
-        "Valence (TF)",
-        "float",
-        0.0,
-        1.0,
-        future_sources=("essentia_tensorflow",),
-        phase_available=7,
-        missing_policy="warn_until_available",
-    ),
-    FeatureDescriptor(
-        "voice_probability",
-        "Voice probability",
-        "float",
-        0.0,
-        1.0,
-        future_sources=("essentia_tensorflow",),
-        phase_available=7,
-        missing_policy="warn_until_available",
-    ),
-    FeatureDescriptor(
-        "vocal_presence_score",
-        "Vocal presence",
-        "float",
-        0.0,
-        1.0,
-        future_sources=("essentia_tensorflow",),
-        phase_available=7,
-        missing_policy="warn_until_available",
-    ),
-    FeatureDescriptor(
-        "instrumental_focus_score",
-        "Instrumental focus",
-        "float",
-        0.0,
-        1.0,
-        future_sources=("essentia_tensorflow", "derived"),
-        phase_available=7,
-        missing_policy="warn_until_available",
-    ),
-    FeatureDescriptor(
-        "acoustic_profile_score",
-        "Acoustic profile",
-        "float",
-        0.0,
-        1.0,
-        future_sources=("essentia_tensorflow",),
-        phase_available=7,
-        missing_policy="warn_until_available",
-    ),
-    FeatureDescriptor(
-        "electronic_profile_score",
-        "Electronic profile",
-        "float",
-        0.0,
-        1.0,
-        future_sources=("essentia_tensorflow",),
-        phase_available=7,
-        missing_policy="warn_until_available",
-    ),
+)
+
+_ALL_DESCRIPTORS = (
+    _PHASE5_FEATURES + _PHASE6_ADVANCED_FEATURES + _PHASE6_EMBEDDING_FEATURES + _PHASE7_FEATURES
 )
 
 _ALIASES: dict[str, str] = {
@@ -249,7 +349,7 @@ class FeatureRegistry:
 
     def __init__(self) -> None:
         self._by_name: dict[str, FeatureDescriptor] = {}
-        for d in _PHASE5_FEATURES + _PHASE7_FEATURES:
+        for d in _ALL_DESCRIPTORS:
             self._by_name[d.name] = d
         for alias, canonical in {**_ALIASES, **_SCORING_ALIASES}.items():
             base = self._by_name.get(canonical)
@@ -285,7 +385,7 @@ class FeatureRegistry:
     def is_known(self, name: str) -> bool:
         if name in self._by_name:
             return True
-        return self.resolve_name(name) in {d.name for d in _PHASE5_FEATURES + _PHASE7_FEATURES}
+        return self.resolve_name(name) in {d.name for d in _ALL_DESCRIPTORS}
 
     def is_available_in_phase(self, name: str, *, phase: int = 5) -> bool:
         desc = self.get(name)
@@ -299,11 +399,23 @@ class FeatureRegistry:
             return False
         return desc.phase_available > phase
 
+    def list_all_descriptors(self) -> list[FeatureDescriptor]:
+        out: list[FeatureDescriptor] = []
+        seen: set[str] = set()
+        for d in _ALL_DESCRIPTORS:
+            if d.name in seen:
+                continue
+            seen.add(d.name)
+            out.append(d)
+        return out
+
     def list_descriptors(self, *, phase: int = 5) -> list[FeatureDescriptor]:
         out: list[FeatureDescriptor] = []
         seen: set[str] = set()
-        for d in _PHASE5_FEATURES + _PHASE7_FEATURES:
+        for d in _ALL_DESCRIPTORS:
             if d.name in seen:
+                continue
+            if d.phase_available > phase:
                 continue
             seen.add(d.name)
             out.append(d)

@@ -44,7 +44,7 @@ def test_migrations_upgrade_head_on_empty_db(tmp_path, monkeypatch) -> None:
     with engine.connect() as conn:
         row = conn.execute(text("SELECT version_num FROM alembic_version")).fetchone()
     assert row is not None
-    assert row[0] == "0008_phase5_playlist_engine"
+    assert row[0] == "0011_phase6_track_embeddings"
 
     assert "library_actions" in tables
     sp_cols = {c["name"] for c in inspector.get_columns("spotify_tracks")}
@@ -86,6 +86,10 @@ def test_migrations_upgrade_head_on_empty_db(tmp_path, monkeypatch) -> None:
     assert "source_quality" in seg_cols
 
     assert "job_items" in tables
+    job_item_cols = {c["name"] for c in inspector.get_columns("job_items")}
+    assert "stage_name" in job_item_cols
+    assert "depends_on_item_id" in job_item_cols
+    assert "pipeline_version" in job_item_cols
     assert "track_segments" in tables
     assert "worker_heartbeats" in tables
 
@@ -94,6 +98,14 @@ def test_migrations_upgrade_head_on_empty_db(tmp_path, monkeypatch) -> None:
     assert "generated_playlist_items" in tables
     assert "sync_jobs" in tables
     assert "sync_logs" in tables
+    assert "track_advanced_features" in tables
+    taf_cols = {c["name"] for c in inspector.get_columns("track_advanced_features")}
+    assert "feature_name" in taf_cols
+    assert "value_float" in taf_cols
+    assert "track_embeddings" in tables
+    te_cols = {c["name"] for c in inspector.get_columns("track_embeddings")}
+    assert "vector_json" in te_cols
+    assert "dimension" in te_cols
     gp_cols = {c["name"] for c in inspector.get_columns("generated_playlists")}
     assert "engine_version" in gp_cols
     assert "warning_json" in gp_cols

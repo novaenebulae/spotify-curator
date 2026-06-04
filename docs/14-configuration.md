@@ -83,12 +83,89 @@ Services supplémentaires :
 docker compose --profile audio up -d --build
 ```
 
-### Advanced analysis
+### Advanced analysis (profil `advanced-analysis`, phase 6 cible)
 
 Services supplémentaires :
 
-- essentia-tensorflow ;
-- clustering-worker.
+- `essentia-tensorflow-worker` ;
+
+```bash
+docker compose --profile audio --profile advanced-analysis up -d --build
+```
+
+### Clustering (phase 7 cible)
+
+- `clustering-worker` (non implémenté).
+
+Variables phase 6 (implémentées dans [`core/app/settings/config.py`](../core/app/settings/config.py)) :
+
+```env
+ANALYSIS_PIPELINE_MODE=streaming
+AUDIO_ANALYSIS_PIPELINE_VERSION=audio_pipeline_v1
+ANALYSIS_ADVANCED_ENABLED=true
+ANALYSIS_DEFAULT_INCLUDE_TENSORFLOW=true
+ESSENTIA_TENSORFLOW_WORKERS=1
+ESSENTIA_TENSORFLOW_BATCH_SIZE=8
+ESSENTIA_TENSORFLOW_MAX_RETRIES=1
+ESSENTIA_TENSORFLOW_ITEM_LOCK_TIMEOUT_SECONDS=1800
+ESSENTIA_TENSORFLOW_STATUS_ONLY=false
+ESSENTIA_TENSORFLOW_PIPELINE_VERSION=essentia_tensorflow_v1
+MODELS_DIR=/app/models
+MODEL_REGISTRY_PATH=/app/models/model_registry.json
+MODEL_HASH_CHECK_ENABLED=true
+AUDIO_CLEANUP_WAIT_FOR_ALL_CONSUMERS=true
+ADVANCED_FEATURES_TOP_K_GENRES=10
+ENERGY_PROXY_ENABLED=true
+```
+
+Profil Docker `advanced-analysis` : service `essentia-tensorflow-worker` (réservation stages `essentia_tensorflow_*`, mode `status_only` si modèles requis absents).
+
+Modèles sous `models/` (jamais commités) : `essentia/`, `tensorflow/`, `discogs_effnet/`, `discogs_maest/`.
+
+### Variables modèles et inférence réelle (réalignement phase 6)
+
+Ajoutées pour la gestion de modèles et l'inférence réelle Essentia TensorFlow. Détail : [`19-essentia-tensorflow-model-management.md`](19-essentia-tensorflow-model-management.md).
+
+```env
+# Models
+MODELS_DIR=/app/models
+ESSENTIA_MODELS_DIR=/app/models/essentia
+ESSENTIA_MODELS_MANIFEST=/app/core/app/models_registry/essentia_models_manifest.yaml
+ESSENTIA_MODELS_DEFAULT_PROFILE=phase6-recommended
+ESSENTIA_MODELS_DOWNLOAD_TIMEOUT_SECONDS=300
+ESSENTIA_MODELS_VERIFY_HASH=true
+ESSENTIA_MODELS_ACCEPT_LICENSE=false
+
+# TensorFlow inference
+ESSENTIA_TF_REAL_INFERENCE_ENABLED=true
+ESSENTIA_TF_ALLOW_STUBS_IN_TESTS=false
+ESSENTIA_TF_REQUIRE_MODELS_FOR_ADVANCED=false
+ESSENTIA_TF_FAIL_ON_STUB_IN_PRODUCTION=true
+ESSENTIA_TENSORFLOW_WORKERS=1
+ESSENTIA_TENSORFLOW_BATCH_SIZE=8
+ESSENTIA_TENSORFLOW_ITEM_LOCK_TIMEOUT_SECONDS=1800
+```
+
+Règles :
+
+- `ESSENTIA_TF_ALLOW_STUBS_IN_TESTS=true` ne doit être utilisé qu'en environnement test.
+- `ESSENTIA_TF_FAIL_ON_STUB_IN_PRODUCTION=true` est obligatoire.
+- `ESSENTIA_MODELS_ACCEPT_LICENSE=false` par défaut : l'utilisateur doit accepter explicitement la licence `CC BY-NC-SA 4.0` avant téléchargement.
+- `ESSENTIA_MODELS_DEFAULT_PROFILE=phase6-recommended` pour couvrir Genre Discogs519.
+- `MODELS_DIR` doit pointer vers un volume ignoré par Git.
+
+`.gitignore` (modèles et poids jamais commités) :
+
+```text
+models/*
+!models/.gitkeep
+*.pb
+*.onnx
+*.h5
+*.tflite
+*.tfjs
+*.zip
+```
 
 ## Variables sensibles
 
@@ -107,6 +184,8 @@ Révisions Alembic (ordre) :
 | `0005_phase3_features` | Features multi-source |
 | `0006_phase4_audio_local` | Audio, `job_items`, heartbeats |
 | `0007_track_previews_hybrid` | `track_previews`, hybrid metadata |
+| `0008_phase5_playlist_engine` | Playlist rules, generated playlists, sync |
+| `0009_phase6_job_items_pipeline_stages` | `job_items` : `stage_name`, dépendances pipeline |
 
 ```bash
 cd core

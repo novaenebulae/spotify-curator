@@ -11,6 +11,7 @@ FeatureStatus = Literal[
     "low_confidence",
     "source_failed",
     "not_applicable",
+    "model_missing",
 ]
 
 

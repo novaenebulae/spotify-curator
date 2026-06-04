@@ -13,6 +13,7 @@ class JobItem(Base):
     __table_args__ = (
         Index("ix_job_items_job_status", "job_id", "status"),
         Index("ix_job_items_available", "status", "next_retry_at", "priority"),
+        Index("ix_job_items_job_stage_status", "job_id", "stage_name", "status"),
     )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
@@ -20,6 +21,14 @@ class JobItem(Base):
     item_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     track_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("tracks.id"), nullable=True, index=True)
     segment_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    stage_name: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    depends_on_item_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("job_items.id"), nullable=True
+    )
+    consumer_group: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    model_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    pipeline_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    blocked_reason: Mapped[str | None] = mapped_column(String(512), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending", index=True)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

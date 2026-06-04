@@ -13,10 +13,24 @@ from app.database.engine import get_engine
 from app.database.models_job_items import JobItem
 from app.database.models_jobs import Job
 from app.database.repositories.job_items import JobItemsRepository
+from app.audio.pipeline.constants import (
+    ALL_PIPELINE_STAGES,
+    ITEM_TYPE_ANALYSIS_PIPELINE_STAGE,
+    JOB_TYPE_AUDIO_ANALYSIS_PIPELINE,
+    PIPELINE_MODE_STREAMING,
+    STAGE_ESSENTIA_LOWLEVEL,
+    STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
+    STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
+    STAGE_SEGMENT_DOWNLOAD,
+    STAGE_STATUSES,
+)
 from app.jobs.items.constants import (
     JOB_TYPE_PREVIEW_RESOLVE,
     TERMINAL_ITEM_STATUSES,
     WORKER_ITEM_TYPES,
+    WORKER_TYPE_AUDIO_DOWNLOADER,
+    WORKER_TYPE_ESSENTIA_LOWLEVEL,
+    WORKER_TYPE_ESSENTIA_TENSORFLOW,
 )
 from app.jobs.items.events import JobEventsService
 from app.jobs.service import JobService
@@ -51,6 +65,8 @@ class JobItemService:
             return settings.audio_download_item_lock_timeout_seconds
         if worker_type == "essentia_lowlevel":
             return settings.essentia_lowlevel_item_lock_timeout_seconds
+        if worker_type == WORKER_TYPE_ESSENTIA_TENSORFLOW:
+            return settings.essentia_tensorflow_item_lock_timeout_seconds
         return settings.job_item_lock_timeout_seconds
 
     def create_items_for_job(
@@ -98,12 +114,92 @@ class JobItemService:
         session.flush()
         return ids
 
+    def create_pipeline_stage_item(
+        self,
+        session: Session,
+        *,
+        job_id: str,
+        track_id: int,
+        stage_name: str,
+        segment_id: int | None = None,
+        depends_on_item_id: str | None = None,
+        consumer_group: str | None = None,
+        model_name: str | None = None,
+        pipeline_version: str | None = None,
+        input_payload: dict[str, Any] | None = None,
+        status: str = "pending",
+        blocked_reason: str | None = None,
+        max_attempts: int | None = None,
+    ) -> str:
+        now = datetime.now(tz=UTC).replace(tzinfo=None)
+        item_id = uuid.uuid4().hex
+        attempts = max_attempts or settings.job_default_max_attempts
+        row = JobItem(
+            id=item_id,
+            job_id=job_id,
+            item_type=ITEM_TYPE_ANALYSIS_PIPELINE_STAGE,
+            track_id=track_id,
+            segment_id=segment_id,
+            stage_name=stage_name,
+            depends_on_item_id=depends_on_item_id,
+            consumer_group=consumer_group,
+            model_name=model_name,
+            pipeline_version=pipeline_version,
+            blocked_reason=blocked_reason,
+            status=status,
+            priority=0,
+            attempt_count=0,
+            max_attempts=attempts,
+            locked_by=None,
+            locked_at=None,
+            next_retry_at=None,
+            error_code=None,
+            error_message=None,
+            input_json=json.dumps(input_payload or {}),
+            result_json="{}",
+            created_at=now,
+            started_at=None,
+            finished_at=None,
+        )
+        self._items.insert(session, row)
+        return item_id
+
     def reserve_next(
         self,
         *,
         worker_id: str,
         worker_type: str,
     ) -> ReservedJobItem | None:
+        if settings.analysis_pipeline_mode == PIPELINE_MODE_STREAMING:
+            if worker_type == WORKER_TYPE_AUDIO_DOWNLOADER:
+                pipeline_item = self._reserve_pipeline_stage_item(
+                    worker_id=worker_id,
+                    lock_timeout=self.lock_timeout_for_worker(worker_type),
+                    stage_name=STAGE_SEGMENT_DOWNLOAD,
+                )
+                if pipeline_item is not None:
+                    return pipeline_item
+            if worker_type == WORKER_TYPE_ESSENTIA_LOWLEVEL:
+                pipeline_item = self._reserve_pipeline_stage_item(
+                    worker_id=worker_id,
+                    lock_timeout=self.lock_timeout_for_worker(worker_type),
+                    stage_name=STAGE_ESSENTIA_LOWLEVEL,
+                )
+                if pipeline_item is not None:
+                    return pipeline_item
+            if worker_type == WORKER_TYPE_ESSENTIA_TENSORFLOW:
+                for stage_name in (
+                    STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
+                    STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
+                ):
+                    pipeline_item = self._reserve_pipeline_stage_item(
+                        worker_id=worker_id,
+                        lock_timeout=self.lock_timeout_for_worker(worker_type),
+                        stage_name=stage_name,
+                    )
+                    if pipeline_item is not None:
+                        return pipeline_item
+
         item_types = WORKER_ITEM_TYPES.get(worker_type, ())
         if not item_types:
             return None
@@ -193,6 +289,103 @@ class JobItemService:
             attempt_count=int(row[6]),
         )
 
+    def _reserve_pipeline_stage_item(
+        self,
+        *,
+        worker_id: str,
+        lock_timeout: int,
+        stage_name: str,
+    ) -> ReservedJobItem | None:
+        now = datetime.now(tz=UTC).replace(tzinfo=None)
+        stale_before = now - timedelta(seconds=lock_timeout)
+        engine = get_engine()
+
+        with Session(engine) as session:
+            conn = session.connection()
+            conn.execute(text("BEGIN IMMEDIATE"))
+            try:
+                row = conn.execute(
+                    text(
+                        """
+                        SELECT i.id, i.job_id, i.item_type, i.track_id, i.segment_id,
+                               i.input_json, i.attempt_count
+                        FROM job_items i
+                        INNER JOIN jobs j ON j.id = i.job_id
+                        WHERE i.status IN ('pending', 'rate_limited')
+                          AND i.item_type = :item_type
+                          AND i.stage_name = :stage_name
+                          AND j.job_type = :job_type
+                          AND j.status IN ('queued', 'running')
+                          AND (i.next_retry_at IS NULL OR i.next_retry_at <= :now)
+                          AND (i.locked_by IS NULL OR i.locked_at < :stale_before)
+                        ORDER BY i.priority DESC, i.created_at ASC
+                        LIMIT 1
+                        """
+                    ),
+                    {
+                        "now": now,
+                        "stale_before": stale_before,
+                        "worker_id": worker_id,
+                        "item_type": ITEM_TYPE_ANALYSIS_PIPELINE_STAGE,
+                        "stage_name": stage_name,
+                        "job_type": JOB_TYPE_AUDIO_ANALYSIS_PIPELINE,
+                    },
+                ).fetchone()
+
+                if row is None:
+                    conn.execute(text("COMMIT"))
+                    return None
+
+                item_id = row[0]
+                updated = conn.execute(
+                    text(
+                        """
+                        UPDATE job_items
+                        SET status = 'running',
+                            locked_by = :worker_id,
+                            locked_at = :now,
+                            started_at = COALESCE(started_at, :now),
+                            attempt_count = attempt_count + 1
+                        WHERE id = :item_id
+                          AND (locked_by IS NULL OR locked_at < :stale_before)
+                        """
+                    ),
+                    {
+                        "worker_id": worker_id,
+                        "now": now,
+                        "item_id": item_id,
+                        "stale_before": stale_before,
+                    },
+                )
+                if updated.rowcount != 1:
+                    conn.execute(text("COMMIT"))
+                    return None
+
+                job_row = session.get(Job, row[1])
+                if job_row and job_row.status in ("queued",):
+                    job_row.status = "running"
+                    if job_row.started_at is None:
+                        job_row.started_at = now
+
+                conn.execute(text("COMMIT"))
+                session.commit()
+                self.recompute_job_progress(session, row[1])
+                session.commit()
+            except Exception:
+                conn.execute(text("ROLLBACK"))
+                raise
+
+        input_json = json.loads(row[5] or "{}")
+        return ReservedJobItem(
+            id=row[0],
+            job_id=row[1],
+            item_type=row[2],
+            track_id=row[3],
+            segment_id=row[4],
+            input_json=input_json,
+            attempt_count=int(row[6]),
+        )
+
     def mark_success(
         self,
         item_id: str,
@@ -226,6 +419,7 @@ class JobItemService:
             session.commit()
             self.recompute_job_progress(session, item.job_id)
             session.commit()
+            self._maybe_refresh_pipeline_dependencies(item.job_id)
 
     def mark_failed(
         self,
@@ -291,6 +485,7 @@ class JobItemService:
             session.commit()
             self.recompute_job_progress(session, item.job_id)
             session.commit()
+            self._maybe_refresh_pipeline_dependencies(item.job_id)
 
     def mark_rate_limited(self, item_id: str, *, retry_after_seconds: int) -> None:
         now = datetime.now(tz=UTC).replace(tzinfo=None)
@@ -355,7 +550,10 @@ class JobItemService:
             return
         job.progress_total = total
         job.progress_current = terminal
-        pending = counts.get("pending", 0) + running + counts.get("rate_limited", 0)
+        pending = (
+            counts.get("pending", 0) + running + counts.get("rate_limited", 0)
+        )
+        # blocked items wait on dependencies and are not executable work units
         if pending > 0 and total > 0:
             now = datetime.now(tz=UTC).replace(tzinfo=None)
             if job.status == "queued":
@@ -419,7 +617,7 @@ class JobItemService:
             succeeded = counts.get("success", 0)
             not_found = 0
 
-        return {
+        result: dict[str, Any] = {
             **existing,
             "track_count": track_count,
             "succeeded": succeeded,
@@ -428,6 +626,13 @@ class JobItemService:
             "not_found": not_found,
             "partial": 0,
         }
+        if job.job_type == JOB_TYPE_AUDIO_ANALYSIS_PIPELINE:
+            stage_counts = self._items.count_by_stage_name(session, job.id)
+            result["stages"] = {
+                stage: {status: stage_counts.get(stage, {}).get(status, 0) for status in STAGE_STATUSES}
+                for stage in ALL_PIPELINE_STAGES
+            }
+        return result
 
     def _preview_resolve_outcome_counts(
         self, session: Session, job_id: str
@@ -491,6 +696,18 @@ class JobItemService:
     def is_job_cancelled(self, job_id: str) -> bool:
         return self._jobs.is_cancelled(job_id)
 
+    def _maybe_refresh_pipeline_dependencies(self, job_id: str) -> None:
+        engine = get_engine()
+        with Session(engine) as session:
+            job = session.get(Job, job_id)
+            if job is None or job.job_type != JOB_TYPE_AUDIO_ANALYSIS_PIPELINE:
+                return
+        from app.audio.pipeline.feature_aggregation import PipelineFeatureAggregationService
+        from app.audio.pipeline.orchestrator import AnalysisPipelineOrchestrator
+
+        AnalysisPipelineOrchestrator(items=self).refresh_dependencies(job_id)
+        PipelineFeatureAggregationService(items=self).try_run_pending_for_job(job_id)
+
 
 def _item_to_dict(row: JobItem) -> dict[str, Any]:
     return {
@@ -499,6 +716,11 @@ def _item_to_dict(row: JobItem) -> dict[str, Any]:
         "item_type": row.item_type,
         "track_id": row.track_id,
         "segment_id": row.segment_id,
+        "stage_name": row.stage_name,
+        "depends_on_item_id": row.depends_on_item_id,
+        "consumer_group": row.consumer_group,
+        "pipeline_version": row.pipeline_version,
+        "blocked_reason": row.blocked_reason,
         "status": row.status,
         "attempt_count": row.attempt_count,
         "max_attempts": row.max_attempts,

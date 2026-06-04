@@ -260,7 +260,111 @@ Par défaut, l’analyse Essentia low-level est **filtrée** pour ne tourner que
 
 Un override manuel existe via `force_refresh=true`.
 
-## Phase 7 — Analyse avancée
+## Phase 6 — Pipeline parallèle et Essentia TensorFlow
+
+Le pipeline phase 6 remplace le modèle `download all → analyze all` par un handoff progressif et ajoute l'analyse avancée Essentia TensorFlow **réelle** lorsque les modèles sont présents. Voir [`16-job-execution-model-and-worker-parallelism.md`](16-job-execution-model-and-worker-parallelism.md), [`backlog/phase-6.md`](../backlog/phase-6.md) et [`19-essentia-tensorflow-model-management.md`](19-essentia-tensorflow-model-management.md).
+
+### Règle bloquante phase 6
+
+Les runners TensorFlow ne doivent **jamais** écrire de features avancées fake en runtime normal.
+
+```text
+APP_ENV=test + ESSENTIA_TF_ALLOW_STUBS_IN_TESTS=true → stubs autorisés
+Sinon → stubs interdits (error STUB_INFERENCE_FORBIDDEN)
+```
+
+`inference_mode="real"` est réservé aux vraies inférences (modèle réel exécuté sur un WAV réel). Modèle absent → `model_missing`, jamais un score fake.
+
+### Sources modèles
+
+Les runners réels utilisent exclusivement les modèles déclarés dans :
+
+```text
+core/app/models_registry/essentia_models_manifest.yaml
+```
+
+Ce manifest est construit à partir de :
+
+```text
+https://essentia.upf.edu/models.html
+https://essentia.upf.edu/models/
+```
+
+Le pipeline phase 6 utilise les fichiers TensorFlow `.pb` et metadata `.json`, pas ONNX/TFJS.
+
+### Pipeline avancé réel
+
+```text
+POST /audio/analysis/advanced
+  ↓
+audio_analysis_pipeline job
+  ↓
+segment_download
+  ↓ segment_ready
+  ├─ essentia_lowlevel réel
+  └─ essentia_tensorflow
+       ├─ model profile check
+       ├─ real Discogs EffNet embedding inference
+       ├─ real Discogs519 genre inference if recommended profile installed
+       └─ real classifier inference
+  ↓
+feature_aggregation
+  ↓
+audio_cleanup
+```
+
+| Stage | Worker |
+|---|---|
+| `segment_download` | `audio-downloader` |
+| `essentia_lowlevel` | `essentia-lowlevel-worker` (un item = un segment ; upsert track différé) |
+| `essentia_tensorflow_embeddings` / `essentia_tensorflow_classifiers` | `essentia-tensorflow-worker` (profil `advanced-analysis`) |
+| `feature_aggregation` | core (`PipelineFeatureAggregationService`, après succès des prérequis stage) |
+| `audio_cleanup` | core |
+
+**Implémenté (6.3)** : le worker low-level réserve les stages `essentia_lowlevel` du job `audio_analysis_pipeline` (mode `streaming`), persiste les features par segment (`features_json` enrichi), puis le stage `feature_aggregation` agrège et appelle `FeatureUpsertService.upsert_essentia_lowlevel`. Le flux legacy `essentia_lowlevel_analysis` / `essentia_lowlevel_track` est inchangé.
+
+**Contrat en place (6.6/6.7, inférence réelle restante)** : le stage `essentia_tensorflow_embeddings` produit `embedding_outputs` (Discogs EffNet) et `genre_outputs` (Discogs519) ; le stage `essentia_tensorflow_classifiers` produit `classifier_outputs` / `models_missing`. L'agrégation écrit `track_embeddings` et les features avancées/genre dans `track_advanced_features`, et calcule `energy_proxy` (source `derived`). `FeatureResolver` expose `style_embedding`, `timbre_embedding` (256 premières dims) et `genre_discogs_519*` avec fallbacks ReccoBeats. Le contrat de données est complet ; l'inférence réelle remplace les runners stub (cf. backlog 6.8B).
+
+### Profils modèles
+
+| Profil | Usage |
+|---|---|
+| `phase6-minimal` | Discogs EffNet + classifiers principaux |
+| `phase6-recommended` | Ajoute MAEST + Genre Discogs519 |
+| `phase6-full` | Ajoute MusicNN + DEAM/MuSe pour arousal/valence |
+
+### Gestion modèles avant stage TensorFlow
+
+Avant chaque stage TensorFlow :
+
+1. lire le manifest ;
+2. résoudre le profil demandé ;
+3. vérifier les dépendances ;
+4. vérifier présence `.pb` + `.json` ;
+5. vérifier hash si attendu ;
+6. si absent : stage `skipped`, error_code `MODEL_MISSING` ;
+7. si metadata absente : stage `failed`, error_code `MODEL_METADATA_MISSING` ;
+8. si hash invalide : stage `failed`, error_code `MODEL_INVALID_HASH` ;
+9. si présent : exécuter l'inférence réelle.
+
+### Sorties attendues
+
+Chaque résultat TensorFlow doit inclure :
+
+```json
+{
+  "inference_mode": "real",
+  "model_key": "mood_happy_discogs_effnet",
+  "model_name": "mood_happy-discogs-effnet-1",
+  "model_version": "1",
+  "model_hash": "computed-local-hash",
+  "segment_id": 123,
+  "wav_path_used": true,
+  "pipeline_version": "phase6_tf_real_v1"
+}
+```
+
+`inference_mode="stub"` est interdit hors tests.
 
 ### Essentia TensorFlow
 
@@ -273,24 +377,72 @@ spotify-curator-essentia-tensorflow:<version>
 Responsabilités :
 
 - embeddings Discogs EffNet ;
-- embeddings OpenL3 si retenu ;
-- mood happy/sad/aggressive/relaxed/party ;
-- arousal/valence ;
-- voice/instrumental ;
-- electronic/acoustic ;
-- timbre.
+- genre Discogs519 ;
+- moods (aggressive, happy, party, relaxed, sad) ;
+- approachability / engagement ;
+- arousal/valence, voice/instrumental, electronic/acoustic ;
+- fallbacks `danceability_tf`, `valence_tf`, `energy_proxy`.
+
+### Features avancées phase 6
+
+- `genre_discogs_519`, `genre_discogs_519_top_label`, `genre_discogs_519_top_score`, `genre_discogs_519_top_k`
+- `approachability`, `engagement`
+- `mood_*_score`, `electronic_profile_score`, `acoustic_profile_score`
+- `voice_probability`, `vocal_presence_score`, `instrumental_focus_score`
+- `danceability_tf`, `valence_tf`, `energy_proxy`
+
+Ces champs ne remplacent pas automatiquement ReccoBeats si celui-ci fournit une valeur fiable.
+
+### Priorité source (phase 6)
+
+| Feature | Prioritaire | Fallback |
+|---|---|---|
+| `energy` | ReccoBeats | `energy_proxy` |
+| `danceability` | ReccoBeats | `danceability_tf` |
+| `valence` | ReccoBeats | `valence_tf` |
+| `instrumentalness` | ReccoBeats | `instrumental_focus_score` |
+| `acousticness` | ReccoBeats | `acoustic_profile_score` |
+| `bpm`, `key`, `mode` | Essentia low-level | ReccoBeats |
+| `mood_*`, `genre_discogs_519` | Essentia TensorFlow | missing |
+
+### Particularité valence
+
+Aucun modèle `valence-discogs-effnet` ne doit être inventé (absent du catalogue officiel utilisé).
+
+Règle phase 6 :
+
+- `valence` prioritaire : ReccoBeats ;
+- fallback local réel uniquement si `phase6-full` installe MusicNN + DEAM/MuSe ;
+- sinon `valence_tf` = `model_missing` ou `not_supported_yet`.
 
 ### Gestion modèles
 
 Chaque modèle doit avoir :
 
-- nom ;
-- version ;
-- hash ;
-- source ;
-- taille ;
-- statut disponible ;
-- chemin local non commité.
+- nom, version, hash, chemin local non commité ;
+- statut `available` / `missing` / `invalid_hash` / `disabled` ;
+- endpoints `GET /api/v1/models/status`, `POST /api/v1/models/download`, `POST /api/v1/models/download-profile`, `POST /api/v1/models/verify`.
+
+Détail complet (manifest, profils, downloader, CLI, licence) : [`19-essentia-tensorflow-model-management.md`](19-essentia-tensorflow-model-management.md).
+
+### Cleanup multi-consommateurs
+
+Un segment WAV peut être supprimé seulement si tous les consommateurs requis (`essentia_lowlevel`, `essentia_tensorflow_embeddings`, `essentia_tensorflow_classifiers`) sont en `success`, `skipped` ou échec terminal, et `AUDIO_KEEP_SEGMENTS_AFTER_ANALYSIS=false`.
+
+### Compatibilité phase 5
+
+Le playlist engine consomme uniquement `FeatureRegistry`, `FeatureResolver`, `TrackFeatureView` — jamais les payloads bruts Essentia/TensorFlow.
+
+### Validation
+
+Le smoke test phase 6 doit prouver :
+
+- un WAV est lu ;
+- un modèle réel est utilisé ;
+- une sortie non vide est générée ;
+- la sortie est persistée ;
+- les features sont visibles via API ;
+- un appel stub hors test échoue avec `STUB_INFERENCE_FORBIDDEN`.
 
 ## Fusion des features
 
@@ -354,7 +506,7 @@ Scores optionnels DJ/mix :
 
 ## Cleanup
 
-Après analyse :
+Après analyse (phase 4, un consommateur) :
 
 1. vérifier JSON produit ;
 2. parser features ;
@@ -363,6 +515,8 @@ Après analyse :
 5. renseigner `deleted_at` ;
 6. logguer erreurs cleanup ;
 7. exposer nettoyage manuel UI.
+
+Phase 6 : voir cleanup multi-consommateurs ci-dessus.
 
 ## Tests critiques
 
@@ -373,4 +527,8 @@ Après analyse :
 - parser JSON Essentia ;
 - merge ReccoBeats/local ;
 - suppression fichiers ;
-- idempotence si JSON déjà présent.
+- idempotence si JSON déjà présent ;
+- handoff downloader → low-level / TensorFlow (phase 6) ;
+- premier segment analysé avant fin téléchargement global ;
+- modèles manquants sans crash ;
+- non-régression playlist engine phase 5.

@@ -10,6 +10,8 @@ from app.database.models_audio import (  # noqa: F401
     AudioDownloadJob,
     TrackSegment,
 )
+from app.database.models_advanced_features import TrackAdvancedFeature  # noqa: F401
+from app.database.models_track_embeddings import TrackEmbedding  # noqa: F401
 from app.database.models_features import (  # noqa: F401
     AudioFeature,
     AudioFeatureRawPayload,

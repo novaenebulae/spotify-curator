@@ -488,6 +488,69 @@ Job `preview_resolve` : sélection des `track_id` sans preview valide (`is_avail
 | finished_at | datetime nullable | |
 | created_at | datetime | |
 
+## Tables phase 6 — Pipeline et features avancées (cible)
+
+**Décision modèle (juin 2026)** : le pipeline par stages utilise **`job_items` étendu** — pas de table `analysis_stage_items`. Voir [`phase-6-audit.md`](phase-6-audit.md) §5.
+
+**État juin 2026** : `job_items` étendu (migration `0009`, stages pipeline) ; `track_advanced_features` (migration `0010`) ; `track_embeddings` (migration `0011`). Table SQL `model_registry_entries` reste optionnelle (scan fichiers via `ModelRegistry` en 6.4/6.5).
+
+### `job_items` — champs existants (phase 4)
+
+| Champ | Type | Notes |
+|---|---|---|
+| `id` | PK | |
+| `job_id` | FK jobs | |
+| `item_type` | text indexed | ex. `audio_download_track`, `essentia_lowlevel_track` ; types stage en 6.1 |
+| `track_id` | FK tracks nullable | |
+| `segment_id` | FK/int nullable indexed | renseigné pour stages segment en phase 6 |
+| `status` | text indexed | + `blocked` en phase 6 |
+| `priority`, `attempt_count`, `max_attempts` | int | |
+| `locked_by`, `locked_at`, `next_retry_at` | | réservation worker |
+| `error_code`, `error_message` | text nullable | |
+| `input_json`, `result_json` | text | |
+| `created_at`, `started_at`, `finished_at` | datetime | |
+
+### `job_items` — extension phase 6 (migration 6.1)
+
+| Champ | Type | Notes |
+|---|---|---|
+| `stage_name` | text indexed nullable | `segment_download`, `essentia_lowlevel`, `essentia_tensorflow_embeddings`, `essentia_tensorflow_classifiers`, `feature_aggregation`, `audio_cleanup` ; `NULL` = sémantique legacy |
+| `depends_on_item_id` | FK `job_items.id` nullable | dépendance directe entre stages |
+| `consumer_group` | text nullable | groupe consommateur du segment (cleanup) |
+| `model_name` | text nullable | modèle TensorFlow si applicable |
+| `pipeline_version` | text nullable | version pipeline |
+| `blocked_reason` | text nullable | si status `blocked` |
+
+Un job `audio_analysis_pipeline` contient plusieurs lignes `job_items` (par track et/ou segment et stage). Les jobs legacy (`audio_download`, `essentia_lowlevel_analysis`) restent des items track-level ; le mode `ANALYSIS_PIPELINE_MODE=legacy` conserve ce comportement sans second schéma.
+
+### `model_registry_entries`
+
+| Champ | Type | Notes |
+|---|---|---|
+| `model_key` | text unique indexed | |
+| `model_name` | text | |
+| `task_type` | text | embedding/classifier/regression/genre |
+| `expected_path` | text | hors Git |
+| `version` / `sha256` | text nullable | |
+| `dimension` | int nullable | embeddings |
+| `status` | text indexed | available/missing/invalid_hash/disabled |
+| `metadata_json` | text nullable | |
+
+### `track_advanced_features`
+
+| Champ | Type | Notes |
+|---|---|---|
+| `track_id` | FK tracks indexed | |
+| `feature_name` | text indexed | |
+| `value_float` / `value_text` / `value_json` | nullable | top-k genres, etc. |
+| `confidence` | float nullable | |
+| `source` | text indexed | essentia_tensorflow/derived/reccobeats |
+| `model_name` / `model_version` / `model_hash` | text nullable | |
+| `pipeline_version` | text nullable | |
+| `status` | text indexed | success/partial/missing/model_missing/failed |
+
+Contrainte recommandée : `UNIQUE(track_id, feature_name, source, model_name, pipeline_version)`.
+
 ## Tables phase 6/7 — Embeddings et clustering
 
 ### track_embeddings
@@ -502,6 +565,10 @@ Job `preview_resolve` : sélection des `track_id` sans preview valide (`is_avail
 | model_hash | text nullable | |
 | dimension | int | |
 | vector_json | text | liste floats ou chemin cache si lourd |
+| aggregation_method | text nullable | mean/centroid (phase 6) |
+| segments_used | int nullable | |
+| pipeline_version | text nullable | |
+| status | text indexed | success/partial/failed/skipped (phase 6) |
 | confidence | float nullable | |
 | created_at | datetime | |
 

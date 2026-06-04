@@ -1,0 +1,231 @@
+# Example manifest — generated from official Essentia model URLs.
+# Target path in project:
+# core/app/models_registry/essentia_models_manifest.yaml
+
+license:
+  name: "CC BY-NC-SA 4.0"
+  source_url: "https://essentia.upf.edu/models.html"
+  requires_explicit_acceptance: true
+
+profiles:
+  phase6-minimal:
+    description: "Discogs EffNet + primary classifiers, without heavy MAEST genre model."
+    models:
+      - discogs_effnet_bs64
+      - mood_aggressive_discogs_effnet
+      - mood_happy_discogs_effnet
+      - mood_party_discogs_effnet
+      - mood_relaxed_discogs_effnet
+      - mood_sad_discogs_effnet
+      - mood_acoustic_discogs_effnet
+      - mood_electronic_discogs_effnet
+      - voice_instrumental_discogs_effnet
+      - danceability_discogs_effnet
+      - approachability_regression_discogs_effnet
+      - engagement_regression_discogs_effnet
+
+  phase6-recommended:
+    description: "Full phase 6 recommended profile, adds MAEST + Genre Discogs519."
+    extends: phase6-minimal
+    models:
+      - discogs_maest_30s_pw_519l
+      - genre_discogs519_maest_519l
+
+  phase6-full:
+    description: "Adds MusicNN + DEAM/MuSe for optional arousal/valence fallback."
+    extends: phase6-recommended
+    models:
+      - msd_musicnn
+      - deam_msd_musicnn_2
+      - muse_msd_musicnn_2
+
+models:
+  discogs_effnet_bs64:
+    display_name: "Discogs EffNet BS64"
+    task: "embedding"
+    backend: "essentia_tensorflow_pb"
+    weights_url: "https://essentia.upf.edu/models/feature-extractors/discogs-effnet/discogs-effnet-bs64-1.pb"
+    metadata_url: "https://essentia.upf.edu/models/feature-extractors/discogs-effnet/discogs-effnet-bs64-1.json"
+    local_weights_path: "essentia/feature-extractors/discogs-effnet/discogs-effnet-bs64-1.pb"
+    local_metadata_path: "essentia/feature-extractors/discogs-effnet/discogs-effnet-bs64-1.json"
+    output: "PartitionedCall:1"
+    sample_rate: 16000
+    required_for: ["style_embedding", "timbre_embedding"]
+    license: "CC BY-NC-SA 4.0"
+    size_bytes: 18366619
+
+  mood_aggressive_discogs_effnet:
+    display_name: "Mood Aggressive — Discogs EffNet"
+    task: "classifier"
+    depends_on: ["discogs_effnet_bs64"]
+    weights_url: "https://essentia.upf.edu/models/classification-heads/mood_aggressive/mood_aggressive-discogs-effnet-1.pb"
+    metadata_url: "https://essentia.upf.edu/models/classification-heads/mood_aggressive/mood_aggressive-discogs-effnet-1.json"
+    local_weights_path: "essentia/classification-heads/mood_aggressive/mood_aggressive-discogs-effnet-1.pb"
+    local_metadata_path: "essentia/classification-heads/mood_aggressive/mood_aggressive-discogs-effnet-1.json"
+    required_for: ["mood_aggressive_score"]
+    size_bytes: 514458
+
+  mood_happy_discogs_effnet:
+    display_name: "Mood Happy — Discogs EffNet"
+    task: "classifier"
+    depends_on: ["discogs_effnet_bs64"]
+    weights_url: "https://essentia.upf.edu/models/classification-heads/mood_happy/mood_happy-discogs-effnet-1.pb"
+    metadata_url: "https://essentia.upf.edu/models/classification-heads/mood_happy/mood_happy-discogs-effnet-1.json"
+    local_weights_path: "essentia/classification-heads/mood_happy/mood_happy-discogs-effnet-1.pb"
+    local_metadata_path: "essentia/classification-heads/mood_happy/mood_happy-discogs-effnet-1.json"
+    required_for: ["mood_happy_score"]
+    size_bytes: 514458
+
+  mood_party_discogs_effnet:
+    display_name: "Mood Party — Discogs EffNet"
+    task: "classifier"
+    depends_on: ["discogs_effnet_bs64"]
+    weights_url: "https://essentia.upf.edu/models/classification-heads/mood_party/mood_party-discogs-effnet-1.pb"
+    metadata_url: "https://essentia.upf.edu/models/classification-heads/mood_party/mood_party-discogs-effnet-1.json"
+    local_weights_path: "essentia/classification-heads/mood_party/mood_party-discogs-effnet-1.pb"
+    local_metadata_path: "essentia/classification-heads/mood_party/mood_party-discogs-effnet-1.json"
+    required_for: ["mood_party_score"]
+    size_bytes: 514458
+
+  mood_relaxed_discogs_effnet:
+    display_name: "Mood Relaxed — Discogs EffNet"
+    task: "classifier"
+    depends_on: ["discogs_effnet_bs64"]
+    weights_url: "https://essentia.upf.edu/models/classification-heads/mood_relaxed/mood_relaxed-discogs-effnet-1.pb"
+    metadata_url: "https://essentia.upf.edu/models/classification-heads/mood_relaxed/mood_relaxed-discogs-effnet-1.json"
+    local_weights_path: "essentia/classification-heads/mood_relaxed/mood_relaxed-discogs-effnet-1.pb"
+    local_metadata_path: "essentia/classification-heads/mood_relaxed/mood_relaxed-discogs-effnet-1.json"
+    required_for: ["mood_relaxed_score"]
+    size_bytes: 514458
+
+  mood_sad_discogs_effnet:
+    display_name: "Mood Sad — Discogs EffNet"
+    task: "classifier"
+    depends_on: ["discogs_effnet_bs64"]
+    weights_url: "https://essentia.upf.edu/models/classification-heads/mood_sad/mood_sad-discogs-effnet-1.pb"
+    metadata_url: "https://essentia.upf.edu/models/classification-heads/mood_sad/mood_sad-discogs-effnet-1.json"
+    local_weights_path: "essentia/classification-heads/mood_sad/mood_sad-discogs-effnet-1.pb"
+    local_metadata_path: "essentia/classification-heads/mood_sad/mood_sad-discogs-effnet-1.json"
+    required_for: ["mood_sad_score"]
+    size_bytes: 514458
+
+  mood_acoustic_discogs_effnet:
+    display_name: "Mood Acoustic — Discogs EffNet"
+    task: "classifier"
+    depends_on: ["discogs_effnet_bs64"]
+    weights_url: "https://essentia.upf.edu/models/classification-heads/mood_acoustic/mood_acoustic-discogs-effnet-1.pb"
+    metadata_url: "https://essentia.upf.edu/models/classification-heads/mood_acoustic/mood_acoustic-discogs-effnet-1.json"
+    local_weights_path: "essentia/classification-heads/mood_acoustic/mood_acoustic-discogs-effnet-1.pb"
+    local_metadata_path: "essentia/classification-heads/mood_acoustic/mood_acoustic-discogs-effnet-1.json"
+    required_for: ["acoustic_profile_score"]
+    size_bytes: 514458
+
+  mood_electronic_discogs_effnet:
+    display_name: "Mood Electronic — Discogs EffNet"
+    task: "classifier"
+    depends_on: ["discogs_effnet_bs64"]
+    weights_url: "https://essentia.upf.edu/models/classification-heads/mood_electronic/mood_electronic-discogs-effnet-1.pb"
+    metadata_url: "https://essentia.upf.edu/models/classification-heads/mood_electronic/mood_electronic-discogs-effnet-1.json"
+    local_weights_path: "essentia/classification-heads/mood_electronic/mood_electronic-discogs-effnet-1.pb"
+    local_metadata_path: "essentia/classification-heads/mood_electronic/mood_electronic-discogs-effnet-1.json"
+    required_for: ["electronic_profile_score"]
+    size_bytes: 514458
+
+  voice_instrumental_discogs_effnet:
+    display_name: "Voice / Instrumental — Discogs EffNet"
+    task: "classifier"
+    depends_on: ["discogs_effnet_bs64"]
+    weights_url: "https://essentia.upf.edu/models/classification-heads/voice_instrumental/voice_instrumental-discogs-effnet-1.pb"
+    metadata_url: "https://essentia.upf.edu/models/classification-heads/voice_instrumental/voice_instrumental-discogs-effnet-1.json"
+    local_weights_path: "essentia/classification-heads/voice_instrumental/voice_instrumental-discogs-effnet-1.pb"
+    local_metadata_path: "essentia/classification-heads/voice_instrumental/voice_instrumental-discogs-effnet-1.json"
+    required_for: ["voice_probability", "vocal_presence_score", "instrumental_focus_score"]
+    size_bytes: 514458
+
+  danceability_discogs_effnet:
+    display_name: "Danceability — Discogs EffNet"
+    task: "classifier"
+    depends_on: ["discogs_effnet_bs64"]
+    weights_url: "https://essentia.upf.edu/models/classification-heads/danceability/danceability-discogs-effnet-1.pb"
+    metadata_url: "https://essentia.upf.edu/models/classification-heads/danceability/danceability-discogs-effnet-1.json"
+    local_weights_path: "essentia/classification-heads/danceability/danceability-discogs-effnet-1.pb"
+    local_metadata_path: "essentia/classification-heads/danceability/danceability-discogs-effnet-1.json"
+    required_for: ["danceability_tf"]
+    size_bytes: 514458
+
+  approachability_regression_discogs_effnet:
+    display_name: "Approachability Regression — Discogs EffNet"
+    task: "regression"
+    depends_on: ["discogs_effnet_bs64"]
+    weights_url: "https://essentia.upf.edu/models/classification-heads/approachability/approachability_regression-discogs-effnet-1.pb"
+    metadata_url: "https://essentia.upf.edu/models/classification-heads/approachability/approachability_regression-discogs-effnet-1.json"
+    local_weights_path: "essentia/classification-heads/approachability/approachability_regression-discogs-effnet-1.pb"
+    local_metadata_path: "essentia/classification-heads/approachability/approachability_regression-discogs-effnet-1.json"
+    required_for: ["approachability"]
+    size_bytes: 514056
+
+  engagement_regression_discogs_effnet:
+    display_name: "Engagement Regression — Discogs EffNet"
+    task: "regression"
+    depends_on: ["discogs_effnet_bs64"]
+    weights_url: "https://essentia.upf.edu/models/classification-heads/engagement/engagement_regression-discogs-effnet-1.pb"
+    metadata_url: "https://essentia.upf.edu/models/classification-heads/engagement/engagement_regression-discogs-effnet-1.json"
+    local_weights_path: "essentia/classification-heads/engagement/engagement_regression-discogs-effnet-1.pb"
+    local_metadata_path: "essentia/classification-heads/engagement/engagement_regression-discogs-effnet-1.json"
+    required_for: ["engagement"]
+    size_bytes: 514056
+
+  discogs_maest_30s_pw_519l:
+    display_name: "MAEST 30s PW 519 labels"
+    task: "embedding"
+    weights_url: "https://essentia.upf.edu/models/feature-extractors/maest/discogs-maest-30s-pw-519l-2.pb"
+    metadata_url: "https://essentia.upf.edu/models/feature-extractors/maest/discogs-maest-30s-pw-519l-2.json"
+    local_weights_path: "essentia/feature-extractors/maest/discogs-maest-30s-pw-519l-2.pb"
+    local_metadata_path: "essentia/feature-extractors/maest/discogs-maest-30s-pw-519l-2.json"
+    output: "PartitionedCall/Identity_7"
+    sample_rate: 16000
+    required_for: ["genre_discogs_519"]
+    size_bytes: 347996675
+
+  genre_discogs519_maest_519l:
+    display_name: "Genre Discogs519 — MAEST head"
+    task: "genre_classifier"
+    depends_on: ["discogs_maest_30s_pw_519l"]
+    weights_url: "https://essentia.upf.edu/models/classification-heads/genre_discogs519/genre_discogs519-discogs-maest-30s-pw-519l-1.pb"
+    metadata_url: "https://essentia.upf.edu/models/classification-heads/genre_discogs519/genre_discogs519-discogs-maest-30s-pw-519l-1.json"
+    local_weights_path: "essentia/classification-heads/genre_discogs519/genre_discogs519-discogs-maest-30s-pw-519l-1.pb"
+    local_metadata_path: "essentia/classification-heads/genre_discogs519/genre_discogs519-discogs-maest-30s-pw-519l-1.json"
+    required_for: ["genre_discogs_519", "genre_discogs_519_top_label", "genre_discogs_519_top_score"]
+    size_bytes: 1616096
+
+  msd_musicnn:
+    display_name: "MSD MusicNN"
+    task: "embedding"
+    weights_url: "https://essentia.upf.edu/models/feature-extractors/musicnn/msd-musicnn-1.pb"
+    metadata_url: "https://essentia.upf.edu/models/feature-extractors/musicnn/msd-musicnn-1.json"
+    local_weights_path: "essentia/feature-extractors/musicnn/msd-musicnn-1.pb"
+    local_metadata_path: "essentia/feature-extractors/musicnn/msd-musicnn-1.json"
+    required_for: ["valence_tf", "arousal"]
+    size_bytes: 3197999
+
+  deam_msd_musicnn_2:
+    display_name: "DEAM — MSD MusicNN head"
+    task: "regression"
+    depends_on: ["msd_musicnn"]
+    weights_url: "https://essentia.upf.edu/models/classification-heads/deam/deam-msd-musicnn-2.pb"
+    metadata_url: "https://essentia.upf.edu/models/classification-heads/deam/deam-msd-musicnn-2.json"
+    local_weights_path: "essentia/classification-heads/deam/deam-msd-musicnn-2.pb"
+    local_metadata_path: "essentia/classification-heads/deam/deam-msd-musicnn-2.json"
+    required_for: ["valence_tf", "arousal"]
+    size_bytes: 82460
+
+  muse_msd_musicnn_2:
+    display_name: "MuSe — MSD MusicNN head"
+    task: "regression"
+    depends_on: ["msd_musicnn"]
+    weights_url: "https://essentia.upf.edu/models/classification-heads/muse/muse-msd-musicnn-2.pb"
+    metadata_url: "https://essentia.upf.edu/models/classification-heads/muse/muse-msd-musicnn-2.json"
+    local_weights_path: "essentia/classification-heads/muse/muse-msd-musicnn-2.pb"
+    local_metadata_path: "essentia/classification-heads/muse/muse-msd-musicnn-2.json"
+    required_for: ["valence_tf", "arousal"]
+    size_bytes: 82460

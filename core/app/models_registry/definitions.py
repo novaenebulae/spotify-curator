@@ -1,0 +1,117 @@
+from __future__ import annotations
+
+from app.models_registry.types import ModelDefinition
+
+# Expected on-disk layout under models_dir (never committed).
+MODEL_DEFINITIONS: tuple[ModelDefinition, ...] = (
+    ModelDefinition(
+        model_key="discogs_effnet_embeddings",
+        model_name="discogs-effnet-bs64-1.pb",
+        task_type="embeddings",
+        relative_path="discogs_effnet/discogs-effnet-bs64-1.pb",
+        dimension=1280,
+        required_for_inference=True,
+    ),
+    ModelDefinition(
+        model_key="genre_discogs_519",
+        model_name="genre_discogs519-discogs-maest-30s-pw-519l",
+        task_type="genre",
+        relative_path="discogs_maest/genre_discogs519-discogs-maest-30s-pw-519l.pb",
+        required_for_inference=True,
+    ),
+    ModelDefinition(
+        model_key="mood_aggressive",
+        model_name="mood_aggressive",
+        task_type="mood",
+        relative_path="tensorflow/mood_aggressive.pb",
+        required_for_inference=False,
+    ),
+    ModelDefinition(
+        model_key="mood_happy",
+        model_name="mood_happy",
+        task_type="mood",
+        relative_path="tensorflow/mood_happy.pb",
+        required_for_inference=False,
+    ),
+    ModelDefinition(
+        model_key="mood_party",
+        model_name="mood_party",
+        task_type="mood",
+        relative_path="tensorflow/mood_party.pb",
+        required_for_inference=False,
+    ),
+    ModelDefinition(
+        model_key="mood_relaxed",
+        model_name="mood_relaxed",
+        task_type="mood",
+        relative_path="tensorflow/mood_relaxed.pb",
+        required_for_inference=False,
+    ),
+    ModelDefinition(
+        model_key="mood_sad",
+        model_name="mood_sad",
+        task_type="mood",
+        relative_path="tensorflow/mood_sad.pb",
+        required_for_inference=False,
+    ),
+    ModelDefinition(
+        model_key="mood_electronic",
+        model_name="mood_electronic",
+        task_type="mood",
+        relative_path="tensorflow/mood_electronic.pb",
+        required_for_inference=False,
+    ),
+    ModelDefinition(
+        model_key="mood_acoustic",
+        model_name="mood_acoustic",
+        task_type="mood",
+        relative_path="tensorflow/mood_acoustic.pb",
+        required_for_inference=False,
+    ),
+    ModelDefinition(
+        model_key="approachability",
+        model_name="approachability",
+        task_type="classifier",
+        relative_path="tensorflow/approachability.pb",
+        required_for_inference=False,
+    ),
+    ModelDefinition(
+        model_key="engagement",
+        model_name="engagement",
+        task_type="classifier",
+        relative_path="tensorflow/engagement.pb",
+        required_for_inference=False,
+    ),
+    ModelDefinition(
+        model_key="danceability",
+        model_name="danceability",
+        task_type="classifier",
+        relative_path="tensorflow/danceability.pb",
+        required_for_inference=False,
+    ),
+    ModelDefinition(
+        model_key="arousal_valence",
+        model_name="arousal_valence",
+        task_type="classifier",
+        relative_path="tensorflow/arousal_valence.pb",
+        required_for_inference=False,
+    ),
+    ModelDefinition(
+        model_key="voice_instrumental",
+        model_name="voice_instrumental",
+        task_type="classifier",
+        relative_path="tensorflow/voice_instrumental.pb",
+        required_for_inference=False,
+    ),
+    ModelDefinition(
+        model_key="energy_proxy",
+        model_name="energy_proxy_config",
+        task_type="config",
+        relative_path="tensorflow/energy_proxy.json",
+        required_for_inference=False,
+    ),
+)
+
+REQUIRED_MODEL_KEYS: frozenset[str] = frozenset(
+    d.model_key for d in MODEL_DEFINITIONS if d.required_for_inference and d.enabled
+)

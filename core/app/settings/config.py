@@ -80,10 +80,38 @@ class Settings(BaseSettings):
     essentia_lowlevel_max_retries: int = 2
     essentia_lowlevel_profile: str = "/app/profiles/essentia_lowlevel_basic.yaml"
     essentia_lowlevel_pipeline_version: str = "essentia_lowlevel_v1"
+    audio_analysis_pipeline_version: str = "audio_pipeline_v1"
+    analysis_pipeline_mode: str = "streaming"
+    audio_cleanup_wait_for_all_consumers: bool = True
     essentia_lowlevel_item_lock_timeout_seconds: int = 900
     essentia_lowlevel_image: str = "ghcr.io/mtg/essentia"
     essentia_lowlevel_image_tag: str = "bullseye-v2.1_beta5"
     essentia_lowlevel_timeout_seconds: int = 180
+
+    # Essentia TensorFlow (phase 6.4)
+    analysis_advanced_enabled: bool = True
+    analysis_default_include_tensorflow: bool = True
+    essentia_tensorflow_workers: int = 1
+    essentia_tensorflow_batch_size: int = 8
+    essentia_tensorflow_max_retries: int = 1
+    essentia_tensorflow_item_lock_timeout_seconds: int = 1800
+    essentia_tensorflow_status_only: bool = False
+    essentia_tensorflow_pipeline_version: str = "essentia_tensorflow_v1"
+    essentia_tensorflow_image: str = "ghcr.io/mtg/essentia"
+    essentia_tensorflow_image_tag: str = "bullseye-v2.1_beta5"
+    model_registry_path: str = "/app/models/model_registry.json"
+    model_hash_check_enabled: bool = True
+    model_download_enabled: bool = False
+
+    # Essentia TensorFlow model management (phase 6.8A)
+    essentia_models_dir: str = "/app/models/essentia"
+    essentia_models_manifest: str = "/app/core/app/models_registry/essentia_models_manifest.yaml"
+    essentia_models_default_profile: str = "phase6-recommended"
+    essentia_models_download_timeout_seconds: int = 300
+    essentia_models_verify_hash: bool = True
+    essentia_models_accept_license: bool = False
+    advanced_features_top_k_genres: int = 10
+    energy_proxy_enabled: bool = True
 
     audio_enrich_default_limit: int = 5000
     audio_enrich_max_limit: int = 10000

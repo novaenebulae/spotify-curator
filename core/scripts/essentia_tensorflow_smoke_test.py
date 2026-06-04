@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+"""Smoke check for TensorFlow model registry (no heavy inference in phase 6.4)."""
+
+from __future__ import annotations
+
+import sys
+import wave
+from pathlib import Path
+
+from app.models_registry import ModelRegistry
+from app.settings.config import settings
+
+
+def _write_short_wav(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(path), "w") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(16000)
+        wf.writeframes(b"\x00\x00" * 16000)
+
+
+def main() -> int:
+    registry = ModelRegistry()
+    rows, summary = registry.scan()
+    print(f"models_dir={settings.models_dir}")
+    print(f"summary={summary.to_dict()}")
+    print(f"status_only={registry.should_run_status_only()}")
+
+    wav_path = Path(settings.cache_dir) / "smoke" / "tensorflow_smoke.wav"
+    _write_short_wav(wav_path)
+    print(f"smoke_wav={wav_path} bytes={wav_path.stat().st_size}")
+
+    if registry.should_run_status_only():
+        print("SMOKE_OK status_only (models missing or ESSENTIA_TENSORFLOW_STATUS_ONLY)")
+        return 0
+
+    required = [r for r in rows if r.status == "available"]
+    print(f"available_models={len(required)}")
+    if not required:
+        print("SMOKE_SKIP no available models")
+        return 0
+
+    print("SMOKE_OK registry and wav ready for future inference")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

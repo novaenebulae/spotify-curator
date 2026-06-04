@@ -7,6 +7,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.audio.paths import audio_segments_root, segment_absolute_path
+from app.audio.pipeline.consumers import segment_cleanup_allowed
 from app.audio.provider import CleanupResult
 from app.database.engine import get_engine
 from app.database.repositories.track_segments import TrackSegmentsRepository
@@ -65,6 +66,10 @@ class AudioCleanupService:
                 continue
             if not seg.temporary_path:
                 continue
+            if settings.audio_cleanup_wait_for_all_consumers and seg.id is not None:
+                with Session(get_engine()) as check_session:
+                    if not segment_cleanup_allowed(check_session, segment_id=seg.id):
+                        continue
             path = segment_absolute_path(seg.temporary_path)
             if path in seen_paths:
                 continue

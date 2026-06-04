@@ -323,10 +323,58 @@ docker pull ghcr.io/mtg/essentia:bullseye-v2.1_beta5
 essentia_streaming_extractor_music input.wav output.json profile.yaml
 ```
 
+Phase 6+ :
+
+```bash
+docker compose --profile audio --profile advanced-analysis up -d --build
+curl http://127.0.0.1:8765/api/v1/workers
+curl http://127.0.0.1:8765/api/v1/models/status
+```
+
+Tests backend phase 6 : pipeline stages, handoff downloader → analyzers, cleanup multi-consommateurs, model registry mock, TensorFlow worker mock, embeddings shape, `FeatureResolver` source priority, non-régression phase 4 audio et phase 5 playlist.
+
+### Tests modèles
+
+```bash
+cd core
+uv run pytest tests/test_model_registry.py tests/test_model_manager.py tests/test_models_download_api.py -q
+```
+
+Cas à couvrir : manifest valide, modèle absent, modèle fake présent, hash invalide, téléchargement profil minimal, refus téléchargement sans acceptation licence, verify-only.
+
+### Tests stubs
+
+```bash
+cd core
+uv run pytest tests/test_tf_stub_guard.py -q
+```
+
+Cas à couvrir :
+
+- stub autorisé si `APP_ENV=test` + `ESSENTIA_TF_ALLOW_STUBS_IN_TESTS=true` ;
+- stub interdit si `APP_ENV!=test` ;
+- aucune feature `success` avec `inference_mode=stub` en production.
+
+### Smoke inférence réelle
+
+```bash
+docker compose --profile audio --profile advanced-analysis up -d --build
+docker compose exec core-api uv run python scripts/download_essentia_models.py --profile phase6-minimal --accept-license
+docker compose exec core-api uv run python scripts/download_essentia_models.py --verify-only
+docker compose exec core-api uv run python scripts/smoke_essentia_tensorflow_real.py
+```
+
+Résultats attendus :
+
+- si modèles absents : sortie claire `model_missing` ;
+- si modèles présents : au moins une vraie inférence `inference_mode=real` ;
+- aucune écriture de feature fake ;
+- API `/features/advanced/coverage` cohérente.
+
 Phase 7+ :
 
 ```bash
-docker compose build essentia-tensorflow
+docker compose build essentia-tensorflow-worker
 # run small inference on test wav
 ```
 

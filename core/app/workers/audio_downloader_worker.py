@@ -18,6 +18,18 @@ from app.database.models_audio import AudioDownloadJob, TrackSegment
 from app.database.repositories.audio_download_jobs import AudioDownloadJobsRepository
 from app.database.repositories.track_previews import TrackPreviewsRepository
 from app.database.repositories.track_segments import TrackSegmentsRepository
+from app.audio.pipeline.constants import (
+    JOB_TYPE_AUDIO_ANALYSIS_PIPELINE,
+    STAGE_SEGMENT_DOWNLOAD,
+)
+from app.audio.pipeline.handoff import PipelineSegmentHandoffService
+from app.audio.pipeline.segment_download import (
+    create_audio_download_job_row,
+    download_planned_segment,
+    planned_segment_from_dict,
+)
+from app.database.models_job_items import JobItem
+from app.database.models_jobs import Job
 from app.jobs.items.constants import WORKER_TYPE_AUDIO_DOWNLOADER
 from app.jobs.items.service import ReservedJobItem
 from app.observability.redact import redact_dict
@@ -56,6 +68,7 @@ class AudioDownloaderWorker(BaseWorker):
         self._segments = TrackSegmentsRepository()
         self._availability = availability or HybridAvailabilityService()
         self._previews = previews_repo or TrackPreviewsRepository()
+        self._handoff = PipelineSegmentHandoffService()
 
     def process_item(self, item: object) -> None:
         assert isinstance(item, ReservedJobItem)
@@ -65,6 +78,18 @@ class AudioDownloaderWorker(BaseWorker):
             )
             return
         engine = get_engine()
+        with Session(engine) as session:
+            job = session.get(Job, item.job_id)
+            job_item = session.get(JobItem, item.id)
+        if (
+            job is not None
+            and job.job_type == JOB_TYPE_AUDIO_ANALYSIS_PIPELINE
+            and job_item is not None
+            and job_item.stage_name == STAGE_SEGMENT_DOWNLOAD
+        ):
+            self._process_pipeline_segment_download(item)
+            return
+
         with Session(engine) as session:
             ctx = load_track_context(session, item.track_id)
         inp = item.input_json
@@ -254,6 +279,91 @@ class AudioDownloaderWorker(BaseWorker):
                     row.last_error = str(e)[:2000]
                     row.finished_at = datetime.now(tz=UTC).replace(tzinfo=None)
                 session.commit()
+            retryable = "timeout" in str(e).lower() or "rate" in str(e).lower()
+            self._items.mark_failed(
+                item.id,
+                error_code="AUDIO_DOWNLOAD_FAILED",
+                error_message=str(e)[:500],
+                retryable=retryable,
+            )
+
+    def _process_pipeline_segment_download(self, item: ReservedJobItem) -> None:
+        """Download one pipeline stage segment and hand off to analyzers (streaming mode)."""
+        assert item.track_id is not None
+        inp = item.input_json
+        planned_raw = inp.get("planned_segment")
+        if not isinstance(planned_raw, dict):
+            self._items.mark_failed(
+                item.id,
+                error_code="INVALID_ITEM",
+                error_message="Missing planned_segment in pipeline download item",
+            )
+            return
+
+        planned = planned_segment_from_dict(planned_raw)
+        engine = get_engine()
+        try:
+            with Session(engine) as session:
+                ctx = load_track_context(session, item.track_id)
+            selected = None
+            if self._is_test:
+                candidates = self._provider.resolve(ctx)  # type: ignore[union-attr]
+                selected = next((c for c in candidates if c.selected), None)
+
+            with Session(engine) as session:
+                download_id = create_audio_download_job_row(
+                    session,
+                    job_id=item.job_id,
+                    track_id=item.track_id,
+                    provider_name=inp.get("provider", "ytdlp"),
+                    attempt_count=item.attempt_count,
+                )
+                segment_id, source = download_planned_segment(
+                    session,
+                    ctx=ctx,
+                    job_id=item.job_id,
+                    track_id=item.track_id,
+                    planned=planned,
+                    provider=self._provider,
+                    is_test=self._is_test,
+                    selected_source=selected,
+                    deezer_preview_url=None,
+                    download_job_id=download_id,
+                )
+                segment_index = inp.get("segment_index")
+                self._handoff.on_segment_ready(
+                    session,
+                    job_id=item.job_id,
+                    track_id=item.track_id,
+                    segment_id=segment_id,
+                    download_item_id=item.id,
+                    segment_index=int(segment_index) if segment_index is not None else None,
+                )
+                row = self._downloads.get(session, download_id)
+                if row:
+                    row.status = "success"
+                    row.finished_at = datetime.now(tz=UTC).replace(tzinfo=None)
+                    row.result_json = json.dumps(
+                        redact_dict(
+                            {
+                                "segment_id": segment_id,
+                                "source": source,
+                                "segment_index": segment_index,
+                            }
+                        )
+                    )
+                session.commit()
+
+            self._handoff.complete_segment_handoff(item.job_id)
+            self._items.mark_success(
+                item.id,
+                result_json={
+                    "segment_id": segment_id,
+                    "source": source,
+                    "handoff": "segment_ready",
+                },
+            )
+        except Exception as e:
             retryable = "timeout" in str(e).lower() or "rate" in str(e).lower()
             self._items.mark_failed(
                 item.id,

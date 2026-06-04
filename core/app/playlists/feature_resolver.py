@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -15,8 +18,13 @@ from app.database.models_library import (
 )
 from app.database.models_playlists import Playlist, PlaylistTrack
 from app.database.models_previews import TrackPreview
+from app.database.models_advanced_features import TrackAdvancedFeature
 from app.database.repositories.audio_features import AudioFeaturesRepository
 from app.database.repositories.feature_sources import FeatureSourcesRepository
+from app.database.repositories.track_advanced_features import TrackAdvancedFeaturesRepository
+from app.database.repositories.track_embeddings import TrackEmbeddingsRepository
+from app.database.models_track_embeddings import TrackEmbedding
+from app.features.embeddings.constants import TIMBRE_EMBEDDING_DIM
 from app.features.confidence import FEATURE_FIELD_NAMES, field_confidence
 from app.playlists.feature_registry import FeatureRegistry, get_feature_registry
 from app.playlists.types import FeatureValue, TrackFeatureView
@@ -41,6 +49,17 @@ _FIELD_SOURCE_PRIORITY: dict[str, tuple[str, ...]] = {
     "feature_confidence": ("reccobeats", "essentia_lowlevel"),
 }
 
+# ReccoBeats-first fields with local TensorFlow / derived fallbacks (phase 6).
+_ADVANCED_FALLBACK: dict[str, str] = {
+    "energy": "energy_proxy",
+    "danceability": "danceability_tf",
+    "valence": "valence_tf",
+    "acousticness": "acoustic_profile_score",
+    "instrumentalness": "instrumental_focus_score",
+}
+
+_CONSUMER_PHASE = 5
+
 
 class FeatureResolver:
     """Load normalized TrackFeatureView rows for playlist engine consumers."""
@@ -50,9 +69,13 @@ class FeatureResolver:
         *,
         registry: FeatureRegistry | None = None,
         features_repo: AudioFeaturesRepository | None = None,
+        advanced_repo: TrackAdvancedFeaturesRepository | None = None,
+        embeddings_repo: TrackEmbeddingsRepository | None = None,
     ) -> None:
         self._registry = registry or get_feature_registry()
         self._features = features_repo or AudioFeaturesRepository()
+        self._advanced = advanced_repo or TrackAdvancedFeaturesRepository()
+        self._embeddings = embeddings_repo or TrackEmbeddingsRepository()
         self._sources = FeatureSourcesRepository()
 
     def load_views(self, session: Session, track_ids: list[int]) -> dict[int, TrackFeatureView]:
@@ -66,6 +89,8 @@ class FeatureResolver:
         liked = self._load_liked(session, unique_ids)
         playlist_map = self._load_playlist_ids(session, unique_ids)
         isrc_map = self._load_isrc(session, unique_ids)
+        advanced_by_track = self._load_advanced_features(session, unique_ids)
+        embeddings_by_track = self._load_embeddings(session, unique_ids)
 
         out: dict[int, TrackFeatureView] = {}
         for tid in unique_ids:
@@ -81,8 +106,111 @@ class FeatureResolver:
                 liked=liked.get(tid, False),
                 playlist_ids=playlist_map.get(tid, []),
                 isrc=isrc_map.get(tid),
+                advanced_by_name=advanced_by_track.get(tid, {}),
+                embedding_row=embeddings_by_track.get(tid),
             )
         return out
+
+    def _load_embeddings(
+        self, session: Session, track_ids: list[int]
+    ) -> dict[int, TrackEmbedding]:
+        rows = self._embeddings.list_for_tracks(session, track_ids)
+        out: dict[int, TrackEmbedding] = {}
+        for row in rows:
+            if row.status not in ("success", "partial"):
+                continue
+            existing = out.get(row.track_id)
+            if existing is None:
+                out[row.track_id] = row
+        return out
+
+    def _load_advanced_features(
+        self, session: Session, track_ids: list[int]
+    ) -> dict[int, dict[str, TrackAdvancedFeature]]:
+        rows = self._advanced.list_for_tracks(session, track_ids)
+        out: dict[int, dict[str, TrackAdvancedFeature]] = {}
+        for row in rows:
+            bucket = out.setdefault(row.track_id, {})
+            existing = bucket.get(row.feature_name)
+            if existing is None or self._advanced_row_precedence(row, existing):
+                bucket[row.feature_name] = row
+        return out
+
+    @staticmethod
+    def _advanced_row_precedence(
+        candidate: TrackAdvancedFeature, current: TrackAdvancedFeature
+    ) -> bool:
+        priority = {"success": 3, "partial": 2, "model_missing": 1, "missing": 0, "failed": 0}
+        return priority.get(candidate.status, 0) >= priority.get(current.status, 0)
+
+    def _feature_value_from_advanced(
+        self, row: TrackAdvancedFeature, *, feature_name: str | None = None
+    ) -> FeatureValue:
+        name = feature_name or row.feature_name
+        warnings: list[str] = []
+        if row.model_name:
+            warnings.append(f"model_name={row.model_name}")
+        if row.pipeline_version:
+            warnings.append(f"pipeline_version={row.pipeline_version}")
+
+        if row.status == "model_missing":
+            return FeatureValue(
+                name=name,
+                status="model_missing",  # type: ignore[arg-type]
+                missing_reason="MODEL_MISSING",
+                source=row.source,
+                warnings=warnings,
+            )
+        value: Any = row.value_float
+        if row.feature_name == "genre_discogs_519_top_k" and row.value_json:
+            try:
+                value = json.loads(row.value_json)
+            except json.JSONDecodeError:
+                value = None
+        elif row.feature_name == "genre_discogs_519" and row.value_json:
+            try:
+                value = json.loads(row.value_json)
+            except json.JSONDecodeError:
+                value = None
+        elif row.value_text is not None:
+            value = row.value_text
+
+        if value is None:
+            return FeatureValue(
+                name=name,
+                status="missing",
+                missing_reason="FEATURE_MISSING",
+                source=row.source,
+                warnings=warnings,
+            )
+
+        status: str = "available"
+        missing_reason = None
+        if row.status == "partial":
+            status = "low_confidence"
+            missing_reason = "FEATURE_LOW_CONFIDENCE"
+        elif row.status not in ("success", "partial"):
+            status = "missing"
+            missing_reason = "FEATURE_MISSING"
+
+        conf = row.confidence
+        if conf is not None and conf < _LOW_CONFIDENCE_THRESHOLD and status == "available":
+            status = "low_confidence"
+            missing_reason = "FEATURE_LOW_CONFIDENCE"
+
+        numeric_value = value
+        if isinstance(value, (int, float)):
+            numeric_value = float(value)
+
+        return FeatureValue(
+            name=name,
+            value=numeric_value if isinstance(numeric_value, float) else value,
+            confidence=conf,
+            source=row.source,
+            status=status,  # type: ignore[arg-type]
+            missing_reason=missing_reason,
+            warnings=warnings,
+        )
 
     def _load_tracks(self, session: Session, track_ids: list[int]) -> dict[int, tuple]:
         stmt = (
@@ -189,6 +317,75 @@ class FeatureResolver:
             return by_source[name], name
         return None, None
 
+    def _apply_advanced_features(
+        self,
+        features: dict[str, FeatureValue],
+        advanced_by_name: dict[str, TrackAdvancedFeature],
+    ) -> None:
+        for canonical, advanced_name in _ADVANCED_FALLBACK.items():
+            current = features.get(canonical)
+            if (
+                current is not None
+                and current.status == "available"
+                and current.value is not None
+            ):
+                continue
+            row = advanced_by_name.get(advanced_name)
+            if row is None:
+                continue
+            features[canonical] = self._feature_value_from_advanced(
+                row, feature_name=canonical
+            )
+
+        for name, row in advanced_by_name.items():
+            if name in features:
+                continue
+            desc = self._registry.get(name)
+            if desc is None or desc.phase_available != 6:
+                continue
+            features[name] = self._feature_value_from_advanced(row)
+
+    def _apply_embedding_features(
+        self,
+        features: dict[str, FeatureValue],
+        embedding_row: TrackEmbedding | None,
+    ) -> None:
+        if embedding_row is None:
+            return
+        try:
+            vector = self._embeddings.parse_vector(embedding_row)
+        except (json.JSONDecodeError, ValueError):
+            return
+
+        warnings: list[str] = [
+            f"model_name={embedding_row.model_name}",
+            f"pipeline_version={embedding_row.pipeline_version or ''}",
+        ]
+        conf = embedding_row.confidence
+        status: str = "available"
+        if embedding_row.status == "partial":
+            status = "low_confidence"
+        elif embedding_row.status != "success":
+            status = "missing"
+
+        features["style_embedding"] = FeatureValue(
+            name="style_embedding",
+            value=vector,
+            confidence=conf,
+            source="track_embeddings",
+            status=status,  # type: ignore[arg-type]
+            warnings=[w for w in warnings if w],
+        )
+        timbre = vector[:TIMBRE_EMBEDDING_DIM]
+        features["timbre_embedding"] = FeatureValue(
+            name="timbre_embedding",
+            value=timbre,
+            confidence=conf,
+            source="track_embeddings",
+            status=status,  # type: ignore[arg-type]
+            warnings=warnings + [f"timbre_dims={len(timbre)}"],
+        )
+
     def _pick_row(
         self,
         field: str,
@@ -218,6 +415,8 @@ class FeatureResolver:
         liked: bool,
         playlist_ids: list[int],
         isrc: str | None,
+        advanced_by_name: dict[str, TrackAdvancedFeature],
+        embedding_row: TrackEmbedding | None = None,
     ) -> TrackFeatureView:
         track, sp, album_name, (artist_names, artist_ids) = track_bundle
         sp_id = sp.spotify_track_id if sp else None
@@ -361,13 +560,29 @@ class FeatureResolver:
             source="metadata",
         )
 
-        for desc in self._registry.list_descriptors():
-            if desc.phase_available > 5 and desc.name not in features:
+        self._apply_embedding_features(features, embedding_row)
+        self._apply_advanced_features(features, advanced_by_name)
+
+        for desc in self._registry.list_all_descriptors():
+            if desc.phase_available <= _CONSUMER_PHASE or desc.name in features:
+                continue
+            if desc.name in advanced_by_name:
+                features[desc.name] = self._feature_value_from_advanced(
+                    advanced_by_name[desc.name]
+                )
+                continue
+            if desc.phase_available > 6:
                 features[desc.name] = FeatureValue(
                     name=desc.name,
                     status="not_available_yet",
                     missing_reason="FEATURE_NOT_AVAILABLE_YET",
                     warnings=["FEATURE_NOT_AVAILABLE_YET"],
+                )
+            else:
+                features[desc.name] = FeatureValue(
+                    name=desc.name,
+                    status="missing",
+                    missing_reason="FEATURE_MISSING",
                 )
 
         return TrackFeatureView(

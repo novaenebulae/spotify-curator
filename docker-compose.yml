@@ -115,6 +115,31 @@ services:
       - ./profiles:/app/profiles:ro
     restart: unless-stopped
 
+  essentia-tensorflow-worker:
+    profiles: ["advanced-analysis"]
+    build:
+      context: .
+      dockerfile: docker/essentia-tensorflow-worker/Dockerfile
+    environment:
+      - PYTHONPATH=/app
+      - DATABASE_URL=sqlite:////app/data/spotify_curator.sqlite
+      - SQLITE_JOURNAL_MODE=${SQLITE_JOURNAL_MODE:-WAL}
+      - CACHE_DIR=${CACHE_DIR:-/app/cache}
+      - MODELS_DIR=${MODELS_DIR:-/app/models}
+      - MODEL_REGISTRY_PATH=${MODEL_REGISTRY_PATH:-/app/models/model_registry.json}
+      - MODEL_HASH_CHECK_ENABLED=${MODEL_HASH_CHECK_ENABLED:-true}
+      - ESSENTIA_TENSORFLOW_STATUS_ONLY=${ESSENTIA_TENSORFLOW_STATUS_ONLY:-false}
+      - ESSENTIA_TENSORFLOW_PIPELINE_VERSION=${ESSENTIA_TENSORFLOW_PIPELINE_VERSION:-essentia_tensorflow_v1}
+      - ANALYSIS_PIPELINE_MODE=${ANALYSIS_PIPELINE_MODE:-streaming}
+      - JOB_EVENTS_ENABLED=${JOB_EVENTS_ENABLED:-true}
+      - WORKER_HEARTBEATS_ENABLED=${WORKER_HEARTBEATS_ENABLED:-true}
+      - AUDIO_KEEP_SEGMENTS_AFTER_ANALYSIS=${AUDIO_KEEP_SEGMENTS_AFTER_ANALYSIS:-false}
+    volumes:
+      - spotify_curator_data:/app/data
+      - spotify_curator_cache:/app/cache
+      - ./models:/app/models:ro
+    restart: unless-stopped
+
 volumes:
   spotify_curator_data:
     name: spotify_curator_data

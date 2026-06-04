@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from app.audio.pipeline.constants import (
+    ITEM_TYPE_ANALYSIS_PIPELINE_STAGE,
+    JOB_TYPE_AUDIO_ANALYSIS_PIPELINE,
+    STAGE_SEGMENT_DOWNLOAD,
+)
+
 JOB_TYPE_AUDIO_DOWNLOAD = "audio_download"
 JOB_TYPE_ESSENTIA_LOWLEVEL = "essentia_lowlevel_analysis"
 JOB_TYPE_PREVIEW_RESOLVE = "preview_resolve"
@@ -10,6 +16,7 @@ ITEM_TYPE_PREVIEW_RESOLVE_TRACK = "preview_resolve_track"
 
 WORKER_TYPE_AUDIO_DOWNLOADER = "audio_downloader"
 WORKER_TYPE_ESSENTIA_LOWLEVEL = "essentia_lowlevel"
+WORKER_TYPE_ESSENTIA_TENSORFLOW = "essentia_tensorflow"
 WORKER_TYPE_PREVIEW_RESOLVER = "preview_resolver"
 
 WORKER_ITEM_TYPES: dict[str, tuple[str, ...]] = {
@@ -28,5 +35,6 @@ WORKER_MANAGED_JOB_TYPES = frozenset(
         JOB_TYPE_PREVIEW_RESOLVE,
         JOB_TYPE_AUDIO_DOWNLOAD,
         JOB_TYPE_ESSENTIA_LOWLEVEL,
+        JOB_TYPE_AUDIO_ANALYSIS_PIPELINE,
     }
 )

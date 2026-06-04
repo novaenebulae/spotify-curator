@@ -181,3 +181,66 @@ def parse_essentia_json_file(path: str) -> ParsedSegmentFeatures:
     if not isinstance(data, dict):
         raise ValueError("Essentia JSON root must be an object")
     return parse_essentia_json(data)
+
+
+def parsed_segment_to_storage_dict(parsed: ParsedSegmentFeatures) -> dict[str, Any]:
+    return {
+        "bpm": parsed.bpm,
+        "bpm_confidence": parsed.bpm_confidence,
+        "loudness": parsed.loudness,
+        "key": parsed.key,
+        "mode": parsed.mode,
+        "key_confidence": parsed.key_confidence,
+        "duration_ms": parsed.duration_ms,
+        "mfcc": parsed.mfcc,
+        "hpcp": parsed.hpcp,
+        "spectral_centroid": parsed.spectral_centroid,
+        "spectral_rolloff": parsed.spectral_rolloff,
+        "spectral_contrast": parsed.spectral_contrast,
+        "dynamic_complexity": parsed.dynamic_complexity,
+        "onset_rate": parsed.onset_rate,
+        "beats_count": parsed.beats_count,
+        "raw_summary": parsed.raw_summary,
+        "source_quality": parsed.source_quality,
+        "source_quality_weight": parsed.source_quality_weight,
+        "match_confidence": parsed.match_confidence,
+    }
+
+
+def parsed_segment_from_storage(payload: dict[str, Any]) -> ParsedSegmentFeatures:
+    if "raw_summary" in payload and "mfcc" not in payload and len(payload) <= 6:
+        return ParsedSegmentFeatures(
+            bpm=payload.get("bpm"),
+            loudness=payload.get("loudness"),
+            key=payload.get("key"),
+            mode=payload.get("mode"),
+            raw_summary=dict(payload),
+        )
+    return ParsedSegmentFeatures(
+        bpm=payload.get("bpm"),
+        bpm_confidence=payload.get("bpm_confidence"),
+        loudness=payload.get("loudness"),
+        key=payload.get("key"),
+        mode=payload.get("mode"),
+        key_confidence=payload.get("key_confidence"),
+        duration_ms=payload.get("duration_ms"),
+        mfcc=list(payload.get("mfcc") or []),
+        hpcp=list(payload.get("hpcp") or []),
+        spectral_centroid=payload.get("spectral_centroid"),
+        spectral_rolloff=payload.get("spectral_rolloff"),
+        spectral_contrast=list(payload.get("spectral_contrast") or []),
+        dynamic_complexity=payload.get("dynamic_complexity"),
+        onset_rate=payload.get("onset_rate"),
+        beats_count=payload.get("beats_count"),
+        raw_summary=dict(payload.get("raw_summary") or {}),
+        source_quality=payload.get("source_quality"),
+        source_quality_weight=float(payload.get("source_quality_weight") or 1.0),
+        match_confidence=float(payload.get("match_confidence") or 1.0),
+    )
+
+
+def parsed_segment_from_features_json(features_json: str) -> ParsedSegmentFeatures:
+    data = json.loads(features_json)
+    if not isinstance(data, dict):
+        raise ValueError("features_json must be a JSON object")
+    return parsed_segment_from_storage(data)

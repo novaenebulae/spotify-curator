@@ -20,7 +20,8 @@ core/app/
   jobs/
     service.py
     items/        # JobItemService, workers constants
-  workers/        # preview_resolver, audio_downloader, essentia_lowlevel
+  workers/        # preview_resolver, audio_downloader, essentia_lowlevel, essentia_tensorflow
+  models_registry/
   library/        # search, track_feature_status, duplicates, …
   database/
     models_*.py, repositories/
@@ -34,10 +35,11 @@ app/frontend/src/
     import/       # JobRunSummary, ExportPanel
 
 docker/
-  core/, audio-downloader/, preview-resolver/, essentia-lowlevel-worker/
+  core/, audio-downloader/, preview-resolver/,   essentia-lowlevel-worker/
+  essentia-tensorflow-worker/
 ```
 
-**Non présent** (cible phases 5+) : `routes_playlists.py`, `clustering/`, `playlist_engine/` applicatif, `essentia-tensorflow-worker/` buildable.
+**Non présent** (cible phases 5+) : `routes_playlists.py`, `clustering/`, inférence TensorFlow réelle (6.6+).
 
 ## Structure cible (roadmap)
 

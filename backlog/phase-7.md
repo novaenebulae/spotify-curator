@@ -1,11 +1,10 @@
-# Phase 7 — Analyse avancée
+# Phase 7 — Clustering visuel
 
-Tags: #backlog #phase-7 #essentia #tensorflow #embeddings
+Tags: #backlog #phase-7 #clustering #umap #hdbscan #embeddings
 
 ## But
 
-Ajouter embeddings et modèles TensorFlow Essentia pour features avancées.
-
+Explorer la bibliothèque par similarité musicale via une carte 2D, en utilisant le socle enrichi de la phase 6 : ReccoBeats, Essentia low-level, embeddings, moods, genres/styles, vocal/acoustic/electronic.
 
 ## Definition of Done phase
 
@@ -13,71 +12,96 @@ Ajouter embeddings et modèles TensorFlow Essentia pour features avancées.
 - Les tests minimum passent.
 - Les commandes de validation sont documentées.
 - La documentation est à jour.
-- Aucun secret, cache, modèle lourd ou fichier audio n’est commité.
+- Aucun secret, cache, modèle lourd ou fichier audio n'est commité.
 - Aucune régression sur les phases précédentes.
+- Le clustering consomme `FeatureRegistry`, `FeatureResolver` et `TrackFeatureView`.
+- La carte est utilisable avec environ 5000 titres.
 
-
-## 7.1 — Image essentia-tensorflow
-
-Statut : TODO
-
-### Sous-tâches
-
-- Dockerfile.
-- Dépendances.
-- Scripts inference.
-- Build local.
-- Smoke WAV court.
-
-## 7.2 — Gestion modèles
+## 7.1 — Feature profiles
 
 Statut : TODO
 
 ### Sous-tâches
 
-- Registry modèles.
-- `models/` non commité.
-- Version.
-- Hash.
-- Endpoint `/models/status`.
+- Profil `generalist`.
+- Profil `mood`.
+- Profil `timbre`.
+- Profil `rhythm`.
+- Profil `embedding`.
+- YAML profiles.
+- Validation features requises.
+- Warnings si couverture insuffisante.
 
-## 7.3 — Embeddings
-
-Statut : TODO
-
-### Sous-tâches
-
-- Discogs EffNet ou OpenL3.
-- Stocker `track_embeddings`.
-- Dimension.
-- Model hash.
-- Tests vector shape.
-
-## 7.4 — Moods/styles
+## 7.2 — Matrice features
 
 Statut : TODO
 
 ### Sous-tâches
 
-- Happy/sad/aggressive/relaxed/party.
-- Arousal/valence.
-- Electronic/acoustic.
-- Genre/style avec Discogs519 Genre
+- Sélection tracks.
+- Chargement `TrackFeatureView`.
+- Imputation.
+- Normalisation.
+- Gestion valeurs manquantes.
+- Rapport coverage par feature.
+- Tests matrice.
 
-## 7.5 — Voice/instrumental
+## 7.3 — UMAP
 
 Statut : TODO
 
 ### Sous-tâches
 
-- Vocal presence.
-- Instrumental score.
-- Confidence.
-- Merge features.
+- Paramètres.
+- Random seed.
+- Persist x/y.
+- Job clustering.
+- Tests small matrix.
+- Stocker profil + paramètres.
+
+## 7.4 — HDBSCAN
+
+Statut : TODO
+
+### Sous-tâches
+
+- Clusters.
+- Probabilities.
+- Outliers.
+- Labels.
+- Persist memberships.
+- Résumé par cluster.
+
+## 7.5 — Carte UI
+
+Statut : TODO
+
+### Sous-tâches
+
+- Afficher points.
+- Zoom/pan.
+- Couleur par cluster/feature/playlist/genre/mood.
+- Tooltip.
+- Sélection.
+- Filtres.
+- Panneau détail cluster/track.
+- Canvas si SVG trop lent.
+
+## 7.6 — Playlist depuis cluster
+
+Statut : TODO
+
+### Sous-tâches
+
+- Sélection cluster.
+- Sélection manuelle de points.
+- Envoyer vers playlist preview phase 5.
+- Export sélection CSV/JSON.
+- Ajouter warning si cluster contient beaucoup d'outliers.
 
 ## Critères phase
 
-- Image build.
-- Modèles non commités.
-- Embeddings persistés.
-- Features avancées visibles.
+- Carte utilisable avec 5000 tracks.
+- Clusters persistés.
+- Outliers visibles.
+- Sélection cluster utilisable dans le moteur de playlist.

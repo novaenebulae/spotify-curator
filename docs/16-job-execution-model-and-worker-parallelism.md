@@ -44,7 +44,74 @@ Ce document décrit la **cible** d'exécution et l'**état réel** du dépôt (p
 | API jobs | `GET /jobs`, `GET /jobs/{id}`, `POST .../cancel`, `GET .../items`, `GET /jobs/insights/latest`, `GET /workers` | + `GET /jobs/{id}/events`, payload enrichi avec compteurs items |
 | Reprise après crash | Locks items expirés → `pending` ; jobs `running` orphelins → `failed` au démarrage API | Reprise automatique des items orphelins en `pending` |
 
-Voir [`backlog/phase-3.md`](../backlog/phase-3.md) (dette ReccoBeats) et [`backlog/phase-4.md`](../backlog/phase-4.md) (audio livré).
+Voir [`backlog/phase-3.md`](../backlog/phase-3.md) (dette ReccoBeats), [`backlog/phase-4.md`](../backlog/phase-4.md) (audio livré) et [`backlog/phase-6.md`](../backlog/phase-6.md) (pipeline parallèle + TensorFlow).
+
+---
+
+## Phase 6 — Pipeline par stages (cible juin 2026)
+
+**État actuel** : pipeline `audio_analysis_pipeline` avec stages segment (6.1–6.3) ; worker `essentia-tensorflow-worker` ajouté (profil `advanced-analysis`, 6.4) en mode stub/`status_only` tant que les modèles lourds sont absents.
+
+**Décision modèle données** : tous les stages du pipeline sont des lignes **`job_items` étendues** (`stage_name`, `segment_id`, `depends_on_item_id`, …) — pas de table `analysis_stage_items`. Objectif : un seul mécanisme de réservation/locks/events pour le flux final et le mode `legacy`. Détail : [`phase-6-audit.md`](phase-6-audit.md) §5.
+
+**Décision flux** : remplacer le séquentiel par :
+
+```text
+download segment/track
+  ↓ segment_ready
+  ├─ low-level analysis
+  └─ TensorFlow analysis
+  ↓
+aggregate features
+  ↓
+cleanup when all consumers are done
+```
+
+### Types de jobs phase 6
+
+| Job type | Rôle |
+|---|---|
+| `audio_analysis_pipeline` | Job parent : téléchargement + low-level + TensorFlow |
+| `audio_download` | Legacy ou sous-job téléchargement |
+| `essentia_lowlevel_analysis` | Low-level existant |
+| `essentia_tensorflow_analysis` | Analyse TensorFlow |
+| `feature_aggregation` | Agrégation par track |
+| `audio_cleanup` | Nettoyage segments temporaires |
+
+### Stages recommandés
+
+| Stage | Dépendance | Worker |
+|---|---|---|
+| `segment_download` | aucune | `audio-downloader` |
+| `essentia_lowlevel` | `segment_download` | `essentia-lowlevel-worker` (réservation prioritaire des stages pipeline en mode `streaming`, puis legacy `essentia_lowlevel_track`) |
+| `essentia_tensorflow_embeddings` | `segment_download` | `essentia-tensorflow-worker` |
+| `essentia_tensorflow_classifiers` | embeddings ou segment | `essentia-tensorflow-worker` |
+| `feature_aggregation` | analyses terminées | core |
+| `audio_cleanup` | consommateurs terminés | core |
+
+### Statuts de stage
+
+`pending`, `running`, `success`, `failed`, `skipped`, `blocked`, `cancelled`, `rate_limited`.
+
+- `blocked` : dépendance non terminée.
+- `skipped` : modèle absent ou feature désactivée.
+- Un échec TensorFlow n'invalide pas le low-level.
+- Job global peut être `partial`.
+
+### Cleanup multi-consommateurs
+
+Consommateurs typiques : `essentia_lowlevel`, `essentia_tensorflow_embeddings`, `essentia_tensorflow_classifiers`. Cleanup autorisé si tous sont en `success`, `skipped` ou échec terminal.
+
+### Concurrence recommandée (phase 6)
+
+```env
+AUDIO_DOWNLOAD_WORKERS=2
+ESSENTIA_LOWLEVEL_WORKERS=2
+ESSENTIA_TENSORFLOW_WORKERS=1
+ESSENTIA_TENSORFLOW_BATCH_SIZE=8
+```
+
+Profil Compose **`advanced-analysis`** : `essentia-tensorflow-worker` (en plus du profil `audio`).
 
 ---
 
