@@ -222,6 +222,44 @@ export type TrackFeatureSource = {
 	fetched_at?: string | null;
 };
 
+export type AdvancedScalarFeature = {
+	feature_name: string;
+	value?: number | string | null;
+	confidence?: number | null;
+	status: string;
+	model_name?: string | null;
+	model_version?: string | null;
+	pipeline_version?: string | null;
+	aggregation_method?: string | null;
+	missing_reason?: string | null;
+};
+
+export type AdvancedGenre = {
+	label?: string | null;
+	score?: number | null;
+	top_k: { label?: string; score?: number }[];
+};
+
+export type AdvancedEmbedding = {
+	status: string;
+	model_name?: string | null;
+	dimension?: number | null;
+	pipeline_version?: string | null;
+	aggregation_method?: string | null;
+	segments_used?: number | null;
+	confidence?: number | null;
+	vector?: number[] | null;
+};
+
+export type EssentiaTensorFlowAdvanced = {
+	source_name: string;
+	display_name: string;
+	status: string;
+	scalar_features: AdvancedScalarFeature[];
+	genre?: AdvancedGenre | null;
+	embedding?: AdvancedEmbedding | null;
+};
+
 export type TrackFeaturesResponse = {
 	track_id: number;
 	merged: TrackFeatureMerged | null;
@@ -230,13 +268,76 @@ export type TrackFeaturesResponse = {
 		has_any_features: boolean;
 		has_reccobeats: boolean;
 		has_essentia_lowlevel: boolean;
+		has_essentia_tensorflow: boolean;
 		other_sources_count: number;
 	};
+	advanced?: EssentiaTensorFlowAdvanced | null;
 };
+
+export type AdvancedCoverageSummary = {
+	track_count: number;
+	with_any_advanced_features: number;
+	with_embeddings: number;
+};
+
+export type AdvancedCoverageFeature = {
+	feature_name: string;
+	tracks_with_feature: number;
+	success_count: number;
+	model_missing_count: number;
+	failed_count: number;
+	missing_count: number;
+};
+
+export type AdvancedCoverageModelsSummary = {
+	real_inference_ready: boolean;
+	default_profile: string;
+	missing_model_keys: string[];
+};
+
+export type AdvancedFailure = {
+	track_id: number;
+	title: string;
+	artist_names: string[];
+	feature_name: string;
+	model_name?: string | null;
+	status: string;
+	error_code?: string | null;
+	error_message?: string | null;
+};
+
+export type AdvancedCoverage = {
+	summary: AdvancedCoverageSummary;
+	features: AdvancedCoverageFeature[];
+	embeddings: { rows_count: number; tracks_with_embedding: number };
+	models_summary: AdvancedCoverageModelsSummary;
+	recent_failures: AdvancedFailure[];
+};
+
+export async function getAdvancedCoverage(
+	params?: { recent_failures_limit?: number },
+	signal?: AbortSignal
+): Promise<AdvancedCoverage> {
+	const sp = new URLSearchParams();
+	if (params?.recent_failures_limit != null) {
+		sp.set('recent_failures_limit', String(params.recent_failures_limit));
+	}
+	const qs = sp.toString();
+	return apiFetch<AdvancedCoverage>(
+		`/api/v1/features/advanced/coverage${qs ? `?${qs}` : ''}`,
+		{ signal }
+	);
+}
 
 export function getTrackFeatures(
 	trackId: number,
+	opts?: { include_embedding_vector?: boolean },
 	signal?: AbortSignal
 ): Promise<TrackFeaturesResponse> {
-	return apiFetch(`/api/v1/features/tracks/${trackId}`, { signal });
+	const sp = new URLSearchParams();
+	if (opts?.include_embedding_vector) {
+		sp.set('include_embedding_vector', 'true');
+	}
+	const qs = sp.toString();
+	return apiFetch(`/api/v1/features/tracks/${trackId}${qs ? `?${qs}` : ''}`, { signal });
 }

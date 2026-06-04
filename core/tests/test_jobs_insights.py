@@ -56,3 +56,35 @@ def test_latest_jobs_by_type(tmp_path, monkeypatch) -> None:
     assert jobs["audio_download"]["id"] == "job-audio-1"
     assert jobs["audio_download"]["result_json"]["track_count"] == 10
     assert jobs["reccobeats_enrichment"] is None
+
+
+def test_latest_jobs_includes_audio_analysis_pipeline(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "jobs_insights_pipeline.sqlite"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
+    init_db()
+    engine = get_engine()
+    now = datetime.utcnow()
+    with Session(engine) as session:
+        session.add(
+            Job(
+                id="job-pipeline-1",
+                job_type="audio_analysis_pipeline",
+                status="succeeded",
+                progress_current=6,
+                progress_total=6,
+                current_step="completed 6/6",
+                result_json='{"track_count": 1, "succeeded": 6, "failed": 0}',
+                last_error="",
+                created_at=now,
+                finished_at=now,
+            )
+        )
+        session.commit()
+
+    client = TestClient(create_app())
+    res = client.get("/api/v1/jobs/insights/latest")
+    assert res.status_code == 200
+    jobs = res.json()["jobs"]
+    assert jobs["audio_analysis_pipeline"] is not None
+    assert jobs["audio_analysis_pipeline"]["id"] == "job-pipeline-1"
+    assert jobs["audio_analysis_pipeline"]["result_json"]["succeeded"] == 6

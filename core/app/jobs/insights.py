@@ -13,6 +13,7 @@ INSIGHT_JOB_TYPES = (
     "audio_download",
     "essentia_lowlevel_analysis",
     "preview_resolve",
+    "audio_analysis_pipeline",
 )
 
 _TERMINAL_DB = ("succeeded", "failed", "cancelled", "partial")

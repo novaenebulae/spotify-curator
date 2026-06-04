@@ -1,23 +1,32 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import CoverageCards from '$lib/components/features/CoverageCards.svelte';
+	import AdvancedCoverageCards from '$lib/components/features/AdvancedCoverageCards.svelte';
 	import EnrichActions from '$lib/components/features/EnrichActions.svelte';
 	import FieldCoverageTable from '$lib/components/features/FieldCoverageTable.svelte';
 	import LocalAudioAnalysis from '$lib/components/features/LocalAudioAnalysis.svelte';
+	import ModelsStatusPanel from '$lib/components/features/ModelsStatusPanel.svelte';
+	import AdvancedAnalysisPanel from '$lib/components/features/AdvancedAnalysisPanel.svelte';
+	import PipelineStagesPanel from '$lib/components/features/PipelineStagesPanel.svelte';
 	import RecentFailuresList from '$lib/components/features/RecentFailuresList.svelte';
+	import AdvancedFailuresList from '$lib/components/features/AdvancedFailuresList.svelte';
 	import TrackFeaturesDrawer from '$lib/components/library/TrackFeaturesDrawer.svelte';
 	import JobRunSummary from '$lib/components/import/JobRunSummary.svelte';
 	import type { TrackItem } from '$lib/libraryApi';
-	import type { RecentFailure } from '$lib/featuresApi';
 	import {
 		enrichMissingReccoBeats,
 		forceRefreshReccoBeats,
 		getFeatureCoverage,
+		getAdvancedCoverage,
 		retryFailedReccoBeats,
-		type FeatureCoverage
+		getFailuresAfterParam,
+		type FeatureCoverage,
+		type AdvancedCoverage,
+		type RecentFailure,
+		type AdvancedFailure
 	} from '$lib/featuresApi';
+	import { getModelsStatus, type ModelsStatusResponse } from '$lib/modelsApi';
 	import { fetchHealth } from '$lib/coreApi';
-	import { getFailuresAfterParam } from '$lib/featuresApi';
 	import { hydrateLastJobsFromApi, jobTracker, trackJob } from '$lib/jobTracker';
 
 	let loading = $state(true);
@@ -26,6 +35,10 @@
 	let coreOk = $state(false);
 
 	let coverage = $state<FeatureCoverage | null>(null);
+	let advancedCoverage = $state<AdvancedCoverage | null>(null);
+	let advancedCoverageError = $state<string | null>(null);
+	let modelsStatus = $state<ModelsStatusResponse | null>(null);
+	let modelsError = $state<string | null>(null);
 	let failuresPage = $state(1);
 	const failuresPageSize = 20;
 
@@ -41,13 +54,30 @@
 	const lastEnrichJob = $derived(
 		$jobTracker.lastJob?.job_type === 'reccobeats_enrichment' ? $jobTracker.lastJob : null
 	);
+	const pipelineJob = $derived(
+		$jobTracker.activeJob?.job_type === 'audio_analysis_pipeline'
+			? $jobTracker.activeJob
+			: $jobTracker.lastJob?.job_type === 'audio_analysis_pipeline'
+				? $jobTracker.lastJob
+				: ($jobTracker.lastJobsByType['audio_analysis_pipeline'] ?? null)
+	);
+
+	async function loadModels() {
+		modelsError = null;
+		try {
+			modelsStatus = await getModelsStatus(controller.signal);
+		} catch (e) {
+			modelsError = e instanceof Error ? e.message : String(e);
+		}
+	}
 
 	async function loadCoverage() {
 		loading = true;
 		errorMessage = null;
+		advancedCoverageError = null;
 		offline = false;
 		try {
-			const [health, cov] = await Promise.all([
+			const [health, cov, adv] = await Promise.all([
 				fetchHealth(controller.signal),
 				getFeatureCoverage(
 					{
@@ -59,10 +89,12 @@
 						failures_after: getFailuresAfterParam()
 					},
 					controller.signal
-				)
+				),
+				getAdvancedCoverage({ recent_failures_limit: 20 }, controller.signal)
 			]);
 			coreOk = health.status === 'ok';
 			coverage = cov;
+			advancedCoverage = adv;
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
 			if (msg.includes('127.0.0.1:8765')) offline = true;
@@ -70,6 +102,10 @@
 		} finally {
 			loading = false;
 		}
+	}
+
+	async function reloadAll() {
+		await Promise.all([loadCoverage(), loadModels()]);
 	}
 
 	async function runEnrichment(
@@ -84,7 +120,7 @@
 			await trackJob(job_id, label, {
 				onComplete: async () => {
 					await loadJobsInsights();
-					await loadCoverage();
+					await reloadAll();
 				}
 			});
 		} catch (e) {
@@ -103,9 +139,10 @@
 
 	onMount(() => {
 		void loadJobsInsights();
-		loadCoverage();
+		void reloadAll();
 	});
-	function failureToTrackItem(f: RecentFailure): TrackItem {
+
+	function failureToTrackItem(f: RecentFailure | AdvancedFailure): TrackItem {
 		return {
 			track_id: f.track_id,
 			spotify_track_id: '',
@@ -128,7 +165,7 @@
 		};
 	}
 
-	function inspectFailure(f: RecentFailure): void {
+	function inspectFailure(f: RecentFailure | AdvancedFailure): void {
 		inspectTrack = failureToTrackItem(f);
 	}
 
@@ -138,12 +175,16 @@
 <div class="page-header">
 	<h1>Feature enrichment</h1>
 	<p class="muted">
-		Enrich your library with audio features from ReccoBeats. Long operations run as background jobs.
+		Enrich your library with ReccoBeats, Essentia low-level analysis, and the advanced TensorFlow
+		pipeline (embeddings, moods, genre). Long operations run as background jobs.
 	</p>
 	<p class="muted">
 		Core API: <strong class:ok={coreOk}>{coreOk ? 'Online' : loading ? '…' : 'Offline'}</strong>
 		{#if lastEnrichJob}
-			· Last job: <strong>{lastEnrichJob.status}</strong>
+			· Last ReccoBeats job: <strong>{lastEnrichJob.status}</strong>
+		{/if}
+		{#if pipelineJob}
+			· Pipeline: <strong>{pipelineJob.status}</strong>
 		{/if}
 	</p>
 </div>
@@ -152,9 +193,17 @@
 	<div class="error">Cannot reach the core API. Start Docker with <code>docker compose up</code>.</div>
 {:else if errorMessage}
 	<div class="error">{errorMessage}</div>
-	<button type="button" class="secondary" onclick={loadCoverage}>Retry</button>
+	<button type="button" class="secondary" onclick={reloadAll}>Retry</button>
 {:else}
+	<h2 class="section-title">Classic coverage</h2>
 	<CoverageCards {coverage} {loading} />
+
+	<h2 class="section-title">TensorFlow / advanced</h2>
+	<AdvancedCoverageCards
+		coverage={advancedCoverage}
+		loading={loading}
+		error={advancedCoverageError}
+	/>
 
 	{#if coverage && coverage.summary.track_count === 0}
 		<section class="card">
@@ -176,9 +225,27 @@
 		<LocalAudioAnalysis
 			onJobComplete={async () => {
 				await loadJobsInsights();
-				await loadCoverage();
+				await reloadAll();
 			}}
 		/>
+
+		<ModelsStatusPanel
+			status={modelsStatus}
+			loading={loading}
+			error={modelsError}
+			onRefresh={loadModels}
+		/>
+
+		<AdvancedAnalysisPanel
+			{busy}
+			modelsReady={modelsStatus?.summary.real_inference_ready ?? false}
+			onJobComplete={async () => {
+				await loadJobsInsights();
+				await reloadAll();
+			}}
+		/>
+
+		<PipelineStagesPanel job={pipelineJob} />
 	{/if}
 
 	{#if actionError}
@@ -205,6 +272,11 @@
 		}}
 		onInspect={inspectFailure}
 	/>
+	<AdvancedFailuresList
+		failures={advancedCoverage?.recent_failures ?? []}
+		{loading}
+		onInspect={inspectFailure}
+	/>
 {/if}
 
 <TrackFeaturesDrawer
@@ -216,5 +288,10 @@
 <style>
 	.ok {
 		color: var(--color-ok, #6c6);
+	}
+	.section-title {
+		font-size: 1rem;
+		margin: var(--space-lg) 0 var(--space-sm);
+		font-weight: 600;
 	}
 </style>

@@ -23,7 +23,7 @@ La phase 6 n'est pas validable tant que :
 
 Reclassement des tâches :
 
-- 6.2 Handoff → **DONE** : `POST /api/v1/audio/analysis/advanced` déclenche le job `audio_analysis_pipeline` (mode streaming complet) ; déclenchement UI reporté en 6.9b.
+- 6.2 Handoff → **DONE** : `POST /api/v1/audio/analysis/advanced` déclenche le job `audio_analysis_pipeline` (mode streaming complet) ; déclenchement UI en 6.9b.
 - 6.4 Worker TensorFlow → **DONE** : inférence réelle branchée en 6.8B (image worker reconstruite sur `python:3.11-slim` + wheel `essentia-tensorflow`).
 - 6.5 Model registry → **DONE** : manifest + downloader + verifier livrés via `ModelManager` en 6.8A.
 - 6.6 Embeddings + Genre Discogs519 → **DONE** : runners réels livrés en 6.8B.
@@ -545,7 +545,7 @@ Livrables :
 
 ## 6.9 — API et UI features avancées
 
-Statut : **PARTIAL** — backend 6.9a + cleanup/observabilité 6.9c livrés ; UI 6.9b TODO.
+Statut : **DONE** — backend 6.9a + cleanup/observabilité 6.9c + UI 6.9b livrés.
 
 ### 6.9a — API backend (DONE)
 
@@ -565,11 +565,14 @@ curl http://127.0.0.1:8765/api/v1/jobs/{job_id}
 curl http://127.0.0.1:8765/api/v1/features/advanced/coverage
 ```
 
-### 6.9b — UI (TODO)
+### 6.9b — UI (DONE)
 
-- Mettre à jour écran `/features` et `TrackFeaturesDrawer` (onglet Advanced) — consommer les endpoints 6.9a via `modelsApi.ts` / extensions `featuresApi.ts`.
-- Afficher coverage TF, modèles, jobs pipeline, failures ; boutons download profil et lancement analyse avancée.
-- États loading / empty / error / offline obligatoires.
+- Écran [`/features`](../app/frontend/src/routes/features/+page.svelte) : coverage TF (`AdvancedCoverageCards`), modèles (`ModelsStatusPanel`), pipeline (`AdvancedAnalysisPanel`, `PipelineStagesPanel`), échecs avancés (`AdvancedFailuresList`).
+- [`TrackFeaturesDrawer`](../app/frontend/src/lib/components/library/TrackFeaturesDrawer.svelte) : onglet **Advanced** (`TrackFeaturesAdvancedPanel`) — moods, genre top-k, embedding (vecteur opt-in).
+- Clients : [`modelsApi.ts`](../app/frontend/src/lib/modelsApi.ts), extensions [`featuresApi.ts`](../app/frontend/src/lib/featuresApi.ts), [`audioApi.ts`](../app/frontend/src/lib/audioApi.ts), [`spotifyApi.ts`](../app/frontend/src/lib/spotifyApi.ts).
+- `GET /jobs/insights/latest` inclut `audio_analysis_pipeline` ([`insights.py`](../core/app/jobs/insights.py)).
+- États loading / empty / error / offline sur chaque section.
+- Validation : `npm run check` + `npm run build` ; pytest jobs/advanced coverage.
 
 ### 6.9c — Cleanup / observabilité (DONE)
 

@@ -1,6 +1,6 @@
 # Prompt Cursor — Phase 6.8 — API et UI features avancées
 
-> **État juin 2026** : la partie **API backend** est livrée en backlog **6.9a** (`POST /audio/analysis/advanced`, coverage avancée, jobs `stages`, extension track features). La partie **UI** reste à faire (**6.9b**). Le prompt [`phase-6-09-cleanup-observability.md`](phase-6-09-cleanup-observability.md) est reporté à une phase ultérieure.
+> **État juin 2026** : **API backend** (6.9a) et **UI** (6.9b) livrées. Observabilité jobs : [`phase-6-09-cleanup-observability.md`](phase-6-09-cleanup-observability.md) (6.9c).
 
 Tu travailles sur le projet Spotify Curator.
 

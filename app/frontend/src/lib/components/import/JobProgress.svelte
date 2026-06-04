@@ -73,6 +73,31 @@
 			{#if job.status === 'failed' && job.last_error}
 				<pre class="error">{job.last_error}</pre>
 			{/if}
+			{#if job.job_type === 'audio_analysis_pipeline' && job.stages && Object.keys(job.stages).length > 0}
+				<details class="stages-details">
+					<summary>Pipeline stages</summary>
+					<table class="stages-table">
+						<thead>
+							<tr>
+								<th>Stage</th>
+								<th>OK</th>
+								<th>Failed</th>
+								<th>Pending</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each Object.entries(job.stages) as [name, counts]}
+								<tr>
+									<td>{name.replace(/_/g, ' ')}</td>
+									<td>{counts.success ?? 0}</td>
+									<td>{counts.failed ?? 0}</td>
+									<td>{(counts.pending ?? 0) + (counts.blocked ?? 0) + (counts.running ?? 0)}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</details>
+			{/if}
 			{#if (job.status === 'succeeded' || job.status === 'success') && Object.keys(job.result_json).length > 0}
 				<details>
 					<summary>Result</summary>
@@ -92,5 +117,18 @@
 	}
 	.job-header h3 {
 		margin: 0;
+	}
+	.stages-details {
+		margin-top: 0.75rem;
+	}
+	.stages-table {
+		width: 100%;
+		font-size: 0.8rem;
+		margin-top: 0.5rem;
+	}
+	.stages-table th,
+	.stages-table td {
+		text-align: left;
+		padding: 0.2rem 0.4rem;
 	}
 </style>

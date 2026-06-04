@@ -830,15 +830,22 @@ Chaque onglet doit conserver son état local si possible : recherche, page, filt
 - **Recent failures** : section repliable ; sources `reccobeats`, `essentia_lowlevel`, `deezer_preview`, `audio_download` ; colonne date ; bouton **Clear list** = masquage des échecs antérieurs (`failures_after` + `localStorage` `features_failures_cleared_at`).
 - Scrollbars des tableaux scrollables alignées sur le thème sombre (`app.css`).
 
-### 11.7 Features avancées / TensorFlow (planifié — backlog 6.9b)
+### 11.7 Features avancées / TensorFlow (implémenté — 6.9b)
 
-**Backend livré (6.9a)** : `POST /audio/analysis/advanced`, `GET /features/advanced/coverage`, `GET /models/status`, extension `GET /features/tracks/{id}` (`advanced`, `include_embedding_vector`). **UI non implémentée** dans cette livraison.
+**Backend (6.9a)** : `POST /audio/analysis/advanced`, `GET /features/advanced/coverage`, `GET /models/status`, extension `GET /features/tracks/{id}` (`advanced`, `include_embedding_vector`).
 
-Cible UI :
+**UI (6.9b)** — écran `/features` :
 
-- Écran `/features` : tuiles coverage TensorFlow, modèles manquants, bouton lancement analyse avancée, jobs `audio_analysis_pipeline`, failures par modèle.
-- `TrackFeaturesDrawer` : onglet **Advanced** (moods, genre top-k, statut embedding, `model_missing`).
-- Client : `modelsApi.ts` + extensions `featuresApi.ts` ; états loading / empty / error / offline.
+- `AdvancedCoverageCards` : couverture TF, embeddings, `real_inference_ready`, modèles manquants (résumé).
+- `ModelsStatusPanel` : profils, liste modèles manquants, téléchargement par profil (licence CC BY-NC-SA 4.0 + confirmation).
+- `AdvancedAnalysisPanel` : lancement `audio_analysis_pipeline` (limit, only_missing, profile, require_real_tensorflow).
+- `PipelineStagesPanel` + `GlobalJobBar` / `JobProgress` : compteurs par stage (`job.stages`).
+- `AdvancedFailuresList` : échecs `model_missing` / failed depuis advanced coverage.
+- `JobRunSummary` : dernier job `audio_analysis_pipeline` via `GET /jobs/insights/latest`.
+
+**Drawer** — onglet **Advanced** (`TrackFeaturesAdvancedPanel`) : moods/classifiers, genre Discogs top-k, statut embedding ; vecteur uniquement sur action explicite (`include_embedding_vector=true`, échantillon 16 valeurs replié).
+
+Clients : `app/frontend/src/lib/modelsApi.ts`, extensions `featuresApi.ts`, `audioApi.ts`, `spotifyApi.ts`. États loading / empty / error / offline sur chaque section.
 
 ---
 

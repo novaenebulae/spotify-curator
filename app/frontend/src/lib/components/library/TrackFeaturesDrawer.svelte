@@ -3,6 +3,7 @@
 	import AlbumCover from '$lib/components/common/AlbumCover.svelte';
 	import FeatureMetricGrid from '$lib/components/features/FeatureMetricGrid.svelte';
 	import SourceFeatureCard from '$lib/components/features/SourceFeatureCard.svelte';
+	import TrackFeaturesAdvancedPanel from '$lib/components/features/TrackFeaturesAdvancedPanel.svelte';
 	import {
 		formatAnalysisDecision,
 		formatConfidence
@@ -22,7 +23,7 @@
 		onClose: () => void;
 	} = $props();
 
-	let tab: 'fusion' | 'sources' = $state('fusion');
+	let tab: 'fusion' | 'sources' | 'advanced' = $state('fusion');
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 	let offline = $state(false);
@@ -82,7 +83,7 @@
 		preview = null;
 		try {
 			const [feat, prev] = await Promise.all([
-				getTrackFeatures(track.track_id, ac.signal),
+				getTrackFeatures(track.track_id, undefined, ac.signal),
 				getTrackPreview(track.track_id).catch(() => null)
 			]);
 			if (ac.signal.aborted) return;
@@ -144,6 +145,9 @@
 
 		<div class="badges-row">
 			<span class="badge">{statusBadge()}</span>
+			{#if data?.availability.has_essentia_tensorflow}
+				<span class="badge preview">TensorFlow</span>
+			{/if}
 			{#if preview?.is_available}
 				<span class="badge preview">Deezer preview</span>
 			{/if}
@@ -163,6 +167,13 @@
 				onclick={() => (tab = 'sources')}
 			>
 				Sources
+			</button>
+			<button
+				type="button"
+				class:active={tab === 'advanced'}
+				onclick={() => (tab = 'advanced')}
+			>
+				Advanced
 			</button>
 		</div>
 
@@ -228,6 +239,14 @@
 						<p class="meta">Pipeline: {data.merged.meta.pipeline_version}</p>
 					{/if}
 				{/if}
+			{:else if tab === 'advanced' && track}
+				<TrackFeaturesAdvancedPanel
+					{data}
+					trackId={track.track_id}
+					{loading}
+					error={null}
+					{offline}
+				/>
 			{:else if data}
 				{#if data.sources.length === 0}
 					<p class="muted">No source data stored for this track.</p>

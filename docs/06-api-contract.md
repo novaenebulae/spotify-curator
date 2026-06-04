@@ -887,7 +887,7 @@ Réponse :
 
 ## Phase 6 — Analyse avancée
 
-**État juin 2026** : endpoints backend livrés (6.9a). Consommation **UI** (`/features`, `TrackFeaturesDrawer`) reportée en 6.9b — validation via curl/HTTP.
+**État juin 2026** : endpoints backend livrés (6.9a) ; UI `/features` + `TrackFeaturesDrawer` Advanced (6.9b).
 
 ### `POST /audio/analysis/advanced`
 

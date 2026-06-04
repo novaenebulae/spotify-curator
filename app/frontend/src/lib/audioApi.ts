@@ -112,3 +112,49 @@ export function cleanupAudioCache(
 export function fetchWorkers(signal?: AbortSignal): Promise<{ workers: WorkerInfo[]; count: number }> {
 	return apiFetch('/api/v1/workers', { signal });
 }
+
+export type ModelProfileName = 'phase6-minimal' | 'phase6-recommended' | 'phase6-full';
+
+export type AdvancedAnalysisPayload = {
+	track_ids?: number[];
+	filter?: Record<string, unknown>;
+	only_missing?: boolean;
+	force_refresh?: boolean;
+	retry_failed?: boolean;
+	limit?: number | null;
+	analysis_mode?: 'fast' | 'precise';
+	strategy?: string;
+	segment_duration_seconds?: number | null;
+	include_lowlevel?: boolean;
+	include_tensorflow?: boolean;
+	pipeline_mode?: string;
+	model_profile?: ModelProfileName;
+	require_real_tensorflow?: boolean;
+};
+
+export function startAdvancedAnalysis(
+	opts: AdvancedAnalysisPayload,
+	signal?: AbortSignal
+): Promise<AudioJobResponse> {
+	return apiFetch('/api/v1/audio/analysis/advanced', {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({
+			track_ids: opts.track_ids,
+			filter: opts.filter ?? null,
+			only_missing: opts.only_missing ?? true,
+			force_refresh: opts.force_refresh ?? false,
+			retry_failed: opts.retry_failed ?? false,
+			limit: opts.limit ?? null,
+			analysis_mode: opts.analysis_mode ?? 'fast',
+			strategy: opts.strategy ?? 'hybrid_deezer_youtube_representative',
+			segment_duration_seconds: opts.segment_duration_seconds ?? null,
+			include_lowlevel: opts.include_lowlevel ?? true,
+			include_tensorflow: opts.include_tensorflow ?? true,
+			pipeline_mode: opts.pipeline_mode ?? 'streaming',
+			model_profile: opts.model_profile ?? 'phase6-recommended',
+			require_real_tensorflow: opts.require_real_tensorflow ?? false
+		}),
+		signal
+	});
+}

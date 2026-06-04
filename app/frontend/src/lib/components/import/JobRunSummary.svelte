@@ -9,7 +9,8 @@
 		'reccobeats_enrichment',
 		'audio_download',
 		'essentia_lowlevel_analysis',
-		'preview_resolve'
+		'preview_resolve',
+		'audio_analysis_pipeline'
 	]);
 
 	type Props = {
@@ -57,6 +58,7 @@
 		if (jobType === 'audio_download') return 'Audio download (segments)';
 		if (jobType === 'essentia_lowlevel_analysis') return 'Essentia low-level analysis';
 		if (jobType === 'preview_resolve') return 'Deezer preview resolve';
+		if (jobType === 'audio_analysis_pipeline') return 'Advanced audio pipeline';
 		return jobType.replace(/_/g, ' ');
 	}
 
@@ -75,6 +77,7 @@
 	}
 
 	const ORDER = [
+		'audio_analysis_pipeline',
 		'essentia_lowlevel_analysis',
 		'audio_download',
 		'reccobeats_enrichment',

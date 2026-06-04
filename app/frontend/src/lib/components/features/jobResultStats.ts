@@ -76,7 +76,11 @@ export function statTilesForJob(jobType: string, stats: JobRunStats): StatTile[]
 			value: stats.not_found ?? 0,
 			variant: 'warn'
 		});
-	} else if (jobType === 'audio_download' || jobType === 'essentia_lowlevel_analysis') {
+	} else if (
+		jobType === 'audio_download' ||
+		jobType === 'essentia_lowlevel_analysis' ||
+		jobType === 'audio_analysis_pipeline'
+	) {
 		tiles.push({
 			key: 'skipped',
 			label: 'Skipped',

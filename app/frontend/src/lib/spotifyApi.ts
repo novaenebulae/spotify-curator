@@ -13,6 +13,17 @@ export type AuthStart = {
 	expires_in_seconds: number;
 };
 
+export type StageCounts = {
+	pending?: number;
+	running?: number;
+	success?: number;
+	failed?: number;
+	skipped?: number;
+	blocked?: number;
+	cancelled?: number;
+	rate_limited?: number;
+};
+
 export type Job = {
 	id: string;
 	job_type: string;
@@ -21,10 +32,35 @@ export type Job = {
 	progress_total: number;
 	current_step: string;
 	result_json: Record<string, unknown>;
-	last_error: string;
+	last_error: string | null;
 	created_at: string;
 	started_at: string | null;
 	finished_at: string | null;
+	stages?: Record<string, StageCounts>;
+};
+
+export type JobItem = {
+	id: string;
+	job_id: string;
+	item_type: string;
+	track_id: number | null;
+	segment_id: number | null;
+	stage_name: string | null;
+	status: string;
+	error_code: string | null;
+	error_message: string | null;
+	result: Record<string, unknown>;
+};
+
+export type JobEvent = {
+	id: number;
+	job_id: string;
+	item_id: string | null;
+	level: string;
+	event_type: string;
+	message: string;
+	context: Record<string, unknown>;
+	created_at: string;
 };
 
 export type SnapshotMeta = {
@@ -123,12 +159,15 @@ export function importPlaylists(signal?: AbortSignal): Promise<{ job_id: string 
 type JobApiResponse = Omit<Job, 'result_json'> & {
 	result_json?: Record<string, unknown>;
 	result?: Record<string, unknown>;
+	stages?: Record<string, StageCounts>;
 };
 
 function normalizeJob(raw: JobApiResponse): Job {
 	return {
 		...raw,
-		result_json: raw.result_json ?? raw.result ?? {}
+		last_error: raw.last_error ?? null,
+		result_json: raw.result_json ?? raw.result ?? {},
+		stages: raw.stages
 	};
 }
 
@@ -155,6 +194,31 @@ export function cancelJob(jobId: string, signal?: AbortSignal): Promise<{ job_id
 		method: 'POST',
 		signal
 	});
+}
+
+export function fetchJobItems(
+	jobId: string,
+	params?: { limit?: number; offset?: number },
+	signal?: AbortSignal
+): Promise<{ job_id: string; items: JobItem[]; count: number }> {
+	const sp = new URLSearchParams();
+	if (params?.limit != null) sp.set('limit', String(params.limit));
+	if (params?.offset != null) sp.set('offset', String(params.offset));
+	const qs = sp.toString();
+	return apiFetch(`/jobs/${jobId}/items${qs ? `?${qs}` : ''}`, { signal });
+}
+
+export function fetchJobEvents(
+	jobId: string,
+	params?: { limit?: number; offset?: number; event_type?: string },
+	signal?: AbortSignal
+): Promise<{ job_id: string; events: JobEvent[]; count: number }> {
+	const sp = new URLSearchParams();
+	if (params?.limit != null) sp.set('limit', String(params.limit));
+	if (params?.offset != null) sp.set('offset', String(params.offset));
+	if (params?.event_type) sp.set('event_type', params.event_type);
+	const qs = sp.toString();
+	return apiFetch(`/jobs/${jobId}/events${qs ? `?${qs}` : ''}`, { signal });
 }
 
 export function listSnapshots(signal?: AbortSignal): Promise<SnapshotMeta[]> {

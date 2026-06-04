@@ -360,7 +360,22 @@ cd core
 uv run pytest tests/test_audio_cleanup.py tests/test_jobs_cancel_pipeline.py tests/test_worker_heartbeats.py tests/test_analysis_pipeline_observability.py tests/test_pipeline_audio_cleanup.py -q
 ```
 
-Tests backend phase 6 : pipeline stages, handoff downloader → analyzers (déclenchement HTTP `POST /audio/analysis/advanced`), cleanup pipeline stage, events API, annulation `blocked`, model registry mock, TensorFlow worker mock, embeddings shape, `FeatureResolver` source priority, non-régression phase 4 audio et phase 5 playlist. UI `/features` avancée : backlog 6.9b.
+Tests backend phase 6 : pipeline stages, handoff downloader → analyzers (déclenchement HTTP `POST /audio/analysis/advanced`), cleanup pipeline stage, events API, annulation `blocked`, model registry mock, TensorFlow worker mock, embeddings shape, `FeatureResolver` source priority, non-régression phase 4 audio et phase 5 playlist.
+
+### UI features avancées (6.9b — implémenté)
+
+```bash
+cd app/frontend
+npm run check
+npm run build
+```
+
+Validation manuelle (Docker `audio` + `advanced-analysis`) :
+
+1. Ouvrir `/features` — tuiles TensorFlow, panneau modèles, lancer pipeline sur 1–10 titres.
+2. Vérifier `GlobalJobBar` : progression et détail **Pipeline stages**.
+3. Bibliothèque → drawer → onglet **Advanced** après job terminé.
+4. Arrêter Docker → bannière offline, pas de crash.
 
 ### Tests modèles
 
