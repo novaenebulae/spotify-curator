@@ -4,6 +4,7 @@
 	import { hasJobRunStats, jobRunStats } from '$lib/components/features/jobResultStats';
 	import type { Job } from '$lib/spotifyApi';
 	import { jobTracker } from '$lib/jobTracker';
+	import { formatJobRunDuration, jobRunDurationMs } from '$lib/jobDuration';
 
 	const ITEM_JOB_TYPES = new Set([
 		'reccobeats_enrichment',
@@ -76,6 +77,11 @@
 		}
 	}
 
+	function runDurationLabel(j: Job): string | null {
+		const ms = jobRunDurationMs(j);
+		return ms != null ? formatJobRunDuration(ms) : null;
+	}
+
 	const ORDER = [
 		'audio_analysis_pipeline',
 		'essentia_lowlevel_analysis',
@@ -107,7 +113,12 @@
 							<span class="run-title">{titleFor(jobType)}</span>
 							<span class="run-status status-{j.status}">{j.status}</span>
 							{#if j.finished_at}
-								<span class="run-when muted">{formatFinished(j.finished_at)}</span>
+								<span class="run-when muted">
+									{formatFinished(j.finished_at)}
+									{#if runDurationLabel(j)}
+										<span class="run-duration">· {runDurationLabel(j)}</span>
+									{/if}
+								</span>
 							{/if}
 						</div>
 						{#if j.status === 'failed' || j.status === 'error'}
@@ -171,6 +182,10 @@
 	.run-when {
 		font-size: 0.75rem;
 		margin-left: auto;
+		white-space: nowrap;
+	}
+	.run-duration {
+		font-variant-numeric: tabular-nums;
 	}
 	.status-success,
 	.status-succeeded {

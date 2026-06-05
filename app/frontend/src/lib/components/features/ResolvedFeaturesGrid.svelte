@@ -1,13 +1,35 @@
 <script lang="ts">
+	import GenreDiscogs519Block from '$lib/components/features/GenreDiscogs519Block.svelte';
 	import StatusBadge from '$lib/components/common/StatusBadge.svelte';
-	import type { ResolvedFeature } from '$lib/featuresApi';
+	import type { AdvancedGenre, ResolvedFeature } from '$lib/featuresApi';
+
+	const GENRE_RESOLVED_NAMES = new Set([
+		'genre_discogs_519',
+		'genre_discogs_519_top_label',
+		'genre_discogs_519_top_score',
+		'genre_discogs_519_top_k'
+	]);
 
 	type Props = {
 		features: ResolvedFeature[];
 		loading?: boolean;
+		/** When set, renders Top 3 genres block (same as Sources tab) instead of a grid cell. */
+		genre?: AdvancedGenre | null;
+		genreSourceLabel?: string | null;
+		genreSourceStatus?: string | null;
 	};
 
-	let { features, loading = false }: Props = $props();
+	let {
+		features,
+		loading = false,
+		genre = null,
+		genreSourceLabel = null,
+		genreSourceStatus = null
+	}: Props = $props();
+
+	const displayFeatures = $derived(
+		genre != null ? features.filter((f) => !GENRE_RESOLVED_NAMES.has(f.name)) : features
+	);
 
 	function formatValue(f: ResolvedFeature): string {
 		if (f.value == null) return '—';
@@ -27,19 +49,27 @@
 		return 'neutral';
 	}
 
-	const available = $derived(features.filter((f) => f.status === 'available'));
-	const other = $derived(features.filter((f) => f.status !== 'available'));
+	const available = $derived(displayFeatures.filter((f) => f.status === 'available'));
+	const other = $derived(displayFeatures.filter((f) => f.status !== 'available'));
+	const showGenreBlock = $derived(genre != null && (genre.top_k?.length || genre.status));
 </script>
 
 {#if loading}
 	<p class="muted">Loading features…</p>
-{:else if features.length === 0}
+{:else if features.length === 0 && !showGenreBlock}
 	<p class="muted">No resolved features for this track yet.</p>
 	<p class="hint"><a href="/features">Run local analysis on Features →</a></p>
 {:else}
 	<p class="muted intro">
 		Values below follow playlist engine priority (ReccoBeats, Essentia low-level, TensorFlow, metadata).
 	</p>
+	{#if showGenreBlock}
+		<GenreDiscogs519Block
+			{genre}
+			sourceLabel={genreSourceLabel}
+			sourceStatus={genreSourceStatus}
+		/>
+	{/if}
 	{#if available.length > 0}
 		<h4>Available</h4>
 		<div class="grid">

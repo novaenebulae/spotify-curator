@@ -35,8 +35,9 @@ def fake_essentia(monkeypatch):
     counters = _Counters()
 
     class FakeMonoLoader:
-        def __init__(self, **_kwargs):
+        def __init__(self, **kwargs):
             counters.monoloader_init += 1
+            assert "filename" in kwargs, "MonoLoader must receive filename at construction"
 
         def __call__(self):
             return [0.0]

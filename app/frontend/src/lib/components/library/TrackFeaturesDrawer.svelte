@@ -6,6 +6,7 @@
 	import TensorFlowSourceCard from '$lib/components/features/TensorFlowSourceCard.svelte';
 	import { getTrackFeatures, type TrackFeaturesResponse } from '$lib/featuresApi';
 	import { getTrackPreview, type TrackPreview } from '$lib/previewApi';
+	import type { AdvancedGenre } from '$lib/featuresApi';
 	import type { TrackItem } from '$lib/libraryApi';
 	import { formatDuration } from '$lib/libraryApi';
 
@@ -61,6 +62,7 @@
 	const tfSource = $derived(
 		data?.sources.find((s) => s.source_name === 'essentia_tensorflow') ?? null
 	);
+	const tfGenre = $derived((tfSource?.extended?.genre as AdvancedGenre | undefined) ?? null);
 	const sortedClassicSources = $derived(
 		[...classicSources].sort((a, b) => {
 			if (a.source_name === 'essentia_lowlevel') return -1;
@@ -186,6 +188,9 @@
 			{:else if tab === 'features'}
 				<ResolvedFeaturesGrid
 					features={data?.resolved_features ?? []}
+					genre={tfGenre}
+					genreSourceLabel={tfSource?.display_name ?? 'Essentia TensorFlow'}
+					genreSourceStatus={tfSource?.status ?? null}
 					{loading}
 				/>
 			{:else if data}
