@@ -97,30 +97,59 @@ docker compose --profile audio --profile advanced-analysis up -d --build
 
 - `clustering-worker` (non implémenté).
 
-Variables phase 6 (implémentées dans [`core/app/settings/config.py`](../core/app/settings/config.py)) :
+Variables phase 6 (référence complète : [`.env.example`](../.env.example), implémentation : [`core/app/settings/config.py`](../core/app/settings/config.py)) :
 
 ```env
+# Scale Docker (scripts/start-stack.ps1)
+AUDIO_DOWNLOAD_WORKERS=2
+ESSENTIA_LOWLEVEL_WORKERS=2
+ESSENTIA_TENSORFLOW_WORKERS=2
+DOCKER_TF_MEM_LIMIT=3584m
+
+# Low-level (profil complet rhythm+tonal)
+ESSENTIA_LOWLEVEL_PROFILE=/app/profiles/essentia_lowlevel_full.yaml
+ESSENTIA_LOWLEVEL_PIPELINE_VERSION=essentia_lowlevel_v2_full
+
+# Pipeline
 ANALYSIS_PIPELINE_MODE=streaming
 AUDIO_ANALYSIS_PIPELINE_VERSION=audio_pipeline_v1
-ANALYSIS_ADVANCED_ENABLED=true
-ANALYSIS_DEFAULT_INCLUDE_TENSORFLOW=true
-ESSENTIA_TENSORFLOW_WORKERS=1
-ESSENTIA_TENSORFLOW_BATCH_SIZE=8
-ESSENTIA_TENSORFLOW_MAX_RETRIES=1
-ESSENTIA_TENSORFLOW_ITEM_LOCK_TIMEOUT_SECONDS=1800
-ESSENTIA_TENSORFLOW_STATUS_ONLY=false
+ANALYSIS_PIPELINE_TICK_ENABLED=true
+ANALYSIS_PIPELINE_TICK_INTERVAL_SECONDS=45
+
+# TensorFlow — deux versions distinctes :
+# ESSENTIA_TENSORFLOW_PIPELINE_VERSION = legacy / agrégation
+# ESSENTIA_TF_PIPELINE_VERSION         = stage unifié (runs réels)
 ESSENTIA_TENSORFLOW_PIPELINE_VERSION=essentia_tensorflow_v1
-MODELS_DIR=/app/models
-MODEL_REGISTRY_PATH=/app/models/model_registry.json
-MODEL_HASH_CHECK_ENABLED=true
-AUDIO_CLEANUP_WAIT_FOR_ALL_CONSUMERS=true
-ADVANCED_FEATURES_TOP_K_GENRES=10
-ENERGY_PROXY_ENABLED=true
+ESSENTIA_TF_PIPELINE_VERSION=phase6_tf_unified_v1
+ESSENTIA_TENSORFLOW_BATCH_SIZE=1
+ESSENTIA_TENSORFLOW_ITEM_LOCK_TIMEOUT_SECONDS=600
 ```
 
-Profil Docker `advanced-analysis` : service `essentia-tensorflow-worker` (stage `essentia_tensorflow` puis legacy `essentia_tensorflow_*` ; `ESSENTIA_TENSORFLOW_BATCH_SIZE` = taille du **flush pipeline différé**, pas le nombre d'items réservés par réplica ; scale horizontal via `--scale essentia-tensorflow-worker=K` ; mode `status_only` si modèles requis absents).
+### Propagation `.env` → containers
 
-`ESSENTIA_TF_PIPELINE_VERSION=phase6_tf_unified_v1` : version diagnostics des runs stage unifié.
+Chaque service dans [`docker-compose.yml`](../docker-compose.yml) utilise `env_file: .env` + le bloc partagé `x-app-env`. Les chemins container (`DATABASE_URL`, `ESSENTIA_LOWLEVEL_PROFILE`, `MODELS_DIR`) sont surchargés explicitement. **Copier `.env.example` vers `.env`** avant le premier démarrage.
+
+### Démarrage stack complète
+
+```powershell
+.\scripts\start-stack.ps1 -Build
+```
+
+### Budget RAM (Docker Desktop 12 Go)
+
+| Service | `mem_limit` | `cpus` |
+|---------|-------------|--------|
+| `core-api` | 768m | 1 |
+| `preview-resolver-worker` | 256m | 0.5 |
+| `audio-downloader` (×N) | 512m | 1 |
+| `essentia-lowlevel-worker` (×N) | 1024m | 2 |
+| `essentia-tensorflow-worker` (×N) | 3584m (`DOCKER_TF_MEM_LIMIT`) | 4 |
+
+`time_signature` n’est **pas** extrait par Essentia low-level — source : ReccoBeats.
+
+Profil Docker `advanced-analysis` : `essentia-tensorflow-worker` (stage `essentia_tensorflow` ; `ESSENTIA_TENSORFLOW_BATCH_SIZE` = flush pipeline différé, pas réservations par réplica).
+
+**Tick pipeline (`core-api`)** : `ANALYSIS_PIPELINE_TICK_*` — agrégation/cleanup, verrous stale. Diagnostic : `GET /api/v1/jobs/{id}` → `non_terminal_items`, `stuck_hint`.
 
 Modèles sous `models/` (jamais commités) : `essentia/`, `tensorflow/`, `discogs_effnet/`, `discogs_maest/`.
 
@@ -144,7 +173,9 @@ ESSENTIA_TF_ALLOW_STUBS_IN_TESTS=false
 ESSENTIA_TF_REQUIRE_MODELS_FOR_ADVANCED=false
 ESSENTIA_TF_FAIL_ON_STUB_IN_PRODUCTION=true
 ESSENTIA_TENSORFLOW_WORKERS=1
-ESSENTIA_TENSORFLOW_BATCH_SIZE=8
+ESSENTIA_TENSORFLOW_BATCH_SIZE=1
+ANALYSIS_PIPELINE_TICK_ENABLED=true
+ANALYSIS_PIPELINE_TICK_INTERVAL_SECONDS=45
 ESSENTIA_TENSORFLOW_ITEM_LOCK_TIMEOUT_SECONDS=1800
 ```
 

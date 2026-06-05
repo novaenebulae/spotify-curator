@@ -1,0 +1,51 @@
+# Essentia streaming_extractor_music — rhythm + tonal + lowlevel (no highlevel SVM).
+# https://essentia.upf.edu/streaming_extractor_music.html
+# time_signature is NOT produced by this extractor (ReccoBeats remains the source).
+
+analysisSampleRate: 44100
+startTime: 0
+endTime: 30
+outputFrames: 0
+outputFormat: json
+requireMbid: false
+indent: 2
+
+equalLoudness: true
+nequalLoudness: true
+shortSound: false
+
+highlevel:
+  compute: 0
+
+lowlevel:
+  compute: true
+  frameSize: 2048
+  hopSize: 1024
+  windowType: blackmanharris62
+  # Do not set stats/mfccStats here — Essentia v2.1 duplicates pool keys (issue #871).
+
+average_loudness:
+  compute: true
+  frameSize: 88200
+  hopSize: 44100
+
+rhythm:
+  compute: true
+  useOnset: true
+  useBands: true
+  numberFrames: 1024
+  hopSize: 256
+  frameSize: 1024
+  frameHop: 1024
+
+tonal:
+  compute: true
+  frameSize: 4096
+  hopSize: 2048
+  windowType: blackmanharris62
+
+sfx:
+  compute: true
+
+panning:
+  compute: false

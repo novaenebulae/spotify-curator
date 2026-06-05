@@ -171,7 +171,12 @@ class PipelineFeatureAggregationService:
             )
 
             if aggregated is None and not advanced_rows and embeddings_written == 0:
-                return False
+                session.commit()
+                self._items.mark_skipped(
+                    item_id,
+                    reason="no_features_to_aggregate: prerequisites terminal but no low-level, TF or embedding data",
+                )
+                return True
 
             session.commit()
             segments_analyzed = len(parsed_list)

@@ -10,6 +10,7 @@ from app.database.engine import get_engine
 from app.database.models_jobs import Job as JobRow
 from app.jobs.insights import latest_jobs_by_type
 from app.audio.pipeline.constants import ALL_PIPELINE_STAGES, JOB_TYPE_AUDIO_ANALYSIS_PIPELINE, STAGE_STATUSES
+from app.audio.pipeline.diagnostics import pipeline_non_terminal_items, pipeline_stuck_hint
 from app.jobs.items.constants import WORKER_MANAGED_JOB_TYPES
 from app.jobs.items.events import JobEventsService
 from app.jobs.items.service import JobItemService
@@ -73,6 +74,11 @@ def get_job(job_id: str) -> dict:
             for stage in ALL_PIPELINE_STAGES
         }
         payload["tracks_progress"] = _items.pipeline_track_progress(job_id)
+        if job.status in ("queued", "running"):
+            payload["non_terminal_items"] = pipeline_non_terminal_items(job_id)
+            hint = pipeline_stuck_hint(job_id)
+            if hint:
+                payload["stuck_hint"] = hint
     return payload
 
 

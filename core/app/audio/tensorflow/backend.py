@@ -48,6 +48,7 @@ class EssentiaTensorflowBackend:
         self._predictor_cache: dict[tuple, Any] = {}
         self._audio_cache: OrderedDict[tuple, Any] = OrderedDict()
         self._frames_cache: OrderedDict[tuple, Any] = OrderedDict()
+        self._mono_loaders: dict[int, Any] = {}
 
     def embeddings(self, wav_path: str, *, extractor_key: str) -> list[float]:
         try:
@@ -142,7 +143,11 @@ class EssentiaTensorflowBackend:
 
         import essentia.standard as es  # type: ignore[import-not-found]
 
-        loader = es.MonoLoader(filename=wav_path, sampleRate=sample_rate, resampleQuality=4)
+        loader = self._mono_loaders.get(sample_rate)
+        if loader is None:
+            loader = es.MonoLoader(sampleRate=sample_rate, resampleQuality=4)
+            self._mono_loaders[sample_rate] = loader
+        loader.configure(filename=wav_path)
         audio = loader()
         self._audio_cache[key] = audio
         self._audio_cache.move_to_end(key)

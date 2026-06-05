@@ -346,6 +346,31 @@ curl -s http://127.0.0.1:8765/api/v1/workers | jq .
 
 PowerShell (Windows) : voir backlog [`phase-6.md`](../backlog/phase-6.md) §6.9c.
 
+### Diagnostic — pipeline bloqué en fin de run
+
+Si le job `audio_analysis_pipeline` reste `running` (ex. `13/20` tracks, `79/100` items) :
+
+```powershell
+$JOB = "<job_id>"
+curl "http://127.0.0.1:8765/api/v1/jobs/$JOB" | jq '{status, current_step, tracks_progress, stuck_hint, non_terminal_items}'
+curl "http://127.0.0.1:8765/api/v1/jobs/$JOB/items?limit=500" | jq '[.items[] | select(.status | test("pending|running|blocked|rate_limited")) | {stage_name, status, track_id, error_code, locked_by}]'
+```
+
+Interprétation rapide :
+
+| `non_terminal_items` | Action |
+|----------------------|--------|
+| `audio_cleanup` + `SEGMENT_CONSUMER_PENDING` | Attendre le tick pipeline (~45s) ou `POST /jobs/{id}/cancel` |
+| `feature_aggregation` `pending` longtemps | Vérifier prérequis LL/TF ; tick core-api doit débloquer |
+| `essentia_tensorflow` `running` + `locked_by` | Verrou stale (jusqu’à 30 min) ou tick `release_stale_pipeline_stage_locks` |
+
+Tests stall pipeline :
+
+```bash
+cd core
+uv run pytest tests/test_pipeline_ticker.py tests/test_pipeline_cleanup_retry.py tests/test_feature_aggregation_noop.py tests/test_job_items_pipeline_refresh.py -q
+```
+
 Tests API analyse avancée (backend, sans UI) :
 
 ```bash

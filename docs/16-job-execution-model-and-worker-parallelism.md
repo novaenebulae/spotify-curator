@@ -104,17 +104,44 @@ Consommateurs typiques : `essentia_lowlevel`, `essentia_tensorflow` (ou legacy `
 
 ### Concurrence recommandée (phase 6)
 
+Les variables `AUDIO_DOWNLOAD_WORKERS`, `ESSENTIA_LOWLEVEL_WORKERS`, `ESSENTIA_TENSORFLOW_WORKERS` dans `.env` contrôlent le **scale Docker** via [`scripts/start-stack.ps1`](../scripts/start-stack.ps1) (pas le code Python in-process).
+
 ```env
 AUDIO_DOWNLOAD_WORKERS=2
 ESSENTIA_LOWLEVEL_WORKERS=2
-ESSENTIA_TENSORFLOW_WORKERS=1
-ESSENTIA_TENSORFLOW_BATCH_SIZE=8
+ESSENTIA_TENSORFLOW_WORKERS=2
+ESSENTIA_TENSORFLOW_BATCH_SIZE=1
+ESSENTIA_TENSORFLOW_ITEM_LOCK_TIMEOUT_SECONDS=600
+ANALYSIS_PIPELINE_TICK_INTERVAL_SECONDS=45
 ```
 
-- **`ESSENTIA_TENSORFLOW_BATCH_SIZE`** : regroupe uniquement les **rafraîchissements pipeline** (`refresh_pipeline_for_job`) — le worker réserve **1 item à la fois** (`reserve_next`) pour que plusieurs réplicas puissent travailler en parallèle ; après N succès locaux, un flush agrégé évite N appels SQLite/agrégation.
-- **Parallélisme horizontal** : `docker compose --profile advanced-analysis up -d --scale essentia-tensorflow-worker=K` — avec `BATCH_SIZE=8` et 10 segments, **3 workers actifs** (pas 1 worker qui monopolise 8 réservations). Ne pas confondre avec un « batch SQL » multi-items (réservé aux tests / API interne `reserve_pipeline_stage_batch`).
+**Démarrage complet (recommandé)** :
+
+```powershell
+copy .env.example .env   # si besoin
+.\scripts\start-stack.ps1 -Build
+```
+
+Équivalent manuel :
+
+```powershell
+docker compose --profile audio --profile advanced-analysis up -d --build `
+  --scale audio-downloader=2 `
+  --scale essentia-lowlevel-worker=2 `
+  --scale essentia-tensorflow-worker=2
+```
+
+**Budget RAM Docker 12 Go (16 Go host, CPU-only)** : voir limites `mem_limit` dans [`docker-compose.yml`](../docker-compose.yml). Avec 2 replicas TF (`DOCKER_TF_MEM_LIMIT=3584m`), la somme max reste sous 12 Go. Réduire à `ESSENTIA_TENSORFLOW_WORKERS=1` et `DOCKER_TF_MEM_LIMIT=5g` si OOM persistent.
+
+- **`ESSENTIA_TENSORFLOW_BATCH_SIZE`** (défaut **1**) : coalesce les `refresh_pipeline_for_job` après N succès TF locaux. Le worker réserve **1 item** (`reserve_next`) pour le parallélisme horizontal.
+- **`ANALYSIS_PIPELINE_TICK_INTERVAL_SECONDS`** : tick `core-api` qui exécute agrégation + cleanup pour les jobs `running` (stages sans worker Docker), libère les verrous stale, et débloque les retries cleanup.
+- **Timeouts stale** : `ESSENTIA_TENSORFLOW_ITEM_LOCK_TIMEOUT_SECONDS=600` recommandé en dev CPU (récupération rapide après crash OOM).
 
 Profil Compose **`advanced-analysis`** : `essentia-tensorflow-worker` (en plus du profil `audio`).
+
+### Diagnostic pipeline stall
+
+`GET /api/v1/jobs/{id}` pour un job `running` expose `non_terminal_items` et `stuck_hint`. Voir [`10-testing-strategy.md`](10-testing-strategy.md).
 
 ---
 

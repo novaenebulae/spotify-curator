@@ -41,7 +41,13 @@ class SegmentTensorflowRunner:
         self._genre = genre_runner
         self._classifier = classifier_runner
 
-    def run_for_segment(self, *, segment_id: int, wav_path: str) -> SegmentTensorflowResult:
+    def run_for_segment(
+        self,
+        *,
+        segment_id: int,
+        wav_path: str,
+        model_profile: str | None = None,
+    ) -> SegmentTensorflowResult:
         self._ensure_maest_duration(Path(wav_path))
 
         backend: TensorflowInferenceBackend = (
@@ -57,12 +63,16 @@ class SegmentTensorflowRunner:
             model_manager=self._mm, backend=backend
         )
 
-        emb = emb_runner.run_for_segment(segment_id=segment_id, wav_path=wav_path)
+        emb = emb_runner.run_for_segment(
+            segment_id=segment_id, wav_path=wav_path, model_profile=model_profile
+        )
         genre_outputs: dict[str, dict[str, Any]] = {}
         genre_missing: list[str] = []
         genre_mode = "none"
         try:
-            genre = genre_runner.run_for_segment(segment_id=segment_id, wav_path=wav_path)
+            genre = genre_runner.run_for_segment(
+                segment_id=segment_id, wav_path=wav_path, model_profile=model_profile
+            )
             genre_outputs = genre.genre_outputs
             genre_missing = list(genre.models_missing)
             genre_mode = genre.inference_mode
@@ -80,7 +90,9 @@ class SegmentTensorflowRunner:
             else:
                 raise
 
-        clf = clf_runner.run_for_segment(segment_id=segment_id, wav_path=wav_path)
+        clf = clf_runner.run_for_segment(
+            segment_id=segment_id, wav_path=wav_path, model_profile=model_profile
+        )
 
         models_missing = sorted(
             set(emb.models_missing) | set(genre_missing) | set(clf.models_missing)

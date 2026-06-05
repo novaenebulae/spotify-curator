@@ -82,6 +82,8 @@ class Settings(BaseSettings):
     essentia_lowlevel_pipeline_version: str = "essentia_lowlevel_v1"
     audio_analysis_pipeline_version: str = "audio_pipeline_v1"
     analysis_pipeline_mode: str = "streaming"
+    analysis_pipeline_tick_interval_seconds: int = 45
+    analysis_pipeline_tick_enabled: bool = True
     audio_cleanup_wait_for_all_consumers: bool = True
     essentia_lowlevel_item_lock_timeout_seconds: int = 900
     essentia_lowlevel_image: str = "ghcr.io/mtg/essentia"
@@ -92,7 +94,7 @@ class Settings(BaseSettings):
     analysis_advanced_enabled: bool = True
     analysis_default_include_tensorflow: bool = True
     essentia_tensorflow_workers: int = 1
-    essentia_tensorflow_batch_size: int = 8
+    essentia_tensorflow_batch_size: int = 1
     essentia_tensorflow_max_retries: int = 1
     essentia_tensorflow_item_lock_timeout_seconds: int = 1800
     essentia_tensorflow_status_only: bool = False

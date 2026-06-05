@@ -33,6 +33,9 @@ def fake_essentia(monkeypatch):
         def __init__(self, **_kwargs):
             counters.monoloader_init += 1
 
+        def configure(self, **_kwargs):
+            return None
+
         def __call__(self):
             return [0.0]
 

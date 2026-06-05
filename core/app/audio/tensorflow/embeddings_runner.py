@@ -15,6 +15,7 @@ from app.audio.tensorflow.model_map import (
     EMBEDDINGS_LEGACY_KEY,
 )
 from app.models_registry.manager import ModelManager
+from app.models_registry.profile_scope import model_key_in_profile, model_keys_for_profile
 
 EFFNET_MODEL_KEY = EMBEDDINGS_LEGACY_KEY
 
@@ -50,11 +51,31 @@ class EmbeddingsRunner:
         self._mm = model_manager or ModelManager()
         self._backend = backend
 
-    def run_for_segment(self, *, segment_id: int, wav_path: str) -> EmbeddingsRunResult:
+    def run_for_segment(
+        self,
+        *,
+        segment_id: int,
+        wav_path: str,
+        model_profile: str | None = None,
+    ) -> EmbeddingsRunResult:
         outputs: dict[str, dict[str, Any]] = {}
         missing: list[str] = []
         real_used = False
         stub_used = False
+        profile_keys = (
+            model_keys_for_profile(model_profile, manager=self._mm)
+            if model_profile
+            else None
+        )
+        if profile_keys is not None and not model_key_in_profile(
+            EMBEDDINGS_EXTRACTOR_KEY, profile_keys
+        ):
+            missing.append(EFFNET_MODEL_KEY)
+            return EmbeddingsRunResult(
+                embedding_outputs=outputs,
+                models_missing=missing,
+                inference_mode="none",
+            )
 
         if not self._mm.is_available(EMBEDDINGS_EXTRACTOR_KEY):
             missing.append(EFFNET_MODEL_KEY)

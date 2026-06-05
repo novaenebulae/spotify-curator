@@ -740,10 +740,14 @@ class JobItemService:
                     message=error_message,
                     context=stage_ctx,
                 )
+            job_id = item.job_id
+            is_pipeline_stage = item.item_type == ITEM_TYPE_ANALYSIS_PIPELINE_STAGE
             session.commit()
-            if status == "failed":
-                self.recompute_job_progress(session, item.job_id)
-                session.commit()
+            if retryable and is_pipeline_stage:
+                self.refresh_pipeline_for_job(job_id)
+            with Session(engine) as session2:
+                self.recompute_job_progress(session2, job_id)
+                session2.commit()
 
     def mark_skipped(self, item_id: str, *, reason: str) -> None:
         now = datetime.now(tz=UTC).replace(tzinfo=None)

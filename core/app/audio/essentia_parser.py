@@ -118,6 +118,18 @@ def parse_essentia_json(payload: dict[str, Any]) -> ParsedSegmentFeatures:
         bpm = _dig(payload, "rhythm", "bpm")
     bpm_f = float(bpm) if isinstance(bpm, (int, float)) else _mean_value(bpm)
 
+    bpm_conf_node = rhythm.get("bpm_confidence")
+    bpm_confidence = (
+        float(bpm_conf_node)
+        if isinstance(bpm_conf_node, (int, float))
+        else _mean_value(bpm_conf_node)
+    )
+    if bpm_confidence is None and bpm_f is not None:
+        bpm_confidence = 0.85
+
+    perceptual_tempo = _mean_value(rhythm.get("perceptual_tempo"))
+    beats_loudness = _mean_value(rhythm.get("beats_loudness"))
+
     loudness = low.get("loudness") or low.get("average_loudness")
     if loudness is None:
         loudness = _dig(payload, "lowlevel", "loudness") or _dig(payload, "lowlevel", "average_loudness")
@@ -146,9 +158,11 @@ def parse_essentia_json(payload: dict[str, Any]) -> ParsedSegmentFeatures:
     if isinstance(contrast_node, dict) and isinstance(contrast_node.get("mean"), list):
         contrast_list = [float(x) for x in contrast_node["mean"]]
 
+    onset_rate = _mean_value(low.get("onset_rate") or rhythm.get("onset_rate"))
+
     return ParsedSegmentFeatures(
         bpm=bpm_f,
-        bpm_confidence=0.85 if bpm_f else None,
+        bpm_confidence=bpm_confidence,
         loudness=loudness_f,
         key=key,
         mode=mode,
@@ -162,12 +176,16 @@ def parse_essentia_json(payload: dict[str, Any]) -> ParsedSegmentFeatures:
         dynamic_complexity=_mean_value(
             low.get("dynamic_complexity") or _dig(payload, "lowlevel", "dynamic_complexity")
         ),
-        onset_rate=_mean_value(low.get("onset_rate") or rhythm.get("onset_rate")),
+        onset_rate=onset_rate,
         beats_count=int(rhythm["beats_count"])
         if isinstance(rhythm.get("beats_count"), (int, float))
         else None,
         raw_summary={
             "bpm": bpm_f,
+            "bpm_confidence": bpm_confidence,
+            "perceptual_tempo": perceptual_tempo,
+            "beats_loudness": beats_loudness,
+            "onset_rate": onset_rate,
             "key": key,
             "mode": mode,
             "loudness": loudness_f,

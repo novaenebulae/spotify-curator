@@ -28,6 +28,7 @@ from app.jobs.items.constants import WORKER_TYPE_ESSENTIA_TENSORFLOW
 from app.jobs.items.service import ReservedJobItem
 from app.models_registry import ModelRegistry
 from app.models_registry.manager import ModelManager, ModelManagerError
+from app.models_registry.profile_scope import model_profile_from_job_result
 from app.observability.redact import redact_dict
 from app.settings.config import settings
 from app.workers.base_worker import BaseWorker
@@ -239,10 +240,12 @@ class EssentiaTensorflowWorker(BaseWorker):
         )
 
         try:
+            model_profile = model_profile_from_job_result(job.result_json)
             result = self._run_segment_inference(
                 segment_id=item.segment_id,
                 wav_path=str(wav),
                 stage_name=job_item.stage_name,
+                model_profile=model_profile,
             )
         except InferenceError as exc:
             self._items.mark_failed(
@@ -273,6 +276,7 @@ class EssentiaTensorflowWorker(BaseWorker):
         segment_id: int,
         wav_path: str,
         stage_name: str,
+        model_profile: str,
     ) -> dict:
         runner = self._segment_runner or SegmentTensorflowRunner(
             model_manager=self._mm,
@@ -281,7 +285,9 @@ class EssentiaTensorflowWorker(BaseWorker):
             genre_runner=self._genre_runner,
             classifier_runner=self._classifier_runner,
         )
-        seg_result = runner.run_for_segment(segment_id=segment_id, wav_path=wav_path)
+        seg_result = runner.run_for_segment(
+            segment_id=segment_id, wav_path=wav_path, model_profile=model_profile
+        )
         return runner.to_result_json(seg_result, stage_name=stage_name)
 
     def _legacy_classifiers_fulfilled(

@@ -607,6 +607,22 @@ curl "http://127.0.0.1:8765/api/v1/jobs/$jobId/events?limit=30"
 curl http://127.0.0.1:8765/api/v1/workers
 ```
 
+### 6.9d — Stall fin de pipeline + tick core-api (DONE)
+
+- **Tick périodique** [`PipelineTicker`](../core/app/audio/pipeline/ticker.py) dans `core-api` : verrous stale, `refresh_dependencies`, agrégation/cleanup, `recompute_job_progress` (config `ANALYSIS_PIPELINE_TICK_*`).
+- **Agrégation no-op** : `mark_skipped(no_features_to_aggregate)` au lieu d’un `pending` éternel.
+- **Retry cleanup** : `mark_failed(..., retryable=True)` sur stages pipeline → `refresh_pipeline_for_job`.
+- **`ESSENTIA_TENSORFLOW_BATCH_SIZE=1`** par défaut ; MonoLoader worker-scoped dans [`backend.py`](../core/app/audio/tensorflow/backend.py).
+- **Diagnostic** : `GET /jobs/{id}` → `non_terminal_items`, `stuck_hint` ; docs [`10-testing-strategy.md`](../docs/10-testing-strategy.md), [`14-configuration.md`](../docs/14-configuration.md), [`16-job-execution-model-and-worker-parallelism.md`](../docs/16-job-execution-model-and-worker-parallelism.md).
+- Tests : `test_pipeline_ticker.py`, `test_pipeline_cleanup_retry.py`, `test_feature_aggregation_noop.py`, `test_job_items_pipeline_refresh.py`.
+
+Scale recommandé (~20 tracks) :
+
+```powershell
+docker compose --profile audio --profile advanced-analysis up -d `
+  --scale audio-downloader=2 --scale essentia-lowlevel-worker=2 --scale essentia-tensorflow-worker=3
+```
+
 ### Critères (backend)
 
 - Le pipeline complet est déclenchable par HTTP (sans UI).

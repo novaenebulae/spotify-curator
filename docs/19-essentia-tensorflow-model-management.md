@@ -212,6 +212,8 @@ Arousal/valence heads optionnels:
 
 Important : aucun modèle `valence-discogs-effnet` n'est retenu en phase 6, car il n'est pas documenté dans le catalogue officiel utilisé. En l'absence de `phase6-full`, `valence` reste prioritairement fournie par ReccoBeats ; sinon `valence_tf` doit être `model_missing` ou `not_supported_yet`.
 
+**Filtrage à l'inférence** : le worker TensorFlow n'exécute que les modèles inclus dans le `model_profile` du job (`result_json` du pipeline, défini via `POST /api/v1/audio/analysis/advanced`). La présence de fichiers MusicNN/DEAM sur disque ne suffit pas : un job `phase6-recommended` ignore `msd_musicnn` et `deam_msd_musicnn_2` même s'ils sont installés.
+
 ## Catalogue contrôlé phase 6
 
 ### Feature extractor Discogs-EffNet

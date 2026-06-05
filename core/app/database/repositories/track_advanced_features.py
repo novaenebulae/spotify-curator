@@ -26,6 +26,16 @@ class AdvancedFeatureUpsertRow:
     value_json: str | None = None
 
 
+def _advanced_row_key(row: AdvancedFeatureUpsertRow) -> tuple:
+    return (
+        row.track_id,
+        row.feature_name,
+        row.source,
+        row.model_name,
+        row.pipeline_version,
+    )
+
+
 class TrackAdvancedFeaturesRepository:
     def list_for_tracks(
         self,
@@ -67,21 +77,26 @@ class TrackAdvancedFeaturesRepository:
     ) -> int:
         if not rows:
             return 0
+        deduped: dict[tuple, AdvancedFeatureUpsertRow] = {}
+        for row in rows:
+            deduped[_advanced_row_key(row)] = row
         now = datetime.now(tz=UTC).replace(tzinfo=None)
         written = 0
-        for row in rows:
-            existing = self.get_active(
-                session,
-                track_id=row.track_id,
-                feature_name=row.feature_name,
-                source=row.source,
-                model_name=row.model_name,
-                pipeline_version=row.pipeline_version,
-            )
+        for row in deduped.values():
+            with session.no_autoflush:
+                existing = self.get_active(
+                    session,
+                    track_id=row.track_id,
+                    feature_name=row.feature_name,
+                    source=row.source,
+                    model_name=row.model_name,
+                    pipeline_version=row.pipeline_version,
+                )
             if existing is not None:
                 session.execute(
                     delete(TrackAdvancedFeature).where(TrackAdvancedFeature.id == existing.id)
                 )
+                session.flush()
             session.add(
                 TrackAdvancedFeature(
                     track_id=row.track_id,
@@ -101,6 +116,6 @@ class TrackAdvancedFeaturesRepository:
                     updated_at=now,
                 )
             )
+            session.flush()
             written += 1
-        session.flush()
         return written

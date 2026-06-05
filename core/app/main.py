@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -18,10 +19,25 @@ from app.observability.errors import register_exception_handlers
 from app.observability.tracks_perf_middleware import TracksPerfMiddleware
 from app.settings.config import settings
 
+logger = logging.getLogger("spotify-curator-core")
+
+
+async def _pipeline_tick_loop() -> None:
+    from app.audio.pipeline.ticker import AnalysisPipelineTicker
+
+    ticker = AnalysisPipelineTicker()
+    interval = max(15, settings.analysis_pipeline_tick_interval_seconds)
+    while True:
+        try:
+            await asyncio.to_thread(ticker.tick_running_jobs)
+        except Exception:  # noqa: BLE001
+            logger.exception("analysis pipeline tick failed")
+        await asyncio.sleep(interval)
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    logger = logging.getLogger("spotify-curator-core")
+    tick_task: asyncio.Task | None = None
     logger.info("Starting spotify-curator-core (version %s)", settings.app_version)
     try:
         init_db()
@@ -54,7 +70,19 @@ async def lifespan(_app: FastAPI):
         settings.core_port,
         settings.api_v1_prefix,
     )
+    if settings.analysis_pipeline_tick_enabled:
+        tick_task = asyncio.create_task(_pipeline_tick_loop())
+        logger.info(
+            "Analysis pipeline ticker started (interval=%ss)",
+            settings.analysis_pipeline_tick_interval_seconds,
+        )
     yield
+    if tick_task is not None:
+        tick_task.cancel()
+        try:
+            await tick_task
+        except asyncio.CancelledError:
+            pass
     logger.info("Shutting down spotify-curator-core")
 
 

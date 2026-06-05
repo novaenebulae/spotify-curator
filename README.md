@@ -52,6 +52,19 @@ Le core applique les migrations Alembic jusqu’à **`0007_track_previews_hybrid
 
 **Nouvelle installation** : la base est créée automatiquement dans le volume Docker `spotify_curator_data` (monté sur `/app/data` dans le conteneur).
 
+## Démarrage Docker complet (audio + analyse avancée)
+
+Copier la configuration, puis lancer toute la stack (scale lu depuis `.env`) :
+
+```powershell
+copy .env.example .env
+.\scripts\start-stack.ps1 -Build
+```
+
+Variables de scale : `AUDIO_DOWNLOAD_WORKERS`, `ESSENTIA_LOWLEVEL_WORKERS`, `ESSENTIA_TENSORFLOW_WORKERS` (défaut `2` / `2` / `2` pour 12 Go Docker). Détail RAM et variables : [`docs/14-configuration.md`](docs/14-configuration.md).
+
+Les commandes `docker compose` manuelles restent valides (voir [`docs/16-job-execution-model-and-worker-parallelism.md`](docs/16-job-execution-model-and-worker-parallelism.md)).
+
 **Migrer une base existante depuis `data/` (bind mount Windows)** :
 
 ```powershell

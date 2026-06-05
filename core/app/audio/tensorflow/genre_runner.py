@@ -14,6 +14,7 @@ from app.audio.tensorflow.model_map import (
 )
 from app.features.embeddings.genre_discogs import stub_label_pool
 from app.models_registry.manager import ModelManager
+from app.models_registry.profile_scope import model_key_in_profile, model_keys_for_profile
 from app.settings.config import settings
 
 GENRE_MODEL_KEY = GENRE_LEGACY_KEY
@@ -49,7 +50,25 @@ class GenreRunner:
         self._mm = model_manager or ModelManager()
         self._backend = backend
 
-    def run_for_segment(self, *, segment_id: int, wav_path: str) -> GenreRunResult:
+    def run_for_segment(
+        self,
+        *,
+        segment_id: int,
+        wav_path: str,
+        model_profile: str | None = None,
+    ) -> GenreRunResult:
+        profile_keys = (
+            model_keys_for_profile(model_profile, manager=self._mm)
+            if model_profile
+            else None
+        )
+        if profile_keys is not None and not self._genre_in_profile(profile_keys):
+            return GenreRunResult(
+                genre_outputs={},
+                models_missing=[],
+                inference_mode="none",
+            )
+
         outputs: dict[str, dict[str, Any]] = {}
         missing: list[str] = []
         real_used = False
@@ -152,6 +171,12 @@ class GenreRunner:
             genre_outputs=outputs,
             models_missing=missing,
             inference_mode=_resolve_mode(real_used, stub_used),
+        )
+
+    @staticmethod
+    def _genre_in_profile(profile_keys: frozenset[str]) -> bool:
+        return model_key_in_profile(GENRE_EXTRACTOR_KEY, profile_keys) and model_key_in_profile(
+            GENRE_HEAD_KEY, profile_keys
         )
 
 

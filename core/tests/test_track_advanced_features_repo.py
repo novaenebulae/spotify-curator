@@ -75,3 +75,38 @@ def test_upsert_many_idempotent(tmp_path, monkeypatch) -> None:
         rows = repo.list_for_tracks(session, [1])
         assert len(rows) == 1
         assert rows[0].value_float == 0.9
+
+
+def test_upsert_many_dedupes_duplicate_keys_in_batch(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "taf_dup.sqlite"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
+    reset_engine()
+    init_db()
+
+    repo = TrackAdvancedFeaturesRepository()
+    engine = get_engine()
+    with Session(engine) as session:
+        _seed_track(session)
+        row_a = AdvancedFeatureUpsertRow(
+            track_id=1,
+            feature_name="approachability",
+            value_float=0.2,
+            confidence=0.85,
+            source="essentia_tensorflow",
+            model_name="approachability",
+            pipeline_version="essentia_tensorflow_v1",
+        )
+        row_b = AdvancedFeatureUpsertRow(
+            track_id=1,
+            feature_name="approachability",
+            value_float=0.9,
+            confidence=0.9,
+            source="essentia_tensorflow",
+            model_name="approachability",
+            pipeline_version="essentia_tensorflow_v1",
+        )
+        repo.upsert_many(session, [row_a, row_b])
+        session.commit()
+        rows = repo.list_for_tracks(session, [1])
+        assert len(rows) == 1
+        assert rows[0].value_float == 0.9
