@@ -304,7 +304,7 @@ audio_analysis_pipeline job
 segment_download
   ↓ segment_ready
   ├─ essentia_lowlevel réel
-  └─ essentia_tensorflow
+  └─ essentia_tensorflow (embeddings + genre MAEST + classifiers, un passage WAV)
        ├─ model profile check
        ├─ real Discogs EffNet embedding inference
        ├─ real Discogs519 genre inference if recommended profile installed
@@ -319,13 +319,14 @@ audio_cleanup
 |---|---|
 | `segment_download` | `audio-downloader` |
 | `essentia_lowlevel` | `essentia-lowlevel-worker` (un item = un segment ; upsert track différé) |
-| `essentia_tensorflow_embeddings` / `essentia_tensorflow_classifiers` | `essentia-tensorflow-worker` (profil `advanced-analysis`) |
+| `essentia_tensorflow` | `essentia-tensorflow-worker` (profil `advanced-analysis`, micro-batch intra-processus) |
+| `essentia_tensorflow_embeddings` / `essentia_tensorflow_classifiers` | **legacy** (drain jobs en cours uniquement) |
 | `feature_aggregation` | core (`PipelineFeatureAggregationService`, après succès des prérequis stage) |
 | `audio_cleanup` | core (`PipelineAudioCleanupService`, après agrégation) |
 
 **Implémenté (6.3)** : le worker low-level réserve les stages `essentia_lowlevel` du job `audio_analysis_pipeline` (mode `streaming`), persiste les features par segment (`features_json` enrichi), puis le stage `feature_aggregation` agrège et appelle `FeatureUpsertService.upsert_essentia_lowlevel`. Le flux legacy `essentia_lowlevel_analysis` / `essentia_lowlevel_track` est inchangé.
 
-**Contrat en place (6.6/6.7, inférence réelle restante)** : le stage `essentia_tensorflow_embeddings` produit `embedding_outputs` (Discogs EffNet) et `genre_outputs` (Discogs519) ; le stage `essentia_tensorflow_classifiers` produit `classifier_outputs` / `models_missing`. L'agrégation écrit `track_embeddings` et les features avancées/genre dans `track_advanced_features`, et calcule `energy_proxy` (source `derived`). `FeatureResolver` expose `style_embedding`, `timbre_embedding` (256 premières dims) et `genre_discogs_519*` avec fallbacks ReccoBeats. Le contrat de données est complet ; l'inférence réelle remplace les runners stub (cf. backlog 6.8B).
+**Contrat (stage unifié)** : un item `essentia_tensorflow` produit `embedding_outputs` (Discogs EffNet), `genre_outputs` (Discogs519), `classifier_outputs` et `models_missing` dans un seul `result_json` (`pipeline_version` typ. `phase6_tf_unified_v1`). L'agrégation lit ce stage en priorité ; les anciens stages `essentia_tensorflow_embeddings` / `essentia_tensorflow_classifiers` restent supportés pour les jobs déjà en file. EffNet : une extraction de frames par segment, têtes 2D en série (pas de thread pool). L'agrégation écrit `track_embeddings` et `track_advanced_features`, plus `energy_proxy` (source `derived`).
 
 ### Profils modèles
 

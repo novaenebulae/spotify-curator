@@ -8,9 +8,17 @@ from typing import Any
 
 _logger = logging.getLogger(__name__)
 
-from app.audio.tensorflow.backend import TensorflowInferenceBackend, model_identity
+from app.audio.tensorflow.backend import (
+    EssentiaTensorflowBackend,
+    TensorflowInferenceBackend,
+    model_identity,
+)
 from app.audio.tensorflow.guard import ensure_stub_allowed, stubs_allowed
-from app.audio.tensorflow.model_map import ClassifierSpec, classifier_specs
+from app.audio.tensorflow.model_map import (
+    EMBEDDINGS_EXTRACTOR_KEY,
+    ClassifierSpec,
+    classifier_specs,
+)
 from app.models_registry.manager import ModelManager
 
 
@@ -48,7 +56,51 @@ class ClassifierRunner:
         real_used = False
         stub_used = False
 
-        for spec in sorted(classifier_specs(), key=lambda s: s.legacy_key):
+        specs = sorted(classifier_specs(), key=lambda s: s.legacy_key)
+        effnet_specs = [s for s in specs if s.extractor_key == EMBEDDINGS_EXTRACTOR_KEY]
+        other_specs = [s for s in specs if s.extractor_key != EMBEDDINGS_EXTRACTOR_KEY]
+
+        effnet_activations: dict[str, list[tuple[str, float]]] = {}
+        if self._backend is not None and effnet_specs:
+            available_effnet = [s for s in effnet_specs if self._is_available(s)]
+            for s in effnet_specs:
+                if not self._is_available(s):
+                    missing.append(s.legacy_key)
+            if available_effnet and isinstance(self._backend, EssentiaTensorflowBackend):
+                head_keys = [s.head_key for s in available_effnet]
+                effnet_activations = self._backend.run_effnet_classifier_heads(
+                    wav_path, head_keys
+                )
+                real_used = True
+            elif available_effnet:
+                for spec in available_effnet:
+                    effnet_activations[spec.head_key] = self._backend.classifier_activations(
+                        wav_path,
+                        extractor_key=spec.extractor_key,
+                        head_key=spec.head_key,
+                    )
+                real_used = True
+
+        for spec in effnet_specs:
+            if not self._is_available(spec):
+                continue
+            if self._backend is not None:
+                activations = effnet_activations.get(spec.head_key)
+                if activations is None:
+                    activations = self._backend.classifier_activations(
+                        wav_path,
+                        extractor_key=spec.extractor_key,
+                        head_key=spec.head_key,
+                    )
+                outputs[spec.legacy_key] = self._real_output_from_activations(spec, activations)
+                real_used = True
+            elif stubs_allowed():
+                outputs[spec.legacy_key] = _stub_output(segment_id, spec.legacy_key)
+                stub_used = True
+            else:
+                ensure_stub_allowed(model_key=spec.legacy_key)
+
+        for spec in other_specs:
             if not self._is_available(spec):
                 missing.append(spec.legacy_key)
                 continue
@@ -75,6 +127,11 @@ class ClassifierRunner:
         activations = self._backend.classifier_activations(
             wav_path, extractor_key=spec.extractor_key, head_key=spec.head_key
         )
+        return self._real_output_from_activations(spec, activations)
+
+    def _real_output_from_activations(
+        self, spec: ClassifierSpec, activations: list[tuple[str, float]]
+    ) -> dict[str, Any]:
         meta = self._mm.read_metadata(spec.head_key) or {}
         meta_classes = meta.get("classes") if isinstance(meta.get("classes"), list) else []
         model_name, model_version = model_identity(self._mm, spec.head_key)

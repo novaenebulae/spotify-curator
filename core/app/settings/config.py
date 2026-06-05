@@ -111,7 +111,7 @@ class Settings(BaseSettings):
     essentia_tf_allow_stubs_in_tests: bool = False
     essentia_tf_require_models_for_advanced: bool = False
     essentia_tf_fail_on_stub_in_production: bool = True
-    essentia_tf_pipeline_version: str = "phase6_tf_real_v1"
+    essentia_tf_pipeline_version: str = "phase6_tf_unified_v1"
 
     # Essentia TensorFlow model management (phase 6.8A)
     essentia_models_dir: str = "/app/models/essentia"

@@ -4,6 +4,7 @@ from collections import OrderedDict
 from typing import Any, Protocol, runtime_checkable
 
 from app.audio.tensorflow.errors import TENSORFLOW_INFERENCE_FAILED, InferenceError
+from app.audio.tensorflow.model_map import EMBEDDINGS_EXTRACTOR_KEY
 from app.models_registry.manager import ModelManager
 
 DEFAULT_SAMPLE_RATE = 16000
@@ -74,6 +75,61 @@ class EssentiaTensorflowBackend:
                 message=f"Head inference failed for {head_key}: {exc}",
                 details={"model_key": head_key, "extractor_key": extractor_key},
             ) from exc
+
+    def run_effnet_classifier_heads(
+        self, wav_path: str, head_keys: list[str]
+    ) -> dict[str, list[tuple[str, float]]]:
+        """Run multiple EffNet 2D heads after a single embedding-frame extraction."""
+        if not head_keys:
+            return {}
+        try:
+            frames = self._embedding_frames(wav_path, EMBEDDINGS_EXTRACTOR_KEY)
+            return {
+                head_key: self.head_activations_from_frames(
+                    frames, extractor_key=EMBEDDINGS_EXTRACTOR_KEY, head_key=head_key
+                )
+                for head_key in head_keys
+            }
+        except InferenceError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise InferenceError(
+                code=TENSORFLOW_INFERENCE_FAILED,
+                message=f"EffNet batch head inference failed: {exc}",
+                details={"head_keys": head_keys},
+            ) from exc
+
+    def head_activations_from_frames(
+        self, frames, *, extractor_key: str, head_key: str
+    ) -> list[tuple[str, float]]:
+        """Run a 2D head on precomputed extractor frames (no WAV reload)."""
+        import essentia.standard as es  # type: ignore[import-not-found]
+
+        head_meta = self._mm.read_metadata(head_key) or {}
+        ext_meta = self._mm.read_metadata(extractor_key) or {}
+        if _use_direct_extractor_predictions(extractor_key, head_key, ext_meta):
+            raise InferenceError(
+                code=TENSORFLOW_INFERENCE_FAILED,
+                message="head_activations_from_frames requires 2D heads, not MAEST direct",
+                details={"head_key": head_key},
+            )
+        head_entry = self._mm.get_entry(head_key)
+        graph = str(self._mm.weights_path(head_key))
+        input_node = _meta_input(head_meta) or "model/Placeholder"
+        output = (
+            head_entry.output or _meta_output(head_meta, purpose="predictions") or "model/Identity"
+        )
+        predictor = self._get_predictor(
+            es,
+            "TensorflowPredict2D",
+            graph=graph,
+            output=output,
+            input_node=input_node,
+        )
+        activations = predictor(frames)
+        scores = _mean_rows(activations)
+        labels = _meta_classes(head_meta) or [f"class_{i}" for i in range(len(scores))]
+        return [(str(labels[i]), float(scores[i])) for i in range(min(len(labels), len(scores)))]
 
     # ----- internal Essentia helpers ---------------------------------------
 
@@ -163,24 +219,10 @@ class EssentiaTensorflowBackend:
                 wav_path, extractor_key, fallback_classes=_meta_classes(head_meta)
             )
 
-        embeddings = self._embedding_frames(wav_path, extractor_key)
-        head_entry = self._mm.get_entry(head_key)
-        graph = str(self._mm.weights_path(head_key))
-        input_node = _meta_input(head_meta) or "model/Placeholder"
-        output = (
-            head_entry.output or _meta_output(head_meta, purpose="predictions") or "model/Identity"
+        frames = self._embedding_frames(wav_path, extractor_key)
+        return self.head_activations_from_frames(
+            frames, extractor_key=extractor_key, head_key=head_key
         )
-        predictor = self._get_predictor(
-            es,
-            "TensorflowPredict2D",
-            graph=graph,
-            output=output,
-            input_node=input_node,
-        )
-        activations = predictor(embeddings)
-        scores = _mean_rows(activations)
-        labels = _meta_classes(head_meta) or [f"class_{i}" for i in range(len(scores))]
-        return [(str(labels[i]), float(scores[i])) for i in range(min(len(labels), len(scores)))]
 
     def _direct_predictions(
         self, wav_path: str, extractor_key: str, *, fallback_classes: list[str]

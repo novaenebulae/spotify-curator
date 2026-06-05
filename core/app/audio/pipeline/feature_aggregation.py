@@ -9,11 +9,23 @@ from app.audio.essentia_aggregate import aggregate_segment_features
 from app.audio.essentia_parser import parsed_segment_from_features_json
 from app.audio.pipeline.constants import (
     STAGE_ESSENTIA_LOWLEVEL,
+    STAGE_ESSENTIA_TENSORFLOW,
     STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
     STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
     STAGE_FEATURE_AGGREGATION,
     TERMINAL_FOR_DEPENDENCY,
 )
+
+_TF_SEGMENT_STAGES = (
+    STAGE_ESSENTIA_TENSORFLOW,
+    STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
+    STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
+)
+_TF_STAGE_PRIORITY = {
+    STAGE_ESSENTIA_TENSORFLOW: 3,
+    STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS: 2,
+    STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS: 1,
+}
 from app.audio.tensorflow.genre_runner import GENRE_MODEL_KEY
 from app.audio.pipeline.orchestrator import _prerequisites_met
 from app.database.engine import get_engine
@@ -188,25 +200,11 @@ class PipelineFeatureAggregationService:
         job_id: str,
         track_id: int,
     ) -> tuple[list[dict], set[str]]:
-        clf_items = list(
-            session.scalars(
-                select(JobItem).where(
-                    JobItem.job_id == job_id,
-                    JobItem.track_id == track_id,
-                    JobItem.stage_name == STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
-                    JobItem.status.in_(TERMINAL_FOR_DEPENDENCY),
-                )
-            )
-        )
         segment_outputs: list[dict] = []
         models_missing: set[str] = set()
-        for clf in clf_items:
-            if clf.status != "success" or not clf.result_json:
-                continue
-            try:
-                payload = json.loads(clf.result_json)
-            except json.JSONDecodeError:
-                continue
+        for _segment_id, payload in self._collect_tensorflow_segment_outputs(
+            session, job_id=job_id, track_id=track_id
+        ):
             outputs = payload.get("classifier_outputs")
             if isinstance(outputs, dict):
                 segment_outputs.append(outputs)
@@ -222,28 +220,14 @@ class PipelineFeatureAggregationService:
         job_id: str,
         track_id: int,
     ) -> tuple[dict[str, list[list[float]]], list[list], set[str], list[str]]:
-        emb_items = list(
-            session.scalars(
-                select(JobItem).where(
-                    JobItem.job_id == job_id,
-                    JobItem.track_id == track_id,
-                    JobItem.stage_name == STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
-                    JobItem.status.in_(TERMINAL_FOR_DEPENDENCY),
-                )
-            )
-        )
         vectors_by_key: dict[str, list[list[float]]] = {}
         genre_segments: list[list] = []
         genre_error_codes: list[str] = []
         models_missing: set[str] = set()
 
-        for emb in emb_items:
-            if emb.status != "success" or not emb.result_json:
-                continue
-            try:
-                payload = json.loads(emb.result_json)
-            except json.JSONDecodeError:
-                continue
+        for _segment_id, payload in self._collect_tensorflow_segment_outputs(
+            session, job_id=job_id, track_id=track_id
+        ):
             embedding_outputs = payload.get("embedding_outputs")
             if isinstance(embedding_outputs, dict):
                 for model_key, out in embedding_outputs.items():
@@ -270,6 +254,41 @@ class PipelineFeatureAggregationService:
                 models_missing.update(str(m) for m in missing)
 
         return vectors_by_key, genre_segments, models_missing, genre_error_codes
+
+    def _collect_tensorflow_segment_outputs(
+        self,
+        session: Session,
+        *,
+        job_id: str,
+        track_id: int,
+    ) -> list[tuple[int | None, dict]]:
+        tf_items = list(
+            session.scalars(
+                select(JobItem).where(
+                    JobItem.job_id == job_id,
+                    JobItem.track_id == track_id,
+                    JobItem.stage_name.in_(_TF_SEGMENT_STAGES),
+                    JobItem.status == "success",
+                )
+            )
+        )
+        best_by_segment: dict[int | None, tuple[int, dict]] = {}
+        for item in tf_items:
+            if not item.result_json:
+                continue
+            try:
+                payload = json.loads(item.result_json)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, dict):
+                continue
+            stage = item.stage_name or ""
+            priority = _TF_STAGE_PRIORITY.get(stage, 0)
+            segment_id = item.segment_id
+            current = best_by_segment.get(segment_id)
+            if current is None or priority > current[0]:
+                best_by_segment[segment_id] = (priority, payload)
+        return [(seg_id, payload) for seg_id, (_prio, payload) in best_by_segment.items()]
 
     def _persist_track_embeddings(
         self,

@@ -300,6 +300,19 @@ Critères bloquants (satisfaits) :
 
 ---
 
+## 6.4b — Perf pipeline TensorFlow (stage unifié)
+
+Statut : DONE — juin 2026.
+
+- Stage unique `essentia_tensorflow` par segment (un `job_item` au lieu de embeddings → classifiers).
+- `SegmentTensorflowRunner` : un backend, un pad WAV, EffNet + MAEST genre + classifiers.
+- `EssentiaTensorflowBackend.run_effnet_classifier_heads` : une extraction EffNet / segment, têtes en série.
+- Micro-batch worker : `ESSENTIA_TENSORFLOW_BATCH_SIZE`, `refresh_pipeline` différé par lot.
+- Agrégation : lecture prioritaire du stage unifié ; legacy `essentia_tensorflow_*` pour drain.
+- `ESSENTIA_TF_PIPELINE_VERSION=phase6_tf_unified_v1`.
+
+---
+
 ## 6.5 — Model registry
 
 Statut : DONE — manifest + downloader + verifier livrés via `ModelManager` en 6.8A (le `ModelRegistry` legacy subsiste temporairement le temps de la migration).

@@ -18,6 +18,7 @@ from app.audio.tensorflow.model_map import EMBEDDINGS_EXTRACTOR_KEY
 
 HEAD_A = "mood_happy_discogs_effnet"
 HEAD_B = "mood_sad_discogs_effnet"
+HEAD_C = "danceability_discogs_effnet"
 
 
 class _Counters:
@@ -110,3 +111,20 @@ def test_distinct_segment_reruns_extractor_but_reuses_predictor(
     assert fake_essentia.effnet_calls == 2
     assert fake_essentia.predict2d_calls == 2
     assert fake_essentia.monoloader_init == 2
+
+
+def test_run_effnet_classifier_heads_single_extract(
+    fake_essentia, build_tf_models, make_tf_manager
+):
+    models_dir = build_tf_models([EMBEDDINGS_EXTRACTOR_KEY, HEAD_A, HEAD_B, HEAD_C])
+    mm = make_tf_manager(models_dir)
+    backend = EssentiaTensorflowBackend(model_manager=mm)
+
+    wav = "/segments/track-1.wav"
+    backend.run_effnet_classifier_heads(wav, [HEAD_A, HEAD_B, HEAD_C])
+
+    assert fake_essentia.effnet_init == 1
+    assert fake_essentia.effnet_calls == 1
+    assert fake_essentia.monoloader_init == 1
+    assert fake_essentia.predict2d_init == 3
+    assert fake_essentia.predict2d_calls == 3

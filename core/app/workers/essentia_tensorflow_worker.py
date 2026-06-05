@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import json
 import logging
+import signal
+import time
 
 from sqlalchemy.orm import Session
 
 from app.audio.paths import segment_absolute_path
 from app.audio.pipeline.constants import (
     JOB_TYPE_AUDIO_ANALYSIS_PIPELINE,
+    STAGE_ESSENTIA_TENSORFLOW,
     STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
     STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
 )
@@ -15,6 +19,7 @@ from app.audio.tensorflow.classifier_runner import ClassifierRunner
 from app.audio.tensorflow.embeddings_runner import EmbeddingsRunner
 from app.audio.tensorflow.errors import MODEL_INVALID, InferenceError
 from app.audio.tensorflow.genre_runner import GenreRunner
+from app.audio.tensorflow.segment_runner import SegmentTensorflowRunner
 from app.database.engine import get_engine
 from app.database.models_job_items import JobItem
 from app.database.models_jobs import Job
@@ -28,6 +33,20 @@ from app.settings.config import settings
 from app.workers.base_worker import BaseWorker
 
 logger = logging.getLogger(__name__)
+
+_TF_PIPELINE_STAGES = frozenset(
+    {
+        STAGE_ESSENTIA_TENSORFLOW,
+        STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
+        STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
+    }
+)
+_TF_RESERVE_STAGE_ORDER = (
+    STAGE_ESSENTIA_TENSORFLOW,
+    STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
+    STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
+)
+_LEGACY_CLASSIFIER_SKIP_REASON = "fulfilled by embeddings merge"
 
 
 class EssentiaTensorflowWorker(BaseWorker):
@@ -44,6 +63,7 @@ class EssentiaTensorflowWorker(BaseWorker):
         classifier_runner: ClassifierRunner | None = None,
         embeddings_runner: EmbeddingsRunner | None = None,
         genre_runner: GenreRunner | None = None,
+        segment_runner: SegmentTensorflowRunner | None = None,
     ) -> None:
         super().__init__()
         self._registry = registry  # retained for backward compatibility; gating uses ModelManager
@@ -53,6 +73,7 @@ class EssentiaTensorflowWorker(BaseWorker):
         self._classifier_runner = classifier_runner
         self._embeddings_runner = embeddings_runner
         self._genre_runner = genre_runner
+        self._segment_runner = segment_runner
         self._status_only = (
             status_only if status_only is not None else self._should_run_status_only()
         )
@@ -75,15 +96,86 @@ class EssentiaTensorflowWorker(BaseWorker):
                 "essentia-tensorflow-worker starting with required models available",
                 extra={"models_summary": self._models_summary},
             )
-        super().run_forever()
+
+        signal.signal(signal.SIGTERM, self._handle_stop)
+        signal.signal(signal.SIGINT, self._handle_stop)
+        self._heartbeat.register_or_update(
+            worker_id=self._worker_id,
+            worker_type=self.worker_type,
+            status="starting",
+        )
+        logger.info("Worker %s starting", self._worker_id)
+        # Batch size coalesces pipeline refresh only; reservation stays at 1 item so
+        # --scale essentia-tensorflow-worker=K can distribute segments across replicas.
+        refresh_batch_size = max(1, settings.essentia_tensorflow_batch_size)
+        job_ids_to_refresh: set[str] = set()
+        processed_since_refresh = 0
+        try:
+            while self._running:
+                self._heartbeat.register_or_update(
+                    worker_id=self._worker_id,
+                    worker_type=self.worker_type,
+                    status="idle",
+                )
+                self._items.release_stale_locks(worker_type=self.worker_type)
+                item = self._items.reserve_next(
+                    worker_id=self._worker_id,
+                    worker_type=self.worker_type,
+                )
+                if item is None:
+                    self._flush_pipeline_refresh(job_ids_to_refresh)
+                    job_ids_to_refresh.clear()
+                    processed_since_refresh = 0
+                    time.sleep(settings.job_worker_heartbeat_interval_seconds)
+                    continue
+
+                if self._items.is_job_cancelled(item.job_id):
+                    self._items.mark_skipped(item.id, reason="Parent job cancelled")
+                    continue
+                try:
+                    refresh = self._process_item_for_batch(item)
+                except Exception as e:  # noqa: BLE001
+                    logger.exception("Item %s failed: %s", item.id, e)
+                    self._items.mark_failed(
+                        item.id,
+                        error_code="WORKER_ERROR",
+                        error_message=str(e)[:500],
+                        retryable=True,
+                    )
+                    continue
+                if refresh:
+                    job_ids_to_refresh.add(item.job_id)
+                    processed_since_refresh += 1
+                    if processed_since_refresh >= refresh_batch_size:
+                        self._flush_pipeline_refresh(job_ids_to_refresh)
+                        job_ids_to_refresh.clear()
+                        processed_since_refresh = 0
+        finally:
+            self._heartbeat.register_or_update(
+                worker_id=self._worker_id,
+                worker_type=self.worker_type,
+                status="stopping",
+            )
+            logger.info("Worker %s stopped", self._worker_id)
+
+    def _handle_stop(self, *_args: object) -> None:
+        self._running = False
+
+    def _flush_pipeline_refresh(self, job_ids: set[str]) -> None:
+        for job_id in job_ids:
+            self._items.refresh_pipeline_for_job(job_id)
 
     def process_item(self, item: object) -> None:
         assert isinstance(item, ReservedJobItem)
+        self._process_item_for_batch(item)
+
+    def _process_item_for_batch(self, item: ReservedJobItem) -> bool:
+        """Process one item. Returns True if pipeline refresh is needed for the job."""
         if item.track_id is None:
             self._items.mark_failed(
                 item.id, error_code="INVALID_ITEM", error_message="Missing track_id"
             )
-            return
+            return False
 
         engine = get_engine()
         with Session(engine) as session:
@@ -94,18 +186,17 @@ class EssentiaTensorflowWorker(BaseWorker):
             job is None
             or job_item is None
             or job.job_type != JOB_TYPE_AUDIO_ANALYSIS_PIPELINE
-            or job_item.stage_name
-            not in (STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS, STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS)
+            or job_item.stage_name not in _TF_PIPELINE_STAGES
         ):
             self._items.mark_skipped(item.id, reason="Not a pipeline tensorflow stage item")
-            return
+            return False
 
         if self._status_only:
             self._items.mark_skipped(
                 item.id,
                 reason="tensorflow_status_only: required models missing or disabled",
             )
-            return
+            return True
 
         if item.segment_id is None:
             self._items.mark_failed(
@@ -113,13 +204,18 @@ class EssentiaTensorflowWorker(BaseWorker):
                 error_code="INVALID_ITEM",
                 error_message="Pipeline tensorflow item missing segment_id",
             )
-            return
+            return False
+
+        if job_item.stage_name == STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS:
+            if self._legacy_classifiers_fulfilled(item, job_item):
+                self._items.mark_skipped(item.id, reason=_LEGACY_CLASSIFIER_SKIP_REASON)
+                return True
 
         with Session(engine) as session:
             seg = self._segments.get(session, item.segment_id)
         if seg is None or seg.deleted_at is not None:
             self._items.mark_skipped(item.id, reason="Segment not found or deleted")
-            return
+            return False
 
         wav = segment_absolute_path(seg.temporary_path or "")
         if not wav.is_file():
@@ -128,15 +224,7 @@ class EssentiaTensorflowWorker(BaseWorker):
                 error_code="SEGMENT_FILE_MISSING",
                 error_message="Segment audio file not found for tensorflow stage",
             )
-            return
-
-        from app.audio.wav_pad import MAEST_MIN_SECONDS, ensure_min_wav_duration, wav_duration_seconds
-
-        try:
-            if wav_duration_seconds(wav) < MAEST_MIN_SECONDS:
-                ensure_min_wav_duration(wav, min_seconds=MAEST_MIN_SECONDS)
-        except Exception:  # noqa: BLE001
-            pass
+            return False
 
         self._heartbeat_running(
             current_job_id=item.job_id,
@@ -150,78 +238,25 @@ class EssentiaTensorflowWorker(BaseWorker):
             ),
         )
 
-        result: dict = {
-            "segment_id": item.segment_id,
-            "stage_name": job_item.stage_name,
-            "status_only": False,
-        }
-
         try:
-            if job_item.stage_name == STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS:
-                runner = self._classifier_runner or ClassifierRunner(
-                    model_manager=self._mm, backend=self._backend
-                )
-                clf = runner.run_for_segment(segment_id=item.segment_id, wav_path=str(wav))
-                result["inference"] = clf.inference_mode
-                result["classifier_outputs"] = clf.classifier_outputs
-                result["models_missing"] = clf.models_missing
-            else:
-                emb = (
-                    self._embeddings_runner
-                    or EmbeddingsRunner(model_manager=self._mm, backend=self._backend)
-                ).run_for_segment(segment_id=item.segment_id, wav_path=str(wav))
-                result["inference"] = emb.inference_mode
-                result["embedding_outputs"] = emb.embedding_outputs
-                genre_missing: list[str] = []
-                genre_outputs: dict = {}
-                genre_mode = "none"
-                from app.audio.tensorflow.genre_runner import GENRE_MODEL_KEY
-
-                try:
-                    genre = (
-                        self._genre_runner
-                        or GenreRunner(model_manager=self._mm, backend=self._backend)
-                    ).run_for_segment(segment_id=item.segment_id, wav_path=str(wav))
-                    genre_outputs = genre.genre_outputs
-                    genre_missing = list(genre.models_missing)
-                    genre_mode = genre.inference_mode
-                except (InferenceError, ModelManagerError) as genre_exc:
-                    if _is_audio_too_short(genre_exc):
-                        genre_missing = []
-                        genre_outputs = {
-                            GENRE_MODEL_KEY: {
-                                "model_key": GENRE_MODEL_KEY,
-                                "model_status": "missing",
-                                "error_code": "AUDIO_TOO_SHORT",
-                                "error_message": str(genre_exc),
-                                "top_k": [],
-                            }
-                        }
-                    else:
-                        raise
-                result["genre_outputs"] = genre_outputs
-                result["genre_inference"] = genre_mode
-                go = genre_outputs.get(GENRE_MODEL_KEY) if isinstance(genre_outputs, dict) else None
-                if isinstance(go, dict) and go.get("top_k"):
-                    genre_missing = [m for m in genre_missing if m != GENRE_MODEL_KEY]
-                result["models_missing"] = sorted(
-                    set(emb.models_missing) | set(genre_missing)
-                )
-                if emb.inference_mode == "real" or genre_mode == "real":
-                    result["inference"] = "real"
+            result = self._run_segment_inference(
+                segment_id=item.segment_id,
+                wav_path=str(wav),
+                stage_name=job_item.stage_name,
+            )
         except InferenceError as exc:
             self._items.mark_failed(
                 item.id, error_code=exc.code, error_message=exc.message
             )
-            return
+            return False
         except ModelManagerError as exc:
             self._items.mark_failed(
                 item.id, error_code=MODEL_INVALID, error_message=exc.message
             )
-            return
+            return False
 
         result["pipeline_version"] = self._pipeline_version(job_item, result["inference"])
-        self._items.mark_success(item.id, result_json=result)
+        self._items.mark_success(item.id, result_json=result, refresh_pipeline=False)
         missing = result.get("models_missing")
         if isinstance(missing, list) and missing:
             self._items.emit_model_missing(
@@ -230,6 +265,43 @@ class EssentiaTensorflowWorker(BaseWorker):
                 stage_name=job_item.stage_name,
                 models_missing=[str(m) for m in missing],
             )
+        return True
+
+    def _run_segment_inference(
+        self,
+        *,
+        segment_id: int,
+        wav_path: str,
+        stage_name: str,
+    ) -> dict:
+        runner = self._segment_runner or SegmentTensorflowRunner(
+            model_manager=self._mm,
+            backend=self._backend,
+            embeddings_runner=self._embeddings_runner,
+            genre_runner=self._genre_runner,
+            classifier_runner=self._classifier_runner,
+        )
+        seg_result = runner.run_for_segment(segment_id=segment_id, wav_path=wav_path)
+        return runner.to_result_json(seg_result, stage_name=stage_name)
+
+    def _legacy_classifiers_fulfilled(
+        self, item: ReservedJobItem, job_item: JobItem
+    ) -> bool:
+        if item.segment_id is None or job_item.depends_on_item_id is None:
+            return False
+        engine = get_engine()
+        with Session(engine) as session:
+            dep = session.get(JobItem, job_item.depends_on_item_id)
+            if dep is None or dep.stage_name != STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS:
+                return False
+            if dep.status != "success" or not dep.result_json:
+                return False
+            try:
+                payload = json.loads(dep.result_json)
+            except json.JSONDecodeError:
+                return False
+            outputs = payload.get("classifier_outputs")
+            return isinstance(outputs, dict) and bool(outputs)
 
     @staticmethod
     def _pipeline_version(job_item: JobItem, inference_mode: str) -> str:
@@ -257,8 +329,3 @@ class EssentiaTensorflowWorker(BaseWorker):
             current_item_id=current_item_id,
             metadata=redact_dict(meta),
         )
-
-
-def _is_audio_too_short(exc: BaseException) -> bool:
-    msg = str(exc).lower()
-    return "too short" in msg or "signal is too short" in msg

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import text, update
+from sqlalchemy import and_, or_, select, text, update
 from sqlalchemy.orm import Session
 
 from app.database.engine import get_engine
@@ -19,6 +19,7 @@ from app.audio.pipeline.constants import (
     JOB_TYPE_AUDIO_ANALYSIS_PIPELINE,
     PIPELINE_MODE_STREAMING,
     STAGE_ESSENTIA_LOWLEVEL,
+    STAGE_ESSENTIA_TENSORFLOW,
     STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
     STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
     STAGE_SEGMENT_DOWNLOAD,
@@ -26,6 +27,7 @@ from app.audio.pipeline.constants import (
 )
 from app.jobs.items.constants import (
     JOB_TYPE_PREVIEW_RESOLVE,
+    PIPELINE_STAGES_BY_WORKER,
     TERMINAL_ITEM_STATUSES,
     WORKER_ITEM_TYPES,
     WORKER_TYPE_AUDIO_DOWNLOADER,
@@ -190,6 +192,7 @@ class JobItemService:
                     return pipeline_item
             if worker_type == WORKER_TYPE_ESSENTIA_TENSORFLOW:
                 for stage_name in (
+                    STAGE_ESSENTIA_TENSORFLOW,
                     STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
                     STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
                 ):
@@ -396,6 +399,127 @@ class JobItemService:
             stage_name=row[7] if len(row) > 7 else stage_name,
         )
 
+    def _reserve_pipeline_stage_items(
+        self,
+        *,
+        worker_id: str,
+        lock_timeout: int,
+        stage_name: str,
+        limit: int,
+    ) -> list[ReservedJobItem]:
+        if limit <= 0:
+            return []
+        now = datetime.now(tz=UTC).replace(tzinfo=None)
+        stale_before = now - timedelta(seconds=lock_timeout)
+        engine = get_engine()
+        reserved: list[ReservedJobItem] = []
+
+        with Session(engine) as session:
+            conn = session.connection()
+            conn.execute(text("BEGIN IMMEDIATE"))
+            try:
+                rows = conn.execute(
+                    text(
+                        """
+                        SELECT i.id, i.job_id, i.item_type, i.track_id, i.segment_id,
+                               i.input_json, i.attempt_count, i.stage_name
+                        FROM job_items i
+                        INNER JOIN jobs j ON j.id = i.job_id
+                        WHERE i.status IN ('pending', 'rate_limited')
+                          AND i.item_type = :item_type
+                          AND i.stage_name = :stage_name
+                          AND j.job_type = :job_type
+                          AND j.status IN ('queued', 'running')
+                          AND (i.next_retry_at IS NULL OR i.next_retry_at <= :now)
+                          AND (i.locked_by IS NULL OR i.locked_at < :stale_before)
+                        ORDER BY i.priority DESC, i.created_at ASC
+                        LIMIT :limit
+                        """
+                    ),
+                    {
+                        "now": now,
+                        "stale_before": stale_before,
+                        "item_type": ITEM_TYPE_ANALYSIS_PIPELINE_STAGE,
+                        "stage_name": stage_name,
+                        "job_type": JOB_TYPE_AUDIO_ANALYSIS_PIPELINE,
+                        "limit": limit,
+                    },
+                ).fetchall()
+
+                if not rows:
+                    conn.execute(text("COMMIT"))
+                    return []
+
+                job_ids_touched: set[str] = set()
+                started_events: list[tuple[str, str, str, int | None, int | None]] = []
+                for row in rows:
+                    item_id = row[0]
+                    updated = conn.execute(
+                        text(
+                            """
+                            UPDATE job_items
+                            SET status = 'running',
+                                locked_by = :worker_id,
+                                locked_at = :now,
+                                started_at = COALESCE(started_at, :now),
+                                attempt_count = attempt_count + 1
+                            WHERE id = :item_id
+                              AND (locked_by IS NULL OR locked_at < :stale_before)
+                            """
+                        ),
+                        {
+                            "worker_id": worker_id,
+                            "now": now,
+                            "item_id": item_id,
+                            "stale_before": stale_before,
+                        },
+                    )
+                    if updated.rowcount != 1:
+                        continue
+
+                    job_row = session.get(Job, row[1])
+                    if job_row and job_row.status in ("queued",):
+                        job_row.status = "running"
+                        if job_row.started_at is None:
+                            job_row.started_at = now
+
+                    job_ids_touched.add(row[1])
+                    input_json = json.loads(row[5] or "{}")
+                    reserved.append(
+                        ReservedJobItem(
+                            id=row[0],
+                            job_id=row[1],
+                            item_type=row[2],
+                            track_id=row[3],
+                            segment_id=row[4],
+                            input_json=input_json,
+                            attempt_count=int(row[6]),
+                            stage_name=row[7] if len(row) > 7 else stage_name,
+                        )
+                    )
+                    started_events.append(
+                        (row[1], row[0], stage_name, row[3], row[4])
+                    )
+
+                conn.execute(text("COMMIT"))
+                session.commit()
+                for job_id in job_ids_touched:
+                    self.recompute_job_progress(session, job_id)
+                    session.commit()
+                for job_id, item_id, stg, track_id, segment_id in started_events:
+                    self._emit_stage_started(
+                        job_id=job_id,
+                        item_id=item_id,
+                        stage_name=stg,
+                        track_id=track_id,
+                        segment_id=segment_id,
+                    )
+            except Exception:
+                conn.execute(text("ROLLBACK"))
+                raise
+
+        return reserved
+
     def _emit_stage_started(
         self,
         *,
@@ -492,11 +616,41 @@ class JobItemService:
             },
         )
 
+    def reserve_pipeline_stage_batch(
+        self,
+        *,
+        worker_id: str,
+        worker_type: str,
+        stage_names: tuple[str, ...],
+        limit: int,
+    ) -> list[ReservedJobItem]:
+        if limit <= 0:
+            return []
+        lock_timeout = self.lock_timeout_for_worker(worker_type)
+        reserved: list[ReservedJobItem] = []
+        remaining = limit
+        for stage_name in stage_names:
+            if remaining <= 0:
+                break
+            batch = self._reserve_pipeline_stage_items(
+                worker_id=worker_id,
+                lock_timeout=lock_timeout,
+                stage_name=stage_name,
+                limit=remaining,
+            )
+            reserved.extend(batch)
+            remaining = limit - len(reserved)
+        return reserved
+
+    def refresh_pipeline_for_job(self, job_id: str) -> None:
+        self._maybe_refresh_pipeline_dependencies(job_id)
+
     def mark_success(
         self,
         item_id: str,
         *,
         result_json: dict[str, Any] | None = None,
+        refresh_pipeline: bool = True,
     ) -> None:
         now = datetime.now(tz=UTC).replace(tzinfo=None)
         engine = get_engine()
@@ -525,7 +679,8 @@ class JobItemService:
             session.commit()
             self.recompute_job_progress(session, item.job_id)
             session.commit()
-            self._maybe_refresh_pipeline_dependencies(item.job_id)
+            if refresh_pipeline:
+                self._maybe_refresh_pipeline_dependencies(item.job_id)
 
     def mark_failed(
         self,
@@ -657,12 +812,68 @@ class JobItemService:
                 .values(status="pending", locked_by=None, locked_at=None)
             )
             if worker_type:
-                types = WORKER_ITEM_TYPES.get(worker_type, ())
-                if types:
-                    stmt = stmt.where(JobItem.item_type.in_(types))
+                scope = self._stale_lock_scope_for_worker(worker_type)
+                if scope is not None:
+                    stmt = stmt.where(scope)
             result = session.execute(stmt)
             session.commit()
             return int(result.rowcount or 0)
+
+    @staticmethod
+    def _stale_lock_scope_for_worker(worker_type: str):
+        legacy_types = WORKER_ITEM_TYPES.get(worker_type, ())
+        pipeline_stages = PIPELINE_STAGES_BY_WORKER.get(worker_type, ())
+        clauses = []
+        if legacy_types:
+            clauses.append(JobItem.item_type.in_(legacy_types))
+        if pipeline_stages:
+            clauses.append(
+                and_(
+                    JobItem.item_type == ITEM_TYPE_ANALYSIS_PIPELINE_STAGE,
+                    JobItem.stage_name.in_(pipeline_stages),
+                )
+            )
+        if not clauses:
+            return None
+        return or_(*clauses) if len(clauses) > 1 else clauses[0]
+
+    def release_stale_pipeline_stage_locks(self) -> int:
+        """Release stale locks on pipeline stage items (per-worker lock timeouts)."""
+        released = 0
+        for worker_type in PIPELINE_STAGES_BY_WORKER:
+            released += self.release_stale_locks(worker_type=worker_type)
+        return released
+
+    def reconcile_audio_analysis_pipeline_jobs(self) -> list[str]:
+        """Unblock stuck pipeline jobs: stale locks, dependencies, parent status."""
+        from app.audio.pipeline.orchestrator import AnalysisPipelineOrchestrator
+
+        engine = get_engine()
+        with Session(engine) as session:
+            job_ids = list(
+                session.scalars(
+                    select(Job.id).where(
+                        Job.job_type == JOB_TYPE_AUDIO_ANALYSIS_PIPELINE,
+                        Job.status.in_(("queued", "running")),
+                    )
+                )
+            )
+
+        if not job_ids:
+            return []
+
+        self.release_stale_pipeline_stage_locks()
+        orch = AnalysisPipelineOrchestrator(items=self)
+        finished: list[str] = []
+        for job_id in job_ids:
+            orch.refresh_dependencies(job_id)
+            with Session(engine) as session:
+                self.recompute_job_progress(session, job_id)
+                session.commit()
+                job = session.get(Job, job_id)
+                if job is not None and job.status not in ("queued", "running"):
+                    finished.append(job_id)
+        return finished
 
     def recompute_job_progress(self, session: Session, job_id: str) -> None:
         counts = self._items.count_by_status(session, job_id)
@@ -677,6 +888,8 @@ class JobItemService:
         pending = (
             counts.get("pending", 0) + running + counts.get("rate_limited", 0)
         )
+        if job.job_type == JOB_TYPE_AUDIO_ANALYSIS_PIPELINE:
+            pending += counts.get("blocked", 0)
         # blocked items wait on dependencies and are not executable work units
         if pending > 0 and total > 0:
             now = datetime.now(tz=UTC).replace(tzinfo=None)

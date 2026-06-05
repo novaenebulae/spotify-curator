@@ -13,8 +13,7 @@ from app.audio.pipeline.constants import (
     PIPELINE_MODE_STREAMING,
     STAGE_AUDIO_CLEANUP,
     STAGE_ESSENTIA_LOWLEVEL,
-    STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
-    STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
+    STAGE_ESSENTIA_TENSORFLOW,
     STAGE_FEATURE_AGGREGATION,
     STAGE_SEGMENT_DOWNLOAD,
     TERMINAL_FOR_DEPENDENCY,
@@ -119,6 +118,8 @@ class AnalysisPipelineOrchestrator:
                 status_code=400,
             )
 
+        self._items.reconcile_audio_analysis_pipeline_jobs()
+
         engine = get_engine()
         with Session(engine) as session:
             if self._has_running_pipeline_job(session):
@@ -186,13 +187,12 @@ class AnalysisPipelineOrchestrator:
                         )
                         analysis_prereq_ids.append(ll_id)
 
-                    embeddings_id: str | None = None
                     if include_tensorflow:
-                        embeddings_id = self._items.create_pipeline_stage_item(
+                        tf_id = self._items.create_pipeline_stage_item(
                             session,
                             job_id=job_id,
                             track_id=plan.track_id,
-                            stage_name=STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
+                            stage_name=STAGE_ESSENTIA_TENSORFLOW,
                             segment_id=segment_id,
                             depends_on_item_id=download_id,
                             consumer_group=_consumer_group(segment_id),
@@ -200,19 +200,7 @@ class AnalysisPipelineOrchestrator:
                             status="blocked",
                             blocked_reason=BLOCKED_REASON_DEPENDENCY_PENDING,
                         )
-                        classifiers_id = self._items.create_pipeline_stage_item(
-                            session,
-                            job_id=job_id,
-                            track_id=plan.track_id,
-                            stage_name=STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
-                            segment_id=segment_id,
-                            depends_on_item_id=embeddings_id,
-                            consumer_group=_consumer_group(segment_id),
-                            pipeline_version=pipeline_version,
-                            status="blocked",
-                            blocked_reason=BLOCKED_REASON_DEPENDENCY_PENDING,
-                        )
-                        analysis_prereq_ids.append(classifiers_id)
+                        analysis_prereq_ids.append(tf_id)
 
                 aggregation_id = self._items.create_pipeline_stage_item(
                     session,

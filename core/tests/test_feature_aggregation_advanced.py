@@ -101,6 +101,7 @@ def test_aggregation_writes_advanced_features_and_energy_proxy(
         if reserved is None:
             break
         worker.process_item(reserved)
+    items.refresh_pipeline_for_job(job_id)
 
     agg = next(i for i in items.list_items(job_id) if i["stage_name"] == STAGE_FEATURE_AGGREGATION)
     assert agg["status"] == "success"

@@ -40,6 +40,11 @@ async def lifespan(_app: FastAPI):
             logger.info(
                 "Cancelled pending items for terminal parent jobs: %d", stale_pending
             )
+        pipeline_finished = JobItemService().reconcile_audio_analysis_pipeline_jobs()
+        if pipeline_finished:
+            logger.info(
+                "Reconciled audio analysis pipeline jobs: %s", pipeline_finished
+            )
     except Exception:
         logger.exception("Database migration failed during startup")
         raise

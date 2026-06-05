@@ -106,6 +106,7 @@ def test_aggregation_persists_embeddings_and_genre(
         if reserved is None:
             break
         worker.process_item(reserved)
+    items.refresh_pipeline_for_job(job_id)
 
     agg = next(i for i in items.list_items(job_id) if i["stage_name"] == "feature_aggregation")
     assert agg["status"] == "success"

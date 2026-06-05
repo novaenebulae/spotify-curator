@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.audio.pipeline.constants import (
     STAGE_ESSENTIA_LOWLEVEL,
+    STAGE_ESSENTIA_TENSORFLOW,
     STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
     STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
     STAGE_FEATURE_AGGREGATION,
@@ -16,6 +17,7 @@ from app.audio.pipeline.orchestrator import AnalysisPipelineOrchestrator, TrackS
 from app.database.engine import get_engine, reset_engine
 from app.database.init_db import init_db
 from app.database.models_audio import TrackSegment
+from app.database.models_job_items import JobItem
 from app.database.models_library import Track
 from app.jobs.items.constants import WORKER_TYPE_ESSENTIA_TENSORFLOW
 from app.jobs.items.service import JobItemService
@@ -46,7 +48,7 @@ def _patch_cache(monkeypatch, tmp_path) -> Path:
     return cache_root
 
 
-def test_reserve_embeddings_before_classifiers(tmp_path, monkeypatch) -> None:
+def test_reserve_unified_tf_stage_first(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "reserve_tf.sqlite"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
     reset_engine()
@@ -72,11 +74,9 @@ def test_reserve_embeddings_before_classifiers(tmp_path, monkeypatch) -> None:
     )
     assert reserved is not None
     with Session(engine) as session:
-        from app.database.models_job_items import JobItem
-
         row = session.get(JobItem, reserved.id)
         assert row is not None
-        assert row.stage_name == STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS
+        assert row.stage_name == STAGE_ESSENTIA_TENSORFLOW
 
 
 def test_worker_status_only_skips_and_unblocks_aggregation(tmp_path, monkeypatch) -> None:
@@ -129,12 +129,11 @@ def test_worker_status_only_skips_and_unblocks_aggregation(tmp_path, monkeypatch
         if reserved is None:
             break
         worker.process_item(reserved)
+    items.refresh_pipeline_for_job(job_id)
 
     refreshed = items.list_items(job_id, limit=50)
-    emb = next(i for i in refreshed if i["stage_name"] == STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS)
-    clf = next(i for i in refreshed if i["stage_name"] == STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS)
-    assert emb["status"] == "skipped"
-    assert clf["status"] == "skipped"
+    tf = next(i for i in refreshed if i["stage_name"] == STAGE_ESSENTIA_TENSORFLOW)
+    assert tf["status"] == "skipped"
     agg = next(i for i in refreshed if i["stage_name"] == STAGE_FEATURE_AGGREGATION)
     assert agg["status"] in ("pending", "success")
 
@@ -191,6 +190,7 @@ def test_worker_real_success_with_fake_backend(
     reserved = items.reserve_next(worker_id="tf", worker_type=WORKER_TYPE_ESSENTIA_TENSORFLOW)
     assert reserved is not None
     worker.process_item(reserved)
+    items.refresh_pipeline_for_job(job_id)
 
     row = next(i for i in items.list_items(job_id) if i["id"] == reserved.id)
     assert row["status"] == "success"
@@ -198,14 +198,19 @@ def test_worker_real_success_with_fake_backend(
     assert row["result"]["pipeline_version"]
 
 
-def test_worker_embeddings_emit_structured_outputs(
+def test_worker_unified_emit_all_outputs(
     tmp_path, monkeypatch, build_tf_models, make_tf_manager, fake_tf_backend
 ) -> None:
     db_path = tmp_path / "tf_emb_out.sqlite"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
     cache_root = _patch_cache(monkeypatch, tmp_path)
     models_dir = build_tf_models(
-        ["discogs_effnet_bs64", "discogs_maest_30s_pw_519l", "genre_discogs519_maest_519l"]
+        [
+            "discogs_effnet_bs64",
+            "discogs_maest_30s_pw_519l",
+            "genre_discogs519_maest_519l",
+            "mood_happy_discogs_effnet",
+        ]
     )
     mm = make_tf_manager(models_dir)
 
@@ -249,19 +254,21 @@ def test_worker_embeddings_emit_structured_outputs(
     assert reserved is not None
     worker.process_item(reserved)
 
-    emb_row = next(
-        i for i in items.list_items(job_id) if i["stage_name"] == STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS
+    tf_row = next(
+        i for i in items.list_items(job_id) if i["stage_name"] == STAGE_ESSENTIA_TENSORFLOW
     )
-    assert emb_row["status"] == "success"
-    assert emb_row["result"]["inference"] == "real"
-    assert "embedding_outputs" in emb_row["result"]
-    assert "genre_outputs" in emb_row["result"]
+    assert tf_row["status"] == "success"
+    assert tf_row["result"]["inference"] == "real"
+    assert "embedding_outputs" in tf_row["result"]
+    assert "genre_outputs" in tf_row["result"]
+    assert "classifier_outputs" in tf_row["result"]
+    assert "mood_happy" in tf_row["result"]["classifier_outputs"]
 
 
-def test_worker_classifiers_emit_classifier_outputs(
+def test_legacy_classifiers_skipped_when_embeddings_has_outputs(
     tmp_path, monkeypatch, build_tf_models, make_tf_manager, fake_tf_backend
 ) -> None:
-    db_path = tmp_path / "tf_clf.sqlite"
+    db_path = tmp_path / "tf_legacy_skip.sqlite"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
     cache_root = _patch_cache(monkeypatch, tmp_path)
     models_dir = build_tf_models(["discogs_effnet_bs64", "mood_happy_discogs_effnet"])
@@ -292,30 +299,63 @@ def test_worker_classifiers_emit_classifier_outputs(
     wav_path.parent.mkdir(parents=True, exist_ok=True)
     wav_path.write_bytes(b"\x00\x05\x06\x07")
 
-    job_id = AnalysisPipelineOrchestrator().create_pipeline_job(
+    orch = AnalysisPipelineOrchestrator()
+    items = JobItemService()
+    job_id = orch.create_pipeline_job(
         [TrackSegmentPlan(track_id=1, segment_ids=[10])],
         include_lowlevel=False,
-        include_tensorflow=True,
+        include_tensorflow=False,
     )
-    items = JobItemService()
-    for download in [i for i in items.list_items(job_id) if i["stage_name"] == STAGE_SEGMENT_DOWNLOAD]:
-        items.mark_success(download["id"])
+    with Session(engine) as session:
+        download_id = items.create_pipeline_stage_item(
+            session,
+            job_id=job_id,
+            track_id=1,
+            stage_name=STAGE_SEGMENT_DOWNLOAD,
+            segment_id=10,
+            status="success",
+        )
+        emb_id = items.create_pipeline_stage_item(
+            session,
+            job_id=job_id,
+            track_id=1,
+            stage_name=STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
+            segment_id=10,
+            depends_on_item_id=download_id,
+            status="pending",
+        )
+        clf_id = items.create_pipeline_stage_item(
+            session,
+            job_id=job_id,
+            track_id=1,
+            stage_name=STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
+            segment_id=10,
+            depends_on_item_id=emb_id,
+            status="pending",
+        )
+        session.commit()
+
+    items.mark_success(
+        emb_id,
+        result_json={
+            "segment_id": 10,
+            "classifier_outputs": {"mood_happy": {"probability": 0.9}},
+            "embedding_outputs": {},
+            "genre_outputs": {},
+            "models_missing": [],
+            "inference": "real",
+        },
+    )
 
     worker = EssentiaTensorflowWorker(
         model_manager=mm, backend=fake_tf_backend, status_only=False
     )
-    reserved_emb = items.reserve_next(worker_id="tf", worker_type=WORKER_TYPE_ESSENTIA_TENSORFLOW)
-    assert reserved_emb is not None
-    worker.process_item(reserved_emb)
-    reserved_clf = items.reserve_next(worker_id="tf", worker_type=WORKER_TYPE_ESSENTIA_TENSORFLOW)
-    assert reserved_clf is not None
-    worker.process_item(reserved_clf)
+    reserved = items.reserve_next(worker_id="tf", worker_type=WORKER_TYPE_ESSENTIA_TENSORFLOW)
+    assert reserved is not None
+    assert reserved.id == clf_id
+    worker.process_item(reserved)
 
     clf_row = next(
         i for i in items.list_items(job_id) if i["stage_name"] == STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS
     )
-    assert clf_row["status"] == "success"
-    assert clf_row["result"]["inference"] == "real"
-    assert "classifier_outputs" in clf_row["result"]
-    assert "mood_happy" in clf_row["result"]["classifier_outputs"]
-    assert isinstance(clf_row["result"].get("models_missing"), list)
+    assert clf_row["status"] == "skipped"

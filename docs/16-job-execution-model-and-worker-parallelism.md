@@ -84,8 +84,8 @@ cleanup when all consumers are done
 |---|---|---|
 | `segment_download` | aucune | `audio-downloader` |
 | `essentia_lowlevel` | `segment_download` | `essentia-lowlevel-worker` (réservation prioritaire des stages pipeline en mode `streaming`, puis legacy `essentia_lowlevel_track`) |
-| `essentia_tensorflow_embeddings` | `segment_download` | `essentia-tensorflow-worker` |
-| `essentia_tensorflow_classifiers` | embeddings ou segment | `essentia-tensorflow-worker` |
+| `essentia_tensorflow` | `segment_download` | `essentia-tensorflow-worker` (un item / segment ; micro-batch `ESSENTIA_TENSORFLOW_BATCH_SIZE`) |
+| `essentia_tensorflow_embeddings` / `essentia_tensorflow_classifiers` | legacy | drain uniquement |
 | `feature_aggregation` | analyses terminées | core |
 | `audio_cleanup` | consommateurs terminés | core |
 
@@ -100,7 +100,7 @@ cleanup when all consumers are done
 
 ### Cleanup multi-consommateurs
 
-Consommateurs typiques : `essentia_lowlevel`, `essentia_tensorflow_embeddings`, `essentia_tensorflow_classifiers`. Cleanup autorisé si tous sont en `success`, `skipped` ou échec terminal.
+Consommateurs typiques : `essentia_lowlevel`, `essentia_tensorflow` (ou legacy `essentia_tensorflow_*`). Cleanup autorisé si tous sont en `success`, `skipped` ou échec terminal.
 
 ### Concurrence recommandée (phase 6)
 
@@ -110,6 +110,9 @@ ESSENTIA_LOWLEVEL_WORKERS=2
 ESSENTIA_TENSORFLOW_WORKERS=1
 ESSENTIA_TENSORFLOW_BATCH_SIZE=8
 ```
+
+- **`ESSENTIA_TENSORFLOW_BATCH_SIZE`** : regroupe uniquement les **rafraîchissements pipeline** (`refresh_pipeline_for_job`) — le worker réserve **1 item à la fois** (`reserve_next`) pour que plusieurs réplicas puissent travailler en parallèle ; après N succès locaux, un flush agrégé évite N appels SQLite/agrégation.
+- **Parallélisme horizontal** : `docker compose --profile advanced-analysis up -d --scale essentia-tensorflow-worker=K` — avec `BATCH_SIZE=8` et 10 segments, **3 workers actifs** (pas 1 worker qui monopolise 8 réservations). Ne pas confondre avec un « batch SQL » multi-items (réservé aux tests / API interne `reserve_pipeline_stage_batch`).
 
 Profil Compose **`advanced-analysis`** : `essentia-tensorflow-worker` (en plus du profil `audio`).
 

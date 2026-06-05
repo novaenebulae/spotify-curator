@@ -7,8 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.audio.pipeline.constants import (
     STAGE_ESSENTIA_LOWLEVEL,
-    STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
-    STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
+    STAGE_ESSENTIA_TENSORFLOW,
     STAGE_FEATURE_AGGREGATION,
     STAGE_SEGMENT_DOWNLOAD,
 )
@@ -71,8 +70,7 @@ def test_create_pipeline_stages_per_segment(tmp_path, monkeypatch) -> None:
     grouped = _items_by_stage(job_id)
     assert len(grouped[STAGE_SEGMENT_DOWNLOAD]) == 2
     assert len(grouped[STAGE_ESSENTIA_LOWLEVEL]) == 2
-    assert len(grouped[STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS]) == 2
-    assert len(grouped[STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS]) == 2
+    assert len(grouped[STAGE_ESSENTIA_TENSORFLOW]) == 2
     assert len(grouped[STAGE_FEATURE_AGGREGATION]) == 1
 
     ll = grouped[STAGE_ESSENTIA_LOWLEVEL][0]
@@ -111,7 +109,7 @@ def test_blocked_until_download_success(tmp_path, monkeypatch) -> None:
     assert refreshed[STAGE_ESSENTIA_LOWLEVEL][0]["status"] == "pending"
 
 
-def test_classifiers_blocked_until_embeddings(tmp_path, monkeypatch) -> None:
+def test_tensorflow_blocked_until_download(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "pipeline_tf.sqlite"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
     reset_engine()
@@ -132,19 +130,13 @@ def test_classifiers_blocked_until_embeddings(tmp_path, monkeypatch) -> None:
 
     grouped = _items_by_stage(job_id)
     download = grouped[STAGE_SEGMENT_DOWNLOAD][0]
-    embeddings = grouped[STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS][0]
-    classifiers = grouped[STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS][0]
-    assert classifiers["status"] == "blocked"
-    assert classifiers["depends_on_item_id"] == embeddings["id"]
+    tensorflow = grouped[STAGE_ESSENTIA_TENSORFLOW][0]
+    assert tensorflow["status"] == "blocked"
+    assert tensorflow["depends_on_item_id"] == download["id"]
 
     items.mark_success(download["id"])
     grouped = _items_by_stage(job_id)
-    assert grouped[STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS][0]["status"] == "pending"
-    assert grouped[STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS][0]["status"] == "blocked"
-
-    items.mark_success(embeddings["id"])
-    grouped = _items_by_stage(job_id)
-    assert grouped[STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS][0]["status"] == "pending"
+    assert grouped[STAGE_ESSENTIA_TENSORFLOW][0]["status"] == "pending"
 
 
 def test_feature_aggregation_waits_all_segments(tmp_path, monkeypatch) -> None:

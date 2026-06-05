@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.audio.essentia_parser import parse_essentia_json_file, parsed_segment_to_storage_dict
 from app.audio.pipeline.constants import (
     STAGE_ESSENTIA_LOWLEVEL,
-    STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
+    STAGE_ESSENTIA_TENSORFLOW,
     STAGE_FEATURE_AGGREGATION,
     STAGE_SEGMENT_DOWNLOAD,
 )
@@ -349,7 +349,7 @@ def test_cleanup_blocked_when_tensorflow_stage_pending(tmp_path, monkeypatch) ->
     tf_items = [
         i
         for i in items.list_items(job_id)
-        if i["stage_name"] in (STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,)
+        if i["stage_name"] in (STAGE_ESSENTIA_TENSORFLOW,)
     ]
     assert tf_items
     assert any(i["status"] in ("blocked", "pending") for i in tf_items)

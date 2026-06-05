@@ -118,7 +118,9 @@ ADVANCED_FEATURES_TOP_K_GENRES=10
 ENERGY_PROXY_ENABLED=true
 ```
 
-Profil Docker `advanced-analysis` : service `essentia-tensorflow-worker` (réservation stages `essentia_tensorflow_*`, mode `status_only` si modèles requis absents).
+Profil Docker `advanced-analysis` : service `essentia-tensorflow-worker` (stage `essentia_tensorflow` puis legacy `essentia_tensorflow_*` ; `ESSENTIA_TENSORFLOW_BATCH_SIZE` = taille du **flush pipeline différé**, pas le nombre d'items réservés par réplica ; scale horizontal via `--scale essentia-tensorflow-worker=K` ; mode `status_only` si modèles requis absents).
+
+`ESSENTIA_TF_PIPELINE_VERSION=phase6_tf_unified_v1` : version diagnostics des runs stage unifié.
 
 Modèles sous `models/` (jamais commités) : `essentia/`, `tensorflow/`, `discogs_effnet/`, `discogs_maest/`.
 
