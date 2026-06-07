@@ -819,6 +819,7 @@ Chaque onglet doit conserver son état local si possible : recherche, page, filt
   - **Features** : toutes les features résolues via `FeatureResolver` (`resolved_features` sur `GET /features/tracks/{id}`), priorités phase 6.
   - **Sources** : ReccoBeats, Essentia low-level, **Essentia TensorFlow** (carte dédiée + extended).
 - **États** : loading, empty (« Not analysed yet » + lien `/features`), error, offline core.
+- **Header** (à droite) : preview ▶, navigation ‹ › (si liste), fermeture × ; flèches côte à côte après le preview.
 - **Données** : `GET /api/v1/features/tracks/{track_id}` via `featuresApi.getTrackFeatures`.
 - Checkbox, preview play et tri de colonnes **n’ouvrent pas** le drawer.
 
@@ -838,8 +839,9 @@ Chaque onglet doit conserver son état local si possible : recherche, page, filt
 
 - `AdvancedCoverageCards` : couverture TF, embeddings, `real_inference_ready`, modèles manquants (résumé).
 - `ModelsStatusPanel` : profils, liste modèles manquants, téléchargement par profil (licence CC BY-NC-SA 4.0 + confirmation).
-- `AdvancedAnalysisPanel` : lancement `audio_analysis_pipeline` (limit, only_missing, profile, require_real_tensorflow).
-- `PipelineStagesPanel` + `GlobalJobBar` / `JobProgress` : compteurs par stage (`job.stages`).
+- `AdvancedAnalysisPanel` : lancement `audio_analysis_pipeline` (limit, only_missing, profile, require_real_tensorflow). `only_missing` complète les pistes partiellement analysées (low-level et/ou TF manquant).
+- `PipelineStagesPanel` + `GlobalJobBar` / `JobProgress` : compteurs par stage (`job.stages`). Reprise après reload : `jobTracker` interroge `GET /jobs` (jobs `running`/`queued`) si le stockage navigateur est vide.
+- `WorkersStatusCard` : résumé par type (`essentia_tensorflow × N`) + grille détaillée.
 - `AdvancedFailuresList` : échecs `model_missing` / failed depuis advanced coverage.
 - `JobRunSummary` : dernier job `audio_analysis_pipeline` via `GET /jobs/insights/latest`.
 

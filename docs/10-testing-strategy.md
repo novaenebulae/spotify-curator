@@ -346,6 +346,30 @@ curl -s http://127.0.0.1:8765/api/v1/workers | jq .
 
 PowerShell (Windows) : voir backlog [`phase-6.md`](../backlog/phase-6.md) §6.9c.
 
+### Validation manuelle — job intermédiaire (≈100 pistes) puis bibliothèque (~5000)
+
+Checklist après un job `audio_analysis_pipeline` de ~100 pistes (`only_missing=true`) :
+
+1. **Last Runs** : tuiles en unité **tracks** (pas jobs/items).
+2. **Barre progression** : recharger `/features` pendant un job `running` → `GlobalJobBar` réapparaît (`GET /jobs?status=running` + backup `localStorage`).
+3. **Workers TF** : pendant l’inférence MAEST, `GET /workers` conserve **4** entrées `essentia_tensorflow` (heartbeat pendant inférence).
+4. **Only missing partiel** : relancer avec `only_missing=true` n’exclut pas les pistes low-level OK mais TF manquant.
+5. **Genres** : vérifier qu’aucune masse anormale `Electronic---Experimental` / `Vaporwave` sur titres non électroniques (post-fix MonoLoader).
+
+Feu vert ~5000 pistes (un seul pipeline à la fois, profil `audio` + `advanced-analysis`) — tuning `.env` recommandé :
+
+```env
+ESSENTIA_TENSORFLOW_WORKERS=4
+AUDIO_DOWNLOAD_WORKERS=2
+ESSENTIA_LOWLEVEL_WORKERS=2
+ESSENTIA_TENSORFLOW_BATCH_SIZE=4
+ESSENTIA_TENSORFLOW_ITEM_LOCK_TIMEOUT_SECONDS=1800
+ESSENTIA_LOWLEVEL_ITEM_LOCK_TIMEOUT_SECONDS=900
+JOB_WORKER_HEARTBEAT_INTERVAL_SECONDS=10
+```
+
+Lancement : `only_missing=true`, `analysis_mode=fast`, `model_profile=phase6-recommended`, `limit` null ou explicite. ETA grossier phase TF : `(tracks_restants / workers_TF) × ~90s`.
+
 ### Diagnostic — pipeline bloqué en fin de run
 
 Si le job `audio_analysis_pipeline` reste `running` (ex. `13/20` tracks, `79/100` items) :
@@ -489,6 +513,34 @@ Phase 7+ :
 ```bash
 docker compose build essentia-tensorflow-worker
 # run small inference on test wav
+```
+
+## Tests mode Lambda (CPU host / GPU instance)
+
+Unitaires (sans GPU, mocks TensorFlow/Essentia) :
+
+```bash
+cd core
+uv run pytest tests/test_lambda_settings.py tests/test_tf_warmup.py \
+  tests/test_check_tf_gpu.py tests/test_tf_segment_metrics.py \
+  tests/test_tf_worker_parallel_reserve.py -q
+```
+
+Vérification GPU sur instance Lambda (manuel) :
+
+```bash
+make lambda-check-gpu
+# ou
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.lambda.yml \
+  --env-file .env.lambda --profile advanced-analysis run --rm -e REQUIRE_GPU=true \
+  essentia-tensorflow-worker uv run python scripts/lambda/check_tf_gpu.py
+```
+
+Benchmark pipeline (20–50 pistes, API locale ou tunnel) :
+
+```bash
+cd core
+uv run python scripts/benchmark_advanced_pipeline.py --base-url http://127.0.0.1:8000 --limit 30
 ```
 
 ## Tests de sécurité

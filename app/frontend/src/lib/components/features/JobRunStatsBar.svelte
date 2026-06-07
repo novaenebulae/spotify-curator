@@ -17,6 +17,7 @@
 		<div class="tile" class:tile-ok={tile.variant === 'ok'} class:tile-warn={tile.variant === 'warn'} class:tile-danger={tile.variant === 'danger'}>
 			<span class="tile-label">{tile.label}</span>
 			<span class="tile-value">{tile.value.toLocaleString()}</span>
+			<span class="tile-unit">tracks</span>
 		</div>
 	{/each}
 </div>
@@ -53,6 +54,12 @@
 		font-size: 1rem;
 		font-weight: 700;
 		line-height: 1.1;
+	}
+	.tile-unit {
+		font-size: 0.6rem;
+		text-transform: lowercase;
+		color: var(--color-muted);
+		line-height: 1;
 	}
 	.tile-ok .tile-value {
 		color: var(--color-success);

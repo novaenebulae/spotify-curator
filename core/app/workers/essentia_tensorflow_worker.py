@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import signal
+import threading
 import time
 
 from sqlalchemy.orm import Session
@@ -15,6 +16,8 @@ from app.audio.pipeline.constants import (
     STAGE_ESSENTIA_TENSORFLOW_EMBEDDINGS,
 )
 from app.audio.tensorflow.backend import EssentiaTensorflowBackend, TensorflowInferenceBackend
+from app.audio.tensorflow.device import configure_tensorflow_device, device_info_to_dict
+from app.audio.tensorflow.warmup import warmup_tensorflow_predictors
 from app.audio.tensorflow.classifier_runner import ClassifierRunner
 from app.audio.tensorflow.embeddings_runner import EmbeddingsRunner
 from app.audio.tensorflow.errors import MODEL_INVALID, InferenceError
@@ -79,6 +82,7 @@ class EssentiaTensorflowWorker(BaseWorker):
             status_only if status_only is not None else self._should_run_status_only()
         )
         self._models_summary: dict[str, object] = {}
+        self._boot_metrics: dict[str, object] = {}
 
     def _should_run_status_only(self) -> bool:
         if settings.essentia_tensorflow_status_only:
@@ -86,6 +90,45 @@ class EssentiaTensorflowWorker(BaseWorker):
         return not bool(self._mm.get_status()["summary"].get("real_inference_ready"))
 
     def run_forever(self) -> None:
+        device_info = configure_tensorflow_device()
+        self._boot_metrics = {
+            **device_info_to_dict(device_info),
+            "run_env": settings.run_env,
+            "app_env": settings.app_env,
+            "essentia_model_profile": settings.effective_essentia_model_profile,
+            "warmup_enabled": settings.essentia_tf_warmup,
+            "worker_id": self._worker_id,
+        }
+        logger.info(
+            "essentia-tensorflow-worker tensorflow runtime",
+            extra=self._boot_metrics,
+        )
+
+        if settings.essentia_tf_warmup and not self._status_only:
+            backend = (
+                self._backend
+                if isinstance(self._backend, EssentiaTensorflowBackend)
+                else EssentiaTensorflowBackend(model_manager=self._mm)
+            )
+            try:
+                warmup_result = warmup_tensorflow_predictors(
+                    model_manager=self._mm,
+                    backend=backend,
+                    profile=settings.effective_essentia_model_profile,
+                )
+                self._boot_metrics.update(warmup_result)
+                logger.info(
+                    "essentia-tensorflow-worker warmup complete",
+                    extra=warmup_result,
+                )
+            except InferenceError as exc:
+                logger.error(
+                    "essentia-tensorflow-worker warmup failed: %s",
+                    exc.message,
+                    extra={"error_code": exc.code, **self._boot_metrics},
+                )
+                raise SystemExit(1) from exc
+
         self._models_summary = self._mm.get_status()["summary"]
         if self._status_only:
             logger.info(
@@ -134,7 +177,7 @@ class EssentiaTensorflowWorker(BaseWorker):
                     self._items.mark_skipped(item.id, reason="Parent job cancelled")
                     continue
                 try:
-                    refresh = self._process_item_for_batch(item)
+                    refresh = self._process_pipeline_item_with_heartbeat(item)
                 except Exception as e:  # noqa: BLE001
                     logger.exception("Item %s failed: %s", item.id, e)
                     self._items.mark_failed(
@@ -168,7 +211,34 @@ class EssentiaTensorflowWorker(BaseWorker):
 
     def process_item(self, item: object) -> None:
         assert isinstance(item, ReservedJobItem)
-        self._process_item_for_batch(item)
+        self._process_pipeline_item_with_heartbeat(item)
+
+    def _process_pipeline_item_with_heartbeat(self, item: ReservedJobItem) -> bool:
+        stop = threading.Event()
+        heartbeat_meta: dict[str, object] | None = None
+        if item.stage_name:
+            heartbeat_meta = {"stage_name": item.stage_name}
+
+        def _pulse() -> None:
+            while not stop.wait(timeout=settings.job_worker_heartbeat_interval_seconds):
+                self._heartbeat_running(
+                    current_job_id=item.job_id,
+                    current_item_id=item.id,
+                    metadata=redact_dict(dict(heartbeat_meta or {})),
+                )
+
+        self._heartbeat_running(
+            current_job_id=item.job_id,
+            current_item_id=item.id,
+            metadata=redact_dict(dict(heartbeat_meta or {})),
+        )
+        pulse_thread = threading.Thread(target=_pulse, daemon=True)
+        pulse_thread.start()
+        try:
+            return self._process_item_for_batch(item)
+        finally:
+            stop.set()
+            pulse_thread.join(timeout=1.0)
 
     def _process_item_for_batch(self, item: ReservedJobItem) -> bool:
         """Process one item. Returns True if pipeline refresh is needed for the job."""
@@ -227,18 +297,6 @@ class EssentiaTensorflowWorker(BaseWorker):
             )
             return False
 
-        self._heartbeat_running(
-            current_job_id=item.job_id,
-            current_item_id=item.id,
-            metadata=redact_dict(
-                {
-                    "stage_name": job_item.stage_name,
-                    "segment_id": item.segment_id,
-                    "mode": "real" if self._backend is not None else "stub",
-                }
-            ),
-        )
-
         try:
             model_profile = model_profile_from_job_result(job.result_json)
             result = self._run_segment_inference(
@@ -259,6 +317,17 @@ class EssentiaTensorflowWorker(BaseWorker):
             return False
 
         result["pipeline_version"] = self._pipeline_version(job_item, result["inference"])
+        timing = result.get("timing_ms")
+        if isinstance(timing, dict) and timing:
+            logger.info(
+                "essentia-tensorflow segment complete",
+                extra={
+                    "worker_id": self._worker_id,
+                    "segment_id": item.segment_id,
+                    "job_id": item.job_id,
+                    **timing,
+                },
+            )
         self._items.mark_success(item.id, result_json=result, refresh_pipeline=False)
         missing = result.get("models_missing")
         if isinstance(missing, list) and missing:
@@ -327,6 +396,8 @@ class EssentiaTensorflowWorker(BaseWorker):
         meta = dict(metadata or {})
         meta.setdefault("status_only", self._status_only)
         meta.setdefault("models_summary", self._models_summary)
+        if self._boot_metrics:
+            meta.setdefault("boot_metrics", self._boot_metrics)
         self._heartbeat.register_or_update(
             worker_id=self._worker_id,
             worker_type=self.worker_type,

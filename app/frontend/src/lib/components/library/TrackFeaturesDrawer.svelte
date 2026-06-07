@@ -9,14 +9,19 @@
 	import type { AdvancedGenre } from '$lib/featuresApi';
 	import type { TrackItem } from '$lib/libraryApi';
 	import { formatDuration } from '$lib/libraryApi';
+	import TrackPreviewButton from '$lib/components/library/TrackPreviewButton.svelte';
 
 	let {
 		track,
 		open = true,
+		navigationTracks = [],
+		onNavigate,
 		onClose
 	}: {
 		track: TrackItem | null;
 		open?: boolean;
+		navigationTracks?: TrackItem[];
+		onNavigate?: (track: TrackItem) => void;
 		onClose: () => void;
 	} = $props();
 
@@ -92,15 +97,40 @@
 		} catch (e) {
 			if (ac.signal.aborted) return;
 			const msg = e instanceof Error ? e.message : String(e);
-			if (msg.includes('127.0.0.1:8765')) offline = true;
+			if (msg.toLowerCase().includes('cannot reach the core') || msg.toLowerCase().includes('impossible de joindre')) offline = true;
 			else error = msg;
 		} finally {
 			if (!ac.signal.aborted) loading = false;
 		}
 	}
 
+	const navIndex = $derived.by(() => {
+		if (!track || navigationTracks.length === 0) return -1;
+		return navigationTracks.findIndex((t) => t.track_id === track.track_id);
+	});
+
+	const canNavPrev = $derived(navIndex > 0);
+	const canNavNext = $derived(navIndex >= 0 && navIndex < navigationTracks.length - 1);
+
+	function navigateByOffset(offset: number) {
+		if (!track || navIndex < 0 || !onNavigate) return;
+		const next = navigationTracks[navIndex + offset];
+		if (next) onNavigate(next);
+	}
+
 	function onKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') onClose();
+		if (e.key === 'Escape') {
+			onClose();
+			return;
+		}
+		if (e.key === 'ArrowLeft' && canNavPrev) {
+			e.preventDefault();
+			navigateByOffset(-1);
+		}
+		if (e.key === 'ArrowRight' && canNavNext) {
+			e.preventDefault();
+			navigateByOffset(1);
+		}
 	}
 
 	$effect(() => {
@@ -126,7 +156,7 @@
 					alt={track.album?.name ?? track.title}
 					size="md"
 				/>
-				<div>
+				<div class="track-head-meta">
 					<h2>
 						{#if spotifyHref(track)}
 							<a href={spotifyHref(track)} target="_blank" rel="noopener noreferrer"
@@ -140,7 +170,30 @@
 					<p class="sub">{formatDuration(track.duration_ms)}</p>
 				</div>
 			</div>
-			<button type="button" class="close-btn" aria-label="Close" onclick={onClose}>×</button>
+			<div class="header-actions">
+				<TrackPreviewButton trackId={track.track_id} />
+				{#if navigationTracks.length > 1}
+					<button
+						type="button"
+						class="nav-btn"
+						aria-label="Previous track"
+						disabled={!canNavPrev}
+						onclick={() => navigateByOffset(-1)}
+					>
+						‹
+					</button>
+					<button
+						type="button"
+						class="nav-btn"
+						aria-label="Next track"
+						disabled={!canNavNext}
+						onclick={() => navigateByOffset(1)}
+					>
+						›
+					</button>
+				{/if}
+				<button type="button" class="close-btn" aria-label="Close" onclick={onClose}>×</button>
+			</div>
 		</header>
 
 		<div class="badges-row">
@@ -232,8 +285,8 @@
 	}
 	.drawer-header {
 		display: flex;
-		justify-content: space-between;
 		align-items: flex-start;
+		gap: var(--space-sm);
 		padding: var(--space-lg);
 		border-bottom: 1px solid var(--color-border);
 	}
@@ -241,10 +294,47 @@
 		display: flex;
 		gap: var(--space-md);
 		align-items: flex-start;
+		flex: 1;
+		min-width: 0;
+	}
+	.track-head-meta {
+		min-width: 0;
 	}
 	.track-head h2 {
 		margin: 0;
 		font-size: 1.1rem;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.header-actions {
+		display: flex;
+		align-items: center;
+		gap: var(--space-xs);
+		flex-shrink: 0;
+	}
+	.nav-btn {
+		background: var(--color-surface-elevated);
+		border: 1px solid var(--color-border);
+		color: var(--color-text);
+		font-size: 1.25rem;
+		line-height: 1;
+		width: 2rem;
+		height: 2rem;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		padding: 0;
+	}
+	.nav-btn:disabled {
+		opacity: 0.35;
+		cursor: default;
+	}
+	.nav-btn:not(:disabled):hover {
+		border-color: var(--color-accent);
+		color: var(--color-accent);
 	}
 	.sub {
 		margin: 0.15rem 0 0;

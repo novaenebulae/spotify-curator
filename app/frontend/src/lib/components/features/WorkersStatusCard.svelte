@@ -9,6 +9,14 @@
 
 	const trackerBusy = $derived($jobTracker.busy);
 
+	const workerTypeCounts = $derived.by(() => {
+		const counts = new Map<string, number>();
+		for (const w of workers) {
+			counts.set(w.worker_type, (counts.get(w.worker_type) ?? 0) + 1);
+		}
+		return [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+	});
+
 	function workerBadgeVariant(
 		status: string
 	): 'running' | 'idle' | 'warning' | 'neutral' {
@@ -61,6 +69,13 @@
 	{:else if workers.length === 0}
 		<p class="muted">No workers reported. Start Docker profile <code>audio</code> / <code>advanced-analysis</code>.</p>
 	{:else}
+		{#if workerTypeCounts.length > 0}
+			<p class="worker-summary muted">
+				{#each workerTypeCounts as [type, count], i (type)}
+					{type.replace(/_/g, ' ')} × {count}{i < workerTypeCounts.length - 1 ? ' · ' : ''}
+				{/each}
+			</p>
+		{/if}
 		<div class="worker-grid">
 			{#each workers as w (w.worker_id)}
 				<article class="worker-card">
@@ -85,6 +100,10 @@
 <style>
 	.workers-card h2 {
 		margin-top: 0;
+	}
+	.worker-summary {
+		margin: 0 0 var(--space-md);
+		font-size: 0.85rem;
 	}
 	.worker-grid {
 		display: grid;

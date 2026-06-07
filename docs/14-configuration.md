@@ -200,6 +200,43 @@ models/*
 *.zip
 ```
 
+## Mode Lambda GPU (`APP_ENV=lambda`)
+
+Fichier modèle : [`.env.lambda.example`](../.env.lambda.example) (copier vers `.env.lambda` sur l’instance).
+
+Overlays Compose :
+
+- [`docker-compose.gpu.yml`](../docker-compose.gpu.yml) — GPU NVIDIA pour `essentia-tensorflow-worker` (target `gpu`) ;
+- [`docker-compose.lambda.yml`](../docker-compose.lambda.yml) — volumes SSD/NFS, ports tunnel SSH.
+
+```bash
+make lambda-build
+make lambda-up          # 1 worker TF
+make lambda-up-tf2      # 2 workers TF
+make lambda-check-gpu
+```
+
+Variables clés :
+
+```env
+APP_ENV=lambda
+RUN_ENV=lambda
+DATABASE_URL=sqlite:////app/data/spotify_curator.sqlite
+CACHE_DIR=/app/temp-audio
+ESSENTIA_MODEL_PROFILE=phase6-recommended
+ESSENTIA_TF_DEVICE=gpu
+ESSENTIA_TF_WARMUP=true
+ESSENTIA_TENSORFLOW_WORKERS=1
+VITE_API_BASE_URL=http://localhost:8000
+```
+
+- API exposée sur l’instance : `127.0.0.1:8000` → conteneur `core-api:8765` ;
+- UI dev : service `frontend-dev` (profil `lambda-ui`) sur `127.0.0.1:5173` ;
+- SQLite actif sur SSD local (`/home/ubuntu/spotify-curator-runtime/data`), pas sur NFS ;
+- `ESSENTIA_TF_BATCH_SIZE=1` par défaut (micro-batching inference non implémenté).
+
+Détail opérationnel : [`20-lambda-gpu-cloud-analysis.md`](20-lambda-gpu-cloud-analysis.md).
+
 ## Variables sensibles
 
 Aucune variable sensible ne doit être commitée. `SPOTIFY_CLIENT_ID` n’est pas aussi critique qu’un secret, mais il doit rester dans `.env` local si l’utilisateur le souhaite.

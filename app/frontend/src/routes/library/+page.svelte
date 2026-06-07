@@ -107,7 +107,9 @@
 		} catch (e) {
 			if (fetchAc.signal.aborted) return;
 			const msg = e instanceof Error ? e.message : String(e);
-			offline = msg.includes('127.0.0.1:8765');
+			offline =
+				msg.toLowerCase().includes('cannot reach the core') ||
+				msg.toLowerCase().includes('impossible de joindre');
 			error = msg;
 			if (!hadItems) items = [];
 		} finally {
@@ -532,6 +534,8 @@
 <TrackFeaturesDrawer
 	track={inspectTrack}
 	open={inspectTrack !== null}
+	navigationTracks={items}
+	onNavigate={(t) => (inspectTrack = t)}
 	onClose={closeFeaturesDrawer}
 />
 

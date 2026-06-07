@@ -1,9 +1,32 @@
 import { get, writable } from 'svelte/store';
 
 import { pollJobUntilDone } from '$lib/jobPoller';
-import { cancelJob, fetchJob, fetchLatestJobsByType, type Job } from '$lib/spotifyApi';
+import {
+	cancelJob,
+	fetchJob,
+	fetchLatestJobsByType,
+	fetchRunningJobs,
+	type Job
+} from '$lib/spotifyApi';
 
 const STORAGE_KEY = 'spotify_curator_active_job';
+const LOCAL_STORAGE_KEY = 'spotify_curator_active_job_backup';
+
+const TRACKED_RUNNING_JOB_TYPES = [
+	'audio_analysis_pipeline',
+	'reccobeats_enrichment',
+	'audio_download',
+	'essentia_lowlevel_analysis',
+	'preview_resolve'
+] as const;
+
+const RUNNING_JOB_LABELS: Record<string, string> = {
+	audio_analysis_pipeline: 'Advanced audio pipeline',
+	reccobeats_enrichment: 'ReccoBeats enrichment',
+	audio_download: 'Audio download',
+	essentia_lowlevel_analysis: 'Essentia low-level analysis',
+	preview_resolve: 'Preview resolve'
+};
 
 type StoredJob = {
 	jobId: string;
@@ -41,14 +64,40 @@ function patch(partial: Partial<JobTrackerState>): void {
 }
 
 function persistActive(jobId: string, label: string): void {
-	if (typeof sessionStorage === 'undefined') return;
 	const payload: StoredJob = { jobId, label };
-	sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+	const raw = JSON.stringify(payload);
+	if (typeof sessionStorage !== 'undefined') {
+		sessionStorage.setItem(STORAGE_KEY, raw);
+	}
+	if (typeof localStorage !== 'undefined') {
+		localStorage.setItem(LOCAL_STORAGE_KEY, raw);
+	}
+}
+
+function readPersisted(): StoredJob | null {
+	const sources: Storage[] = [];
+	if (typeof sessionStorage !== 'undefined') sources.push(sessionStorage);
+	if (typeof localStorage !== 'undefined') sources.push(localStorage);
+	for (const storage of sources) {
+		const raw = storage.getItem(STORAGE_KEY) ?? storage.getItem(LOCAL_STORAGE_KEY);
+		if (!raw) continue;
+		try {
+			return JSON.parse(raw) as StoredJob;
+		} catch {
+			storage.removeItem(STORAGE_KEY);
+			storage.removeItem(LOCAL_STORAGE_KEY);
+		}
+	}
+	return null;
 }
 
 function clearPersisted(): void {
-	if (typeof sessionStorage === 'undefined') return;
-	sessionStorage.removeItem(STORAGE_KEY);
+	if (typeof sessionStorage !== 'undefined') {
+		sessionStorage.removeItem(STORAGE_KEY);
+	}
+	if (typeof localStorage !== 'undefined') {
+		localStorage.removeItem(LOCAL_STORAGE_KEY);
+	}
 }
 
 const TERMINAL = new Set([
@@ -178,21 +227,30 @@ export async function hydrateLastJobsFromApi(): Promise<void> {
 	}
 }
 
+/** Resume an active job from API when browser storage is empty (e.g. after reload). */
+export async function hydrateActiveJobFromApi(): Promise<void> {
+	if (pollingJobId || get(jobTracker).busy) return;
+	try {
+		const jobs = await fetchRunningJobs({ limit: 50 });
+		const candidates = jobs
+			.filter((job) => TRACKED_RUNNING_JOB_TYPES.includes(job.job_type as (typeof TRACKED_RUNNING_JOB_TYPES)[number]))
+			.sort((a, b) => {
+				const ta = a.created_at ? Date.parse(a.created_at) : 0;
+				const tb = b.created_at ? Date.parse(b.created_at) : 0;
+				return tb - ta;
+			});
+		const active = candidates[0];
+		if (!active || pollingJobId === active.id) return;
+		void trackJob(active.id, RUNNING_JOB_LABELS[active.job_type] ?? 'Background job');
+	} catch {
+		/* offline or API unavailable */
+	}
+}
+
 /** Resume polling after navigation or full page reload. */
 export async function resumeTrackedJobIfAny(): Promise<void> {
-	if (typeof sessionStorage === 'undefined') return;
-	const raw = sessionStorage.getItem(STORAGE_KEY);
-	if (!raw) return;
-
-	let stored: StoredJob;
-	try {
-		stored = JSON.parse(raw) as StoredJob;
-	} catch {
-		clearPersisted();
-		return;
-	}
-
-	if (!stored.jobId || pollingJobId === stored.jobId) return;
+	const stored = readPersisted();
+	if (!stored?.jobId || pollingJobId === stored.jobId) return;
 
 	try {
 		const job = await fetchJob(stored.jobId);

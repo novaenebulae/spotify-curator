@@ -21,6 +21,7 @@ class SegmentTensorflowResult:
     classifier_outputs: dict[str, dict[str, Any]]
     models_missing: list[str]
     inference_mode: str
+    timing_ms: dict[str, float | int] | None = None
 
 
 class SegmentTensorflowRunner:
@@ -53,6 +54,9 @@ class SegmentTensorflowRunner:
         backend: TensorflowInferenceBackend = (
             self._backend or EssentiaTensorflowBackend(model_manager=self._mm)
         )
+        timing_ms: dict[str, float | int] | None = None
+        if isinstance(backend, EssentiaTensorflowBackend):
+            backend.begin_segment_timing()
         emb_runner = self._embeddings or EmbeddingsRunner(
             model_manager=self._mm, backend=backend
         )
@@ -103,6 +107,9 @@ class SegmentTensorflowRunner:
 
         inference = _resolve_inference_mode(emb.inference_mode, genre_mode, clf.inference_mode)
 
+        if isinstance(backend, EssentiaTensorflowBackend):
+            timing_ms = backend.consume_segment_timing()
+
         return SegmentTensorflowResult(
             segment_id=segment_id,
             embedding_outputs=emb.embedding_outputs,
@@ -110,6 +117,7 @@ class SegmentTensorflowRunner:
             classifier_outputs=clf.classifier_outputs,
             models_missing=models_missing,
             inference_mode=inference,
+            timing_ms=timing_ms,
         )
 
     @staticmethod
@@ -132,6 +140,7 @@ class SegmentTensorflowRunner:
             "genre_outputs": result.genre_outputs,
             "classifier_outputs": result.classifier_outputs,
             "models_missing": result.models_missing,
+            "timing_ms": result.timing_ms,
         }
 
 

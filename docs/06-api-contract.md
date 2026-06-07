@@ -916,7 +916,8 @@ Règles :
 
 - si `require_real_tensorflow=true` et modèles absents → erreur `MODEL_MISSING` avant téléchargement audio ;
 - si `require_real_tensorflow=false` et modèles absents → stages TensorFlow `skipped`/`model_missing`, low-level peut continuer ;
-- jamais de stub en production.
+- jamais de stub en production ;
+- `only_missing=true` (défaut) : **exclut** une piste uniquement lorsque **toutes** les parties demandées (`include_lowlevel`, `include_tensorflow`) sont déjà satisfaites — une piste avec low-level OK mais TensorFlow manquant (ou l’inverse) **reste éligible** ; ce n’est pas la même sémantique que `POST /audio/download` (segments / low-level seul).
 
 ### `GET /features/advanced/coverage`
 

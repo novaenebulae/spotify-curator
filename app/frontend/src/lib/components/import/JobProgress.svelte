@@ -127,7 +127,7 @@
 					<span class="muted">({job.job_type})</span>
 				{/if}
 			</p>
-			{#if job.current_step}
+			{#if job.current_step && !(useTracks || (!isPipeline && job.progress_total > 0))}
 				<p class="step">{job.current_step}</p>
 			{/if}
 			{#if elapsedText}

@@ -1,15 +1,19 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import { page } from '$app/stores';
 	import favicon from '$lib/assets/favicon.svg';
 	import GlobalJobBar from '$lib/components/common/GlobalJobBar.svelte';
-	import { resumeTrackedJobIfAny } from '$lib/jobTracker';
+	import { hydrateActiveJobFromApi, jobTracker, resumeTrackedJobIfAny } from '$lib/jobTracker';
 	import '../app.css';
 
 	let { children } = $props();
 
-	onMount(() => {
-		void resumeTrackedJobIfAny();
+	onMount(async () => {
+		await resumeTrackedJobIfAny();
+		if (!get(jobTracker).busy) {
+			await hydrateActiveJobFromApi();
+		}
 	});
 </script>
 

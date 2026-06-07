@@ -92,7 +92,11 @@
 			coverage = cov;
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e);
-			if (msg.includes('127.0.0.1:8765')) offline = true;
+			if (
+				msg.toLowerCase().includes('cannot reach the core') ||
+				msg.toLowerCase().includes('impossible de joindre')
+			)
+				offline = true;
 			else errorMessage = msg;
 		} finally {
 			loading = false;
@@ -176,6 +180,10 @@
 	function inspectFailure(f: RecentFailure): void {
 		inspectTrack = failureToTrackItem(f);
 	}
+
+	const failureNavigationTracks = $derived(
+		(coverage?.failures?.items ?? []).map(failureToTrackItem)
+	);
 
 	onDestroy(() => controller.abort());
 </script>
@@ -263,6 +271,8 @@
 <TrackFeaturesDrawer
 	track={inspectTrack}
 	open={inspectTrack !== null}
+	navigationTracks={failureNavigationTracks}
+	onNavigate={(t) => (inspectTrack = t)}
 	onClose={() => (inspectTrack = null)}
 />
 

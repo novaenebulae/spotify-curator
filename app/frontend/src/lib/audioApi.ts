@@ -1,14 +1,12 @@
 import { ApiClientError, parseApiErrorBody } from '$lib/apiErrors';
-
-const BASE_URL = 'http://127.0.0.1:8765';
+import { API_ORIGIN, coreOfflineMessage } from '$lib/apiBase';
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 	let res: Response;
 	try {
-		res = await fetch(`${BASE_URL}${path}`, init);
+		res = await fetch(`${API_ORIGIN}${path}`, init);
 	} catch (e) {
-		const hint =
-			'Cannot reach the core at http://127.0.0.1:8765. Make sure Docker is running (`docker compose up`).';
+		const hint = coreOfflineMessage();
 		if (e instanceof TypeError) throw new Error(hint);
 		throw e;
 	}

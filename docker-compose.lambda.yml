@@ -1,0 +1,69 @@
+# Lambda Labs runtime overlay — SSD local + NFS persistent storage.
+# Binds API/frontend to 127.0.0.1 for SSH tunnel access from the local PC.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml \
+#     -f docker-compose.lambda.yml --env-file .env.lambda \
+#     --profile audio --profile advanced-analysis --profile lambda-ui up -d
+
+services:
+  core-api:
+    env_file:
+      - .env.lambda
+    volumes:
+      - /home/ubuntu/spotify-curator-runtime/data:/app/data
+      - /home/ubuntu/spotify-curator-runtime/logs:/app/logs
+      - /home/ubuntu/spotify-curator-runtime/temp-audio:/app/temp-audio
+      - /lambda/nfs/persistent-storage/spotify-curator/models:/app/models
+      - ./profiles:/app/profiles:ro
+    ports:
+      - "127.0.0.1:8000:8765"
+
+  frontend-dev:
+    profiles: ["lambda-ui"]
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    env_file:
+      - .env.lambda
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      - core-api
+
+  audio-downloader:
+    env_file:
+      - .env.lambda
+    volumes:
+      - /home/ubuntu/spotify-curator-runtime/data:/app/data
+      - /home/ubuntu/spotify-curator-runtime/logs:/app/logs
+      - /home/ubuntu/spotify-curator-runtime/temp-audio:/app/temp-audio
+      - ./profiles:/app/profiles:ro
+
+  preview-resolver-worker:
+    env_file:
+      - .env.lambda
+    volumes:
+      - /home/ubuntu/spotify-curator-runtime/data:/app/data
+      - /home/ubuntu/spotify-curator-runtime/logs:/app/logs
+
+  essentia-lowlevel-worker:
+    env_file:
+      - .env.lambda
+    volumes:
+      - /home/ubuntu/spotify-curator-runtime/data:/app/data
+      - /home/ubuntu/spotify-curator-runtime/logs:/app/logs
+      - /home/ubuntu/spotify-curator-runtime/temp-audio:/app/temp-audio
+      - ./profiles:/app/profiles:ro
+
+  essentia-tensorflow-worker:
+    env_file:
+      - .env.lambda
+    volumes:
+      - /home/ubuntu/spotify-curator-runtime/data:/app/data
+      - /home/ubuntu/spotify-curator-runtime/logs:/app/logs
+      - /home/ubuntu/spotify-curator-runtime/temp-audio:/app/temp-audio
+      - /lambda/nfs/persistent-storage/spotify-curator/models:/app/models
+      - ./profiles:/app/profiles:ro

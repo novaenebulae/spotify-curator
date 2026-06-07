@@ -213,6 +213,9 @@
 </div>
 
 <style>
+	.library-table-wrap.table-sticky-wrap {
+		max-height: min(82vh, 920px);
+	}
 	.library-table {
 		table-layout: fixed;
 		width: 100%;

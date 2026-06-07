@@ -1,7 +1,7 @@
-const BASE_URL = 'http://127.0.0.1:8765';
+import { API_ORIGIN } from '$lib/apiBase';
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-	const res = await fetch(`${BASE_URL}${path}`, init);
+	const res = await fetch(`${API_ORIGIN}${path}`, init);
 	if (!res.ok) {
 		throw new Error(`API error ${res.status}`);
 	}
@@ -21,7 +21,7 @@ export type TrackPreview = {
 
 /** Same-origin URL for HTMLAudioElement (never use Deezer CDN URLs in the browser). */
 export function previewStreamUrl(trackId: number): string {
-	return `${BASE_URL}/api/v1/tracks/${trackId}/preview/stream`;
+	return `${API_ORIGIN}/api/v1/tracks/${trackId}/preview/stream`;
 }
 
 export type PreviewCoverage = {

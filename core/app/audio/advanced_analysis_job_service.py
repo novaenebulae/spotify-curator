@@ -91,18 +91,31 @@ class AdvancedAnalysisJobService:
 
         engine = get_engine()
         with Session(engine) as session:
-            ids = self._selection.resolve_for_download(
+            ids = self._selection.resolve_for_advanced_pipeline(
                 session,
                 track_ids=track_ids,
                 filter_dict=filter_dict,
                 only_missing=effective_only_missing,
                 retry_failed=retry_failed,
+                force_refresh=force_refresh,
                 limit=limit,
+                include_lowlevel=include_lowlevel,
+                include_tensorflow=include_tensorflow,
+                model_profile=model_profile,
             )
             if not ids:
+                if effective_only_missing:
+                    message = (
+                        "No tracks matched the selection criteria. All selected tracks already "
+                        "have complete analysis for the requested stages "
+                        f"(low-level={'yes' if include_lowlevel else 'no'}, "
+                        f"tensorflow={'yes' if include_tensorflow else 'no'})."
+                    )
+                else:
+                    message = "No tracks matched the selection criteria."
                 raise ApiError(
                     code="NO_TRACKS",
-                    message="No tracks matched the selection criteria.",
+                    message=message,
                     status_code=400,
                 )
 

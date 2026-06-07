@@ -1,4 +1,6 @@
-from pydantic import Field
+from __future__ import annotations
+
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -107,6 +109,11 @@ class Settings(BaseSettings):
 
     # Runtime environment marker (controls stub guard, see phase 6.8B)
     app_env: str = "development"
+    run_env: str = "local"
+
+    # Lambda / cloud paths (optional overrides)
+    sqlite_path: str | None = None
+    temp_audio_dir: str | None = None
 
     # Essentia TensorFlow real inference (phase 6.8B)
     essentia_tf_real_inference_enabled: bool = True
@@ -114,6 +121,11 @@ class Settings(BaseSettings):
     essentia_tf_require_models_for_advanced: bool = False
     essentia_tf_fail_on_stub_in_production: bool = True
     essentia_tf_pipeline_version: str = "phase6_tf_unified_v1"
+    essentia_model_profile: str | None = None
+    essentia_tf_warmup: bool = False
+    essentia_tf_device: str = "auto"
+    essentia_tf_batch_size: int = 1
+    essentia_tf_batch_timeout_ms: int = 1000
 
     # Essentia TensorFlow model management (phase 6.8A)
     essentia_models_dir: str = "/app/models/essentia"
@@ -127,6 +139,30 @@ class Settings(BaseSettings):
 
     audio_enrich_default_limit: int = 5000
     audio_enrich_max_limit: int = 10000
+
+    preview_resolver_workers: int = 2
+
+    @model_validator(mode="after")
+    def _apply_path_aliases(self) -> Settings:
+        if self.sqlite_path:
+            path = self.sqlite_path.replace("\\", "/")
+            if not path.startswith("/"):
+                path = f"/{path}"
+            object.__setattr__(self, "database_url", f"sqlite:///{path}")
+        if self.temp_audio_dir:
+            object.__setattr__(self, "cache_dir", self.temp_audio_dir)
+        return self
+
+    @property
+    def effective_essentia_model_profile(self) -> str:
+        return self.essentia_model_profile or self.essentia_models_default_profile
+
+    @property
+    def effective_essentia_tf_batch_size(self) -> int:
+        """Inference micro-batch alias; falls back to pipeline refresh batch size."""
+        if self.essentia_tf_batch_size > 1:
+            return self.essentia_tf_batch_size
+        return self.essentia_tensorflow_batch_size
 
 
 settings = Settings()

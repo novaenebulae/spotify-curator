@@ -1,4 +1,4 @@
-const BASE_URL = 'http://127.0.0.1:8765/api/v1';
+import { API_V1 } from '$lib/apiBase';
 
 export type AuthStatus = {
 	connected: boolean;
@@ -121,7 +121,7 @@ function parseApiError(body: unknown, fallback: string): string {
 }
 
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-	const res = await fetch(`${BASE_URL}${path}`, {
+	const res = await fetch(`${API_V1}${path}`, {
 		...init,
 		headers: {
 			'Content-Type': 'application/json',
@@ -186,6 +186,30 @@ export function fetchJob(jobId: string, signal?: AbortSignal): Promise<Job> {
 export type LatestJobsInsights = {
 	jobs: Record<string, Job | null>;
 };
+
+export type RunningJobSummary = {
+	id: string;
+	job_type: string;
+	status: string;
+	progress_current: number;
+	progress_total: number;
+	current_step: string | null;
+	created_at: string | null;
+};
+
+export function fetchRunningJobs(
+	params?: { job_type?: string; limit?: number },
+	signal?: AbortSignal
+): Promise<RunningJobSummary[]> {
+	const sp = new URLSearchParams();
+	if (params?.job_type) sp.set('job_type', params.job_type);
+	if (params?.limit != null) sp.set('limit', String(params.limit));
+	const qs = sp.toString();
+	return apiFetch<{ jobs: RunningJobSummary[] }>(`/jobs${qs ? `?${qs}` : ''}`, { signal }).then(
+		(data) =>
+			data.jobs.filter((job) => job.status === 'running' || job.status === 'queued')
+	);
+}
 
 export function fetchLatestJobsByType(signal?: AbortSignal): Promise<LatestJobsInsights> {
 	return apiFetch<{ jobs: Record<string, JobApiResponse | null> }>('/jobs/insights/latest', {

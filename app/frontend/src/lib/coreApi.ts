@@ -1,3 +1,5 @@
+import { API_ORIGIN, coreOfflineMessage } from '$lib/apiBase';
+
 export type HealthResponse = {
 	status: string;
 	service?: string;
@@ -38,8 +40,6 @@ export type DiagnosticsResponse = {
 	recent_docker_checks?: DockerCheckItem[];
 };
 
-const BASE_URL = 'http://127.0.0.1:8765';
-
 function parseApiError(body: unknown, fallback: string): string {
 	if (body && typeof body === 'object') {
 		const record = body as Record<string, unknown>;
@@ -56,10 +56,9 @@ function parseApiError(body: unknown, fallback: string): string {
 async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 	let res: Response;
 	try {
-		res = await fetch(`${BASE_URL}${path}`, init);
+		res = await fetch(`${API_ORIGIN}${path}`, init);
 	} catch (e) {
-		const hint =
-			'Impossible de joindre le core sur http://127.0.0.1:8765. Vérifiez que Docker est démarré (`docker compose up`).';
+		const hint = coreOfflineMessage();
 		if (e instanceof TypeError) {
 			throw new Error(hint);
 		}
