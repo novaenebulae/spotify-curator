@@ -204,15 +204,19 @@ models/*
 
 Fichier modèle : [`.env.lambda.example`](../.env.lambda.example) (copier vers `.env.lambda` sur l’instance).
 
+**Pas besoin de `.env` local sur l’instance.** [`docker-compose.lambda.yml`](../docker-compose.lambda.yml) remplace `env_file: .env` par `env_file: !override [.env.lambda]`. Le Makefile passe aussi `--env-file .env.lambda` pour l’interpolation du bloc `x-app-env` dans [`docker-compose.yml`](../docker-compose.yml) — même mécanisme que `--env-file .env` en local.
+
 Overlays Compose :
 
 - [`docker-compose.gpu.yml`](../docker-compose.gpu.yml) — GPU NVIDIA pour `essentia-tensorflow-worker` (target `gpu`) ;
 - [`docker-compose.lambda.yml`](../docker-compose.lambda.yml) — volumes SSD/NFS, ports tunnel SSH.
 
 ```bash
+make lambda-init-empty-db   # base vierge sur SSD Lambda
 make lambda-build
-make lambda-up          # 1 worker TF
-make lambda-up-tf2      # 2 workers TF
+make lambda-up-a100         # alias: make lambda-up (1 worker TF)
+make lambda-up-a100-tf2     # alias: make lambda-up-tf2
+make lambda-up-a10
 make lambda-check-gpu
 ```
 
@@ -223,17 +227,24 @@ APP_ENV=lambda
 RUN_ENV=lambda
 DATABASE_URL=sqlite:////app/data/spotify_curator.sqlite
 CACHE_DIR=/app/temp-audio
+SPOTIFY_REDIRECT_URI=http://127.0.0.1:8000/api/v1/spotify/auth/callback
 ESSENTIA_MODEL_PROFILE=phase6-recommended
 ESSENTIA_TF_DEVICE=gpu
 ESSENTIA_TF_WARMUP=true
 ESSENTIA_TENSORFLOW_WORKERS=1
-VITE_API_BASE_URL=http://localhost:8000
+ESSENTIA_LOWLEVEL_WORKERS=1
+AUDIO_DOWNLOAD_WORKERS=2
+PREVIEW_RESOLVER_WORKERS=1
+AUDIO_DOWNLOAD_CONCURRENCY=2
+VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
+- Utiliser **`127.0.0.1`** (pas `localhost`) pour OAuth Spotify et le frontend tunnel ;
 - API exposée sur l’instance : `127.0.0.1:8000` → conteneur `core-api:8765` ;
 - UI dev : service `frontend-dev` (profil `lambda-ui`) sur `127.0.0.1:5173` ;
 - SQLite actif sur SSD local (`/home/ubuntu/spotify-curator-runtime/data`), pas sur NFS ;
 - `ESSENTIA_TF_BATCH_SIZE=1` par défaut (micro-batching inference non implémenté).
+- Variables pipeline non listées dans `.env.lambda.example` (Deezer, yt-dlp, ReccoBeats, jobs…) : valeurs par défaut de `x-app-env` ; surcharger dans `.env.lambda` si besoin.
 
 Détail opérationnel : [`20-lambda-gpu-cloud-analysis.md`](20-lambda-gpu-cloud-analysis.md).
 

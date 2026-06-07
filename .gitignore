@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+!.env.lambda.example
 
 data/*
 !data/.gitkeep

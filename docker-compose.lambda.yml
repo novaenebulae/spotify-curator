@@ -5,10 +5,13 @@
 #   docker compose -f docker-compose.yml -f docker-compose.gpu.yml \
 #     -f docker-compose.lambda.yml --env-file .env.lambda \
 #     --profile audio --profile advanced-analysis --profile lambda-ui up -d
+#
+# env_file uses !override so the base docker-compose.yml `.env` is NOT required on the
+# instance. Variables are still expanded into each service via x-app-env + --env-file.
 
 services:
   core-api:
-    env_file:
+    env_file: !override
       - .env.lambda
     volumes:
       - /home/ubuntu/spotify-curator-runtime/data:/app/data
@@ -27,14 +30,14 @@ services:
     env_file:
       - .env.lambda
     environment:
-      VITE_API_BASE_URL: http://localhost:8000
+      VITE_API_BASE_URL: http://127.0.0.1:8000
     ports:
       - "127.0.0.1:5173:5173"
     depends_on:
       - core-api
 
   audio-downloader:
-    env_file:
+    env_file: !override
       - .env.lambda
     volumes:
       - /home/ubuntu/spotify-curator-runtime/data:/app/data
@@ -43,14 +46,14 @@ services:
       - ./profiles:/app/profiles:ro
 
   preview-resolver-worker:
-    env_file:
+    env_file: !override
       - .env.lambda
     volumes:
       - /home/ubuntu/spotify-curator-runtime/data:/app/data
       - /home/ubuntu/spotify-curator-runtime/logs:/app/logs
 
   essentia-lowlevel-worker:
-    env_file:
+    env_file: !override
       - .env.lambda
     volumes:
       - /home/ubuntu/spotify-curator-runtime/data:/app/data
@@ -59,7 +62,7 @@ services:
       - ./profiles:/app/profiles:ro
 
   essentia-tensorflow-worker:
-    env_file:
+    env_file: !override
       - .env.lambda
     volumes:
       - /home/ubuntu/spotify-curator-runtime/data:/app/data

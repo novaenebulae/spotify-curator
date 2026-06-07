@@ -2,769 +2,348 @@
 
 ## 1. Objectif
 
-Ce document décrit la mise en place d’une instance GPU Lambda Labs pour exécuter la pipeline d’analyse audio avancée du projet Spotify Curator.
+Ce document décrit le workflow recommandé pour exécuter l’analyse audio avancée du projet Spotify Curator sur une instance GPU Lambda Labs, avec une base SQLite **créée directement sur Lambda**.
 
-L’objectif est d’accélérer le stage le plus lent :
-
-```text
-essentia_tensorflow
-
-```
-
-Le workflow cible est :
+Le but est :
 
 ```text
-PC local
-  ↓ export SQLite
-Lambda Labs A6000 GPU VM
-  ↓ Docker Compose GPU
-UI locale via tunnel SSH
-  ↓ lancement analyse depuis l’interface
-SQLite analysée
-  ↓ récupération locale
-PC local
-
+1. Créer une VM GPU Lambda.
+2. Cloner le projet.
+3. Créer une base SQLite vierge sur le SSD local Lambda.
+4. Se reconnecter à Spotify via l’UI, avec tunnel SSH.
+5. Importer la bibliothèque Spotify dans la base Lambda.
+6. Télécharger les modèles Essentia depuis l’UI du projet.
+7. Lancer l’analyse audio avancée.
+8. Exporter uniquement la base SQLite finale.
+9. Récupérer cette base sur le PC local.
 ```
 
-Le but n’est pas de remplacer le fonctionnement local du projet. Le mode Lambda est un mode d’exécution ponctuel pour analyser rapidement une bibliothèque complète.
+Le workflow n’impose donc plus d’envoyer une base SQLite locale vers Lambda. L’ancien chemin [`restore-input.sh`](../scripts/lambda/restore-input.sh) devient uniquement un mode de restauration/import optionnel (voir §16).
 
-**Fichiers implémentés** : [`.env.lambda.example`](../.env.lambda.example), [`docker-compose.gpu.yml`](../docker-compose.gpu.yml), [`docker-compose.lambda.yml`](../docker-compose.lambda.yml), [`Makefile`](../Makefile), [`scripts/lambda/`](../scripts/lambda/), [`docker/frontend/Dockerfile`](../docker/frontend/Dockerfile).
+**Fichiers implémentés** : [`.env.lambda.example`](../.env.lambda.example), [`docker-compose.gpu.yml`](../docker-compose.gpu.yml), [`docker-compose.lambda.yml`](../docker-compose.lambda.yml), [`Makefile`](../Makefile), [`scripts/lambda/`](../scripts/lambda/) (dont [`init-empty-db.sh`](../scripts/lambda/init-empty-db.sh)), [`docker/frontend/Dockerfile`](../docker/frontend/Dockerfile).
 
-**Services Compose** : `core-api` (API `127.0.0.1:8000` → `:8765`), `frontend-dev` (profil `lambda-ui`, port `5173`), workers audio/TF.
+**Cibles Makefile** :
 
-**Santé API** : `GET /api/v1/health`. **SQLite active** : `spotify_curator.sqlite` sur SSD local.
+| Cible | Rôle |
+|-------|------|
+| `make lambda-init-empty-db` | Base SQLite vierge + migrations |
+| `make lambda-build` | Build images (TF target `gpu`) |
+| `make lambda-up` / `lambda-up-a100` | Stack stable (1 worker TF) |
+| `make lambda-up-a100-tf2` / `lambda-up-tf2` | 2 workers TF (après benchmark) |
+| `make lambda-up-a10` | Même scale que A100 stable |
+| `make lambda-check-gpu` | Vérif TensorFlow + GPU |
+| `make lambda-export` | Export final vers NFS |
 
 ---
 
-## 2. Pourquoi Lambda Labs pour ce projet
+## 2. Choix GPU : A100 vs A10
 
-Lambda Labs est plus simple que RunPod pour ce projet car Lambda fournit une vraie VM Linux GPU. Cela permet de conserver l’architecture Docker Compose existante.
+Aucune A6000 n’étant disponible, les deux options pertinentes sont A100 et A10.
 
-Comparaison rapide :
+### Recommandation directe
 
 ```text
-RunPod
-- Pod/conteneur managé
-- nécessite idéalement une image Docker unique multi-processus
-- plus économique
-- plus d’adaptation projet
-
-Lambda Labs
-- VM Linux GPU classique
-- Docker + NVIDIA Container Toolkit disponibles
-- Docker Compose utilisable
-- SSH classique
-- tunnel SSH simple pour UI/API
-- plus simple pour ce projet
-
+Choix recommandé : A100
+Fallback : A10 si A100 indisponible ou trop cher
 ```
 
-Pour Spotify Curator, Lambda est donc recommandé si l’objectif est de lancer rapidement la pipeline sans refactoriser le déploiement.
+### Pourquoi A100 est préférable
 
----
+L’A100 est un GPU datacenter conçu pour les charges TensorFlow/IA. Il dispose de beaucoup plus de bande passante mémoire et de Tensor Cores plus adaptés. Selon NVIDIA, l’A100 40/80 GB utilise de la mémoire HBM2/HBM2e avec une bande passante pouvant atteindre environ 1,5 à 2,0 TB/s selon le modèle. L’A10 dispose de 24 GB GDDR6 et d’environ 600 GB/s de bande passante mémoire.
 
-## 3. Architecture Lambda cible
-
-Sur Lambda, on utilise une instance GPU A6000 avec Docker Compose.
+Pour le projet Spotify Curator, cela signifie :
 
 ```text
-Lambda A6000 VM
-├── Docker
-├── NVIDIA Container Toolkit
-├── docker compose
-├── projet spotify-curator
-├── docker-compose.yml
-├── docker-compose.gpu.yml
-├── docker-compose.lambda.yml
-├── active runtime local SSD
-│   └── /home/ubuntu/spotify-curator-runtime
-│       ├── data/app.sqlite
-│       ├── temp-audio/
-│       └── logs/
-└── filesystem persistant Lambda
-    └── /lambda/nfs/persistent-storage/spotify-curator
-        ├── backups/
-        ├── models/
-        ├── exports/
-        └── final-output/
+A100 :
+- meilleur choix pour essentia_tensorflow ;
+- plus stable avec plusieurs modèles TensorFlow ;
+- meilleure marge VRAM ;
+- meilleure chance de supporter 2 workers TF ;
+- potentiellement 3 workers sur A100 80 GB, après benchmark.
 
+A10 :
+- probablement plus rapide que ton CPU local ;
+- moins cher si disponible ;
+- VRAM limitée à 24 GB ;
+- 1 worker TF recommandé ;
+- 2 workers seulement si benchmark validé et VRAM suffisante.
 ```
 
-### Décision importante : SQLite actif sur SSD local
+### Estimation réaliste
 
-Il est préférable de faire travailler SQLite sur le disque SSD local de l’instance plutôt que directement sur le filesystem réseau Lambda.
+Les gains exacts dépendent du conteneur TensorFlow GPU, du nombre de segments, du profil modèle et du temps CPU autour de l’inférence.
 
-Raison :
+Estimation prudente :
 
 ```text
-SQLite + beaucoup d’écritures + plusieurs workers
-→ meilleur comportement sur disque local
+A10 :
+- nettement plus rapide que CPU local ;
+- probablement moins bon qu’A100 ;
+- recommandé si le budget est prioritaire.
 
+A100 :
+- meilleur débit TensorFlow ;
+- meilleur choix si tu veux minimiser le temps total ;
+- probablement meilleur rapport temps/simplicité si le prix reste acceptable.
 ```
 
-Le filesystem Lambda reste utilisé pour :
+Règle économique simple :
 
 ```text
-- sauvegarder la base avant analyse ;
-- stocker une copie finale analysée ;
-- conserver les modèles Essentia ;
-- conserver les logs importants ;
-- éviter de perdre les résultats si l’instance est supprimée après sauvegarde.
-
-```
-
-Le workflow recommandé est donc :
-
-```text
-1. Copier app.sqlite vers le SSD local de l’instance.
-2. Lancer l’analyse sur cette copie locale.
-3. Faire des checkpoints SQLite réguliers.
-4. Copier la base finale vers le filesystem persistant.
-5. Récupérer la base finale sur le PC local.
-
+Si l’A100 coûte moins de 2x à 2,5x le prix de l’A10, choisir A100.
+Si l’A100 coûte beaucoup plus cher ou n’est disponible qu’en grosse configuration multi-GPU, choisir A10.
 ```
 
 ---
 
-## 4. Configuration Lambda recommandée
+## 3. Workers recommandés selon GPU
 
-### Instance recommandée
+Le goulot étant `essentia_tensorflow`, il ne sert pas à surdimensionner le téléchargement. Il faut surtout garder le GPU alimenté sans saturer SQLite, CPU ou réseau.
 
-```text
-Instance : 1x NVIDIA A6000
-VRAM : 48 GB
-vCPU : 14
-RAM : 100 GiB
-SSD local : 512 GiB
-
-```
-
-Cette configuration est suffisante pour :
-
-```text
-- une base SQLite locale ;
-- les modèles Essentia ;
-- les segments audio temporaires ;
-- les workers Docker ;
-- le frontend ;
-- l’API ;
-- un ou deux workers TensorFlow GPU.
-
-```
-
-### Choix GPU
-
-Priorité :
-
-```text
-1. A6000 48 GB
-2. A100 40 GB si A6000 indisponible, mais plus cher
-3. A10 24 GB uniquement si A6000 indisponible
-
-```
-
-A6000 est le meilleur choix pour ce projet car :
-
-```text
-- 48 GB VRAM ;
-- coût raisonnable ;
-- bonne stabilité ;
-- assez de VRAM pour tester 2 workers TensorFlow ;
-- beaucoup plus simple qu’une plateforme marketplace.
-
-```
-
----
-
-## 5. Configuration workers recommandée
-
-Le stage limitant est `essentia_tensorflow`.
-
-L’A6000 n’est pas magique : lancer trop de workers TensorFlow sur un seul GPU peut réduire les performances à cause de :
-
-```text
-- duplication des graphes TensorFlow ;
-- duplication des modèles Essentia ;
-- duplication des caches ;
-- contention GPU ;
-- contention CPU lors du decode audio ;
-- saturation I/O ;
-- overhead de scheduling.
-
-```
-
-### Configuration initiale recommandée
+### A100 — configuration stable
 
 ```env
-ESSENTIA_TF_WORKERS=1
-ESSENTIA_LOWLEVEL_WORKERS=2
-AUDIO_DOWNLOADER_WORKERS=4
-PREVIEW_RESOLVER_WORKERS=2
-JOB_POLL_INTERVAL_MS=500
-ESSENTIA_MODEL_PROFILE=phase6-recommended
-ESSENTIA_TF_WARMUP=true
-ESSENTIA_TF_DEVICE=gpu
+ESSENTIA_TENSORFLOW_WORKERS=1
+ESSENTIA_LOWLEVEL_WORKERS=1
+AUDIO_DOWNLOAD_WORKERS=2
+PREVIEW_RESOLVER_WORKERS=1
+AUDIO_DOWNLOAD_CONCURRENCY=2
 
-```
-
-C’est le profil de départ le plus sûr.
-
-### Configuration optimisée à tester
-
-Après validation GPU sur 20 à 50 pistes :
-
-```env
-ESSENTIA_TF_WORKERS=2
-ESSENTIA_LOWLEVEL_WORKERS=2
-AUDIO_DOWNLOADER_WORKERS=4
-PREVIEW_RESOLVER_WORKERS=2
-JOB_POLL_INTERVAL_MS=300
-ESSENTIA_MODEL_PROFILE=phase6-recommended
-ESSENTIA_TF_WARMUP=true
-ESSENTIA_TF_DEVICE=gpu
-
-```
-
-C’est probablement le meilleur compromis sur une seule A6000.
-
-### Configuration maximale non recommandée par défaut
-
-```env
-ESSENTIA_TF_WORKERS=3
-
-```
-
-À utiliser uniquement si toutes les conditions suivantes sont vraies :
-
-```text
-- VRAM utilisée < 32 GB avec 2 workers ;
-- GPU utilization souvent < 60 % ;
-- CPU non saturé ;
-- aucun OOM TensorFlow ;
-- les temps moyens diminuent réellement avec 3 workers.
-
-```
-
-### Configuration à éviter
-
-```env
-ESSENTIA_TF_WORKERS=4
-
-```
-
-Sur une seule A6000, 4 workers TensorFlow risquent de réduire la performance globale. Chaque worker charge ses propres graphes TensorFlow, ses predictors Essentia et ses caches. Le GPU sera partagé entre trop de processus.
-
-### Règle pratique
-
-```text
-1 worker TF GPU : recommandé pour stabilité
-2 workers TF GPU : recommandé après benchmark
-3 workers TF GPU : expérimental
-4 workers TF GPU : déconseillé
-
-```
-
----
-
-## 6. Batch size recommandé
-
-Le projet actuel fonctionne principalement par segments/tracks. Si le worker TensorFlow traite un segment à la fois, le paramètre `batch_size` n’aura pas d’effet global tant qu’une vraie file de micro-batch n’est pas implémentée.
-
-### Si le batching inter-segments n’est pas implémenté
-
-Utiliser :
-
-```env
 ESSENTIA_TF_BATCH_SIZE=1
-
-```
-
-Puis compenser avec :
-
-```env
-ESSENTIA_TF_WORKERS=1
-
-```
-
-ou après benchmark :
-
-```env
-ESSENTIA_TF_WORKERS=2
-
-```
-
-### Si Cursor implémente un micro-batching TensorFlow
-
-Valeurs recommandées :
-
-```env
-ESSENTIA_TF_BATCH_SIZE=8
-ESSENTIA_TF_BATCH_TIMEOUT_MS=1000
-
-```
-
-Valeurs à tester :
-
-```env
-ESSENTIA_TF_BATCH_SIZE=4
-ESSENTIA_TF_BATCH_SIZE=8
-ESSENTIA_TF_BATCH_SIZE=16
-
-```
-
-Recommandation :
-
-```text
-batch_size=4  : très sûr
-batch_size=8  : point de départ conseillé
-batch_size=16 : possible sur A6000, à valider
-batch_size=32 : probablement inutile ou instable pour cette pipeline
-
-```
-
-La priorité est d’éviter que le GPU attende trop longtemps pour former un batch. Pour une pipeline à jobs audio, un batch timeout court est préférable :
-
-```env
-ESSENTIA_TF_BATCH_TIMEOUT_MS=500
-
-```
-
-ou :
-
-```env
-ESSENTIA_TF_BATCH_TIMEOUT_MS=1000
-
-```
-
-### Recommandation finale batch
-
-Pour Lambda A6000 :
-
-```env
-ESSENTIA_TF_BATCH_SIZE=8
-ESSENTIA_TF_BATCH_TIMEOUT_MS=1000
-
-```
-
-Seulement si le micro-batching est implémenté.
-
-Sinon :
-
-```env
-ESSENTIA_TF_BATCH_SIZE=1
-ESSENTIA_TF_WORKERS=1 ou 2
-
-```
-
----
-
-## 7. Variables TensorFlow recommandées
-
-Ajouter dans l’environnement du worker TensorFlow GPU :
-
-```env
-ESSENTIA_TF_DEVICE=gpu
 ESSENTIA_TF_WARMUP=true
-ESSENTIA_MODEL_PROFILE=phase6-recommended
-
 TF_FORCE_GPU_ALLOW_GROWTH=true
-TF_CPP_MIN_LOG_LEVEL=1
-NVIDIA_VISIBLE_DEVICES=all
-NVIDIA_DRIVER_CAPABILITIES=compute,utility
-
-```
-
-Pour limiter l’oversubscription CPU :
-
-### Avec 1 worker TensorFlow
-
-```env
 TF_NUM_INTRAOP_THREADS=4
 TF_NUM_INTEROP_THREADS=2
 OMP_NUM_THREADS=4
-
 ```
 
-### Avec 2 workers TensorFlow
+### A100 — configuration optimisée à tester
 
 ```env
+ESSENTIA_TENSORFLOW_WORKERS=2
+ESSENTIA_LOWLEVEL_WORKERS=1
+AUDIO_DOWNLOAD_WORKERS=2
+PREVIEW_RESOLVER_WORKERS=1
+AUDIO_DOWNLOAD_CONCURRENCY=2
+
+ESSENTIA_TF_BATCH_SIZE=1
+ESSENTIA_TF_WARMUP=true
+TF_FORCE_GPU_ALLOW_GROWTH=true
 TF_NUM_INTRAOP_THREADS=2
 TF_NUM_INTEROP_THREADS=1
 OMP_NUM_THREADS=2
-
 ```
 
-L’objectif est de garder du CPU disponible pour :
+### A100 80 GB — configuration expérimentale
+
+```env
+ESSENTIA_TENSORFLOW_WORKERS=3
+ESSENTIA_LOWLEVEL_WORKERS=1
+AUDIO_DOWNLOAD_WORKERS=2
+PREVIEW_RESOLVER_WORKERS=1
+AUDIO_DOWNLOAD_CONCURRENCY=2
+
+TF_NUM_INTRAOP_THREADS=2
+TF_NUM_INTEROP_THREADS=1
+OMP_NUM_THREADS=2
+```
+
+À utiliser uniquement si :
 
 ```text
-- API ;
-- frontend ;
-- job scheduler ;
-- low-level worker ;
-- audio decode ;
-- SQLite ;
-- ffmpeg ;
-- workers downloader.
+- 2 workers TF utilisent nettement moins que la VRAM disponible ;
+- GPU utilization reste faible ;
+- CPU non saturé ;
+- SQLite ne montre pas de contention ;
+- les benchmarks montrent un meilleur débit global.
+```
 
+### A10 — configuration recommandée
+
+```env
+ESSENTIA_TENSORFLOW_WORKERS=1
+ESSENTIA_LOWLEVEL_WORKERS=1
+AUDIO_DOWNLOAD_WORKERS=2
+PREVIEW_RESOLVER_WORKERS=1
+AUDIO_DOWNLOAD_CONCURRENCY=2
+
+ESSENTIA_TF_BATCH_SIZE=1
+ESSENTIA_TF_WARMUP=true
+TF_FORCE_GPU_ALLOW_GROWTH=true
+TF_NUM_INTRAOP_THREADS=4
+TF_NUM_INTEROP_THREADS=2
+OMP_NUM_THREADS=4
+```
+
+### A10 — 2 workers, expérimental
+
+```env
+ESSENTIA_TENSORFLOW_WORKERS=2
+TF_NUM_INTRAOP_THREADS=2
+TF_NUM_INTEROP_THREADS=1
+OMP_NUM_THREADS=2
+```
+
+À tester uniquement sur 20–50 pistes. Sur A10, 2 workers peuvent être moins rapides qu’un seul si les deux processus TensorFlow saturent les 24 GB VRAM ou se disputent le GPU.
+
+### Règle finale
+
+```text
+A100 40 GB : 1 worker stable, 2 workers recommandé après benchmark, 3 déconseillé.
+A100 80 GB : 1 worker stable, 2 workers recommandé, 3 expérimental.
+A10 24 GB  : 1 worker recommandé, 2 expérimental, 3+ déconseillé.
 ```
 
 ---
 
-## 8. Préparer la base SQLite localement
+## 4. Pourquoi réduire `AUDIO_DOWNLOAD_WORKERS`
 
-Depuis le PC local, arrêter le projet :
+La version précédente proposait :
 
-```bash
-docker compose down
-
+```env
+AUDIO_DOWNLOAD_WORKERS=4
+AUDIO_DOWNLOAD_CONCURRENCY=4
 ```
 
-Faire un checkpoint WAL :
+Ce n’est pas dangereux en soi, mais ce n’est probablement pas utile si le téléchargement est rapide et que le vrai goulot est TensorFlow.
 
-```bash
-sqlite3 data/app.sqlite "PRAGMA wal_checkpoint(FULL);"
-
-```
-
-Vérifier l’intégrité :
-
-```bash
-sqlite3 data/app.sqlite "PRAGMA integrity_check;"
-
-```
-
-Résultat attendu :
+Risques d’un téléchargement trop agressif :
 
 ```text
-ok
-
+- plus de fichiers temporaires ;
+- plus de pression I/O ;
+- plus de risques de rate limiting ou échecs yt-dlp ;
+- plus de locks jobs en parallèle ;
+- aucun gain si la file TensorFlow est déjà remplie.
 ```
 
-Créer une sauvegarde locale :
+Nouvelle recommandation :
 
-```bash
-mkdir -p backups
-cp data/app.sqlite backups/app.before-lambda.sqlite
-
+```env
+AUDIO_DOWNLOAD_WORKERS=2
+AUDIO_DOWNLOAD_CONCURRENCY=2
 ```
 
-Créer une archive d’export :
+Monter à 4 seulement si :
 
-```bash
-mkdir -p export-lambda/data
-cp data/app.sqlite export-lambda/data/app.sqlite
-tar -czf spotify-curator-lambda-input.tar.gz export-lambda
-
-```
-
-Si les modèles Essentia sont déjà présents localement :
-
-```bash
-mkdir -p export-lambda/models
-cp -r models/* export-lambda/models/
-tar -czf spotify-curator-lambda-input.tar.gz export-lambda
-
-```
-
-Sur PowerShell :
-
-```powershell
-New-Item -ItemType Directory -Force backups
-Copy-Item data/app.sqlite backups/app.before-lambda.sqlite
-
-New-Item -ItemType Directory -Force export-lambda/data
-Copy-Item data/app.sqlite export-lambda/data/app.sqlite
-
-tar -czf spotify-curator-lambda-input.tar.gz export-lambda
-
+```text
+- la file `essentia_tensorflow` se vide régulièrement ;
+- le GPU attend les segments ;
+- `nvidia-smi` montre beaucoup de périodes à 0 % ;
+- les logs indiquent que les workers TF n’ont pas de travail.
 ```
 
 ---
 
-## 9. Créer le compte Lambda Labs
+## 5. Base SQLite vierge sur Lambda
 
-Étapes :
+Le nouveau workflow ne transfère plus de base SQLite depuis le PC local.
 
-```text
-1. Créer un compte Lambda Cloud.
-2. Ajouter un moyen de paiement.
-3. Ajouter une clé SSH.
-4. Créer un filesystem persistant.
-5. Lancer une instance A6000 en attachant le filesystem.
-
-```
-
----
-
-## 10. Générer une clé SSH locale
-
-Sur le PC local :
-
-```bash
-ssh-keygen -t ed25519 -C "lambda-spotify-curator"
-
-```
-
-Chemin recommandé :
+La base active doit être créée sur le SSD local Lambda :
 
 ```text
-~/.ssh/lambda_spotify_curator
-
+/home/ubuntu/spotify-curator-runtime/data/spotify_curator.sqlite
 ```
 
-Afficher la clé publique :
-
-```bash
-cat ~/.ssh/lambda_spotify_curator.pub
-
-```
-
-Sur PowerShell :
-
-```powershell
-Get-Content $env:USERPROFILE\.ssh\lambda_spotify_curator.pub
-
-```
-
-Ajouter la clé publique dans Lambda Cloud :
+Les backups et l’export final sont stockés sur le filesystem persistant :
 
 ```text
-Lambda Cloud → SSH Keys → Add SSH Key
-
+/lambda/nfs/persistent-storage/spotify-curator/backups
+/lambda/nfs/persistent-storage/spotify-curator/final-output
 ```
 
----
-
-## 11. Créer le filesystem persistant Lambda
-
-Dans Lambda Cloud :
-
-```text
-Storage → Create filesystem
-
-```
-
-Configuration recommandée :
-
-```text
-Name   : persistent-storage
-Region : même région que l’instance GPU
-
-```
-
-Le filesystem sera monté sur l’instance sous :
-
-```text
-/lambda/nfs/persistent-storage
-
-```
-
-Créer ensuite l’arborescence projet :
-
-```bash
-mkdir -p /lambda/nfs/persistent-storage/spotify-curator
-mkdir -p /lambda/nfs/persistent-storage/spotify-curator/backups
-mkdir -p /lambda/nfs/persistent-storage/spotify-curator/models
-mkdir -p /lambda/nfs/persistent-storage/spotify-curator/exports
-mkdir -p /lambda/nfs/persistent-storage/spotify-curator/final-output
-
-```
-
----
-
-## 12. Lancer l’instance Lambda
-
-Dans Lambda Cloud :
-
-```text
-Instances → Launch instance
-
-```
-
-Configuration recommandée :
-
-```text
-Instance type : 1x NVIDIA A6000
-Image         : Lambda Stack ou GPU Base Ubuntu
-SSH key       : lambda_spotify_curator
-Filesystem    : persistent-storage
-Region        : même région que le filesystem
-
-```
-
-Après création, récupérer l’adresse IP publique de l’instance.
-
----
-
-## 13. Connexion SSH
-
-Depuis le PC local :
-
-```bash
-ssh -i ~/.ssh/lambda_spotify_curator ubuntu@<LAMBDA_INSTANCE_IP>
-
-```
-
-PowerShell :
-
-```powershell
-ssh -i $env:USERPROFILE\.ssh\lambda_spotify_curator ubuntu@<LAMBDA_INSTANCE_IP>
-
-```
-
-Vérifier le GPU :
-
-```bash
-nvidia-smi
-
-```
-
-Vérifier Docker :
-
-```bash
-docker --version
-
-```
-
-Vérifier Docker Compose :
-
-```bash
-docker compose version
-
-```
-
-Si Docker Compose manque :
-
-```bash
-sudo apt-get update
-sudo apt-get install -y docker-compose-plugin
-
-```
-
-Ajouter l’utilisateur au groupe Docker si nécessaire :
-
-```bash
-sudo adduser "$(id -un)" docker
-exec bash
-
-```
-
-Tester l’accès GPU Docker :
-
-```bash
-docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
-
-```
-
----
-
-## 14. Cloner le projet
-
-Sur l’instance Lambda :
-
-```bash
-cd /lambda/nfs/persistent-storage
-git clone <REPO_GIT> spotify-curator
-cd spotify-curator
-
-```
-
-Si le repository est privé, configurer SSH GitHub ou utiliser un token.
-
----
-
-## 15. Transférer la base SQLite vers Lambda
-
-Depuis le PC local :
-
-```bash
-scp -i ~/.ssh/lambda_spotify_curator \
-  spotify-curator-lambda-input.tar.gz \
-  ubuntu@<LAMBDA_INSTANCE_IP>:/lambda/nfs/persistent-storage/spotify-curator/
-
-```
-
-PowerShell :
-
-```powershell
-scp -i $env:USERPROFILE\.ssh\lambda_spotify_curator `
-  spotify-curator-lambda-input.tar.gz `
-  ubuntu@<LAMBDA_INSTANCE_IP>:/lambda/nfs/persistent-storage/spotify-curator/
-
-```
-
-Sur l’instance :
+### Préparation runtime
 
 ```bash
 cd /lambda/nfs/persistent-storage/spotify-curator
-tar -xzf spotify-curator-lambda-input.tar.gz
-
+bash scripts/lambda/prepare-runtime.sh
 ```
 
-Créer le runtime local SSD :
+Le script `prepare-runtime.sh` crée les dossiers runtime sur SSD et les dossiers persistants NFS.
 
-```bash
-mkdir -p /home/ubuntu/spotify-curator-runtime/data
-mkdir -p /home/ubuntu/spotify-curator-runtime/logs
-mkdir -p /home/ubuntu/spotify-curator-runtime/temp-audio
+### Création d’une base vierge
 
-```
+Script : [`scripts/lambda/init-empty-db.sh`](../scripts/lambda/init-empty-db.sh)
 
-Copier SQLite vers le runtime local :
-
-```bash
-cp export-lambda/data/app.sqlite /home/ubuntu/spotify-curator-runtime/data/app.sqlite
-
-```
-
-Vérifier :
-
-```bash
-sqlite3 /home/ubuntu/spotify-curator-runtime/data/app.sqlite "PRAGMA integrity_check;"
-
-```
-
-Résultat attendu :
+Comportement :
 
 ```text
-ok
+1. Vérifier que /home/ubuntu/spotify-curator-runtime/data existe.
+2. Si une base existe déjà :
+   - refuser par défaut ;
+   - ou sauvegarder si --backup-existing est passé ;
+   - ou supprimer uniquement si --force est passé.
+3. Créer une base vide via les migrations du core.
+4. Exécuter PRAGMA integrity_check.
+5. Afficher le chemin de la base créée.
+```
 
+Commande cible :
+
+```bash
+bash scripts/lambda/init-empty-db.sh
+# options: --force  --backup-existing
+```
+
+Ou via Makefile :
+
+```bash
+make lambda-init-empty-db
+```
+
+Les migrations utilisent le même chemin que `core-api` au démarrage (`init_db()` → Alembic `upgrade head`), via :
+
+```bash
+docker compose … run --rm --no-deps core-api uv run python -c "from app.database.init_db import init_db; init_db()"
 ```
 
 ---
 
-## 16. Configurer `.env.lambda`
+## 6. Configuration `.env.lambda`
 
-Créer un fichier :
-
-```bash
-nano .env.lambda
-
-```
-
-Contenu recommandé :
+Exemple recommandé A100 stable :
 
 ```env
 APP_ENV=lambda
 RUN_ENV=lambda
 
 DATA_DIR=/app/data
-SQLITE_PATH=/app/data/app.sqlite
+SQLITE_PATH=/app/data/spotify_curator.sqlite
+DATABASE_URL=sqlite:////app/data/spotify_curator.sqlite
+SQLITE_JOURNAL_MODE=WAL
+CACHE_DIR=/app/temp-audio
 MODELS_DIR=/app/models
-LOG_DIR=/app/logs
-TEMP_AUDIO_DIR=/app/temp-audio
+LOGS_DIR=/app/logs
+EXPORT_DIR=/app/exports
+
+SPOTIFY_CLIENT_ID=
+SPOTIFY_REDIRECT_URI=http://127.0.0.1:8000/api/v1/spotify/auth/callback
+SPOTIFY_SCOPES=user-read-private user-library-read playlist-read-private playlist-read-collaborative
+SPOTIFY_AUTH_STORAGE=sqlite
 
 ESSENTIA_MODEL_PROFILE=phase6-recommended
+ESSENTIA_MODELS_DEFAULT_PROFILE=phase6-recommended
+ESSENTIA_MODELS_DIR=/app/models/essentia
+ESSENTIA_MODELS_MANIFEST=/app/core/app/models_registry/essentia_models_manifest.yaml
+ESSENTIA_MODELS_VERIFY_HASH=true
+ESSENTIA_MODELS_ACCEPT_LICENSE=false
+
 ESSENTIA_TF_DEVICE=gpu
 ESSENTIA_TF_WARMUP=true
-
-ESSENTIA_TF_WORKERS=1
-ESSENTIA_LOWLEVEL_WORKERS=2
-AUDIO_DOWNLOADER_WORKERS=4
-PREVIEW_RESOLVER_WORKERS=2
-
 ESSENTIA_TF_BATCH_SIZE=1
-ESSENTIA_TF_BATCH_TIMEOUT_MS=1000
+ESSENTIA_TENSORFLOW_BATCH_SIZE=1
+ESSENTIA_TF_REAL_INFERENCE_ENABLED=true
+ESSENTIA_TF_ALLOW_STUBS_IN_TESTS=false
+ESSENTIA_TF_FAIL_ON_STUB_IN_PRODUCTION=true
+
+ESSENTIA_TENSORFLOW_WORKERS=1
+ESSENTIA_LOWLEVEL_WORKERS=1
+AUDIO_DOWNLOAD_WORKERS=2
+PREVIEW_RESOLVER_WORKERS=1
+
+AUDIO_DOWNLOAD_CONCURRENCY=2
+AUDIO_DOWNLOAD_MAX_RETRIES=3
+AUDIO_DOWNLOAD_BATCH_SIZE=20
 
 TF_FORCE_GPU_ALLOW_GROWTH=true
 TF_CPP_MIN_LOG_LEVEL=1
@@ -775,565 +354,343 @@ OMP_NUM_THREADS=4
 NVIDIA_VISIBLE_DEVICES=all
 NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
-VITE_API_BASE_URL=http://localhost:8000
-
+VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
-Pour benchmark 2 workers TensorFlow :
-
-```env
-ESSENTIA_TF_WORKERS=2
-TF_NUM_INTRAOP_THREADS=2
-TF_NUM_INTEROP_THREADS=1
-OMP_NUM_THREADS=2
-
-```
-
----
-
-## 17. Créer `docker-compose.gpu.yml`
-
-Créer le fichier :
-
-```bash
-nano docker-compose.gpu.yml
-
-```
-
-Contenu type :
-
-```yaml
-services:
-  essentia-tensorflow-worker:
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-      ESSENTIA_TF_DEVICE: gpu
-      ESSENTIA_TF_WARMUP: "true"
-      TF_FORCE_GPU_ALLOW_GROWTH: "true"
-
-```
-
-Si Docker Compose ne duplique pas les workers via variable, utiliser une seconde définition ou `--scale` au lancement :
-
-```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.gpu.yml \
-  -f docker-compose.lambda.yml \
-  --env-file .env.lambda \
-  --profile audio \
-  --profile advanced-analysis \
-  up -d --scale essentia-tensorflow-worker=2
-
-```
-
-Attention : commencer par `--scale essentia-tensorflow-worker=1`.
-
----
-
-## 18. Créer `docker-compose.lambda.yml`
-
-Ce fichier adapte les volumes et les ports pour Lambda.
-
-```yaml
-services:
-  core-api:
-    env_file:
-      - .env.lambda
-    volumes:
-      - /home/ubuntu/spotify-curator-runtime/data:/app/data
-      - /home/ubuntu/spotify-curator-runtime/logs:/app/logs
-      - /home/ubuntu/spotify-curator-runtime/temp-audio:/app/temp-audio
-      - /lambda/nfs/persistent-storage/spotify-curator/models:/app/models
-    ports:
-      - "127.0.0.1:8000:8765"
-
-  frontend-dev:
-    profiles: ["lambda-ui"]
-    env_file:
-      - .env.lambda
-    ports:
-      - "127.0.0.1:5173:5173"
-    environment:
-      VITE_API_BASE_URL: http://localhost:8000
-
-  audio-downloader:
-    env_file:
-      - .env.lambda
-    volumes:
-      - /home/ubuntu/spotify-curator-runtime/data:/app/data
-      - /home/ubuntu/spotify-curator-runtime/logs:/app/logs
-      - /home/ubuntu/spotify-curator-runtime/temp-audio:/app/temp-audio
-
-  preview-resolver-worker:
-    env_file:
-      - .env.lambda
-    volumes:
-      - /home/ubuntu/spotify-curator-runtime/data:/app/data
-      - /home/ubuntu/spotify-curator-runtime/logs:/app/logs
-
-  essentia-lowlevel-worker:
-    env_file:
-      - .env.lambda
-    volumes:
-      - /home/ubuntu/spotify-curator-runtime/data:/app/data
-      - /home/ubuntu/spotify-curator-runtime/logs:/app/logs
-      - /home/ubuntu/spotify-curator-runtime/temp-audio:/app/temp-audio
-
-  essentia-tensorflow-worker:
-    env_file:
-      - .env.lambda
-    volumes:
-      - /home/ubuntu/spotify-curator-runtime/data:/app/data
-      - /home/ubuntu/spotify-curator-runtime/logs:/app/logs
-      - /home/ubuntu/spotify-curator-runtime/temp-audio:/app/temp-audio
-      - /lambda/nfs/persistent-storage/spotify-curator/models:/app/models
-
-```
-
-Adapter les noms de services aux noms réels du projet.
-
----
-
-## 19. Build des images Docker
-
-Depuis l’instance Lambda :
-
-```bash
-cd /lambda/nfs/persistent-storage/spotify-curator
-
-```
-
-Build :
-
-```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.gpu.yml \
-  -f docker-compose.lambda.yml \
-  --env-file .env.lambda \
-  --profile audio \
-  --profile advanced-analysis \
-  build
-
-```
-
----
-
-## 20. Vérifier TensorFlow GPU dans le conteneur
-
-Commande :
-
-```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.gpu.yml \
-  -f docker-compose.lambda.yml \
-  --env-file .env.lambda \
-  --profile audio \
-  --profile advanced-analysis \
-  run --rm essentia-tensorflow-worker \
-  python - <<'PY'
-import tensorflow as tf
-print("TensorFlow:", tf.__version__)
-print("GPUs:", tf.config.list_physical_devices("GPU"))
-PY
-
-```
-
-Résultat attendu :
+Important :
 
 ```text
-GPUs: [PhysicalDevice(name='/physical_device:GPU:0', device_type='GPU')]
-
-```
-
-Si le résultat est :
-
-```text
-GPUs: []
-
-```
-
-ne pas lancer l’analyse complète. Corriger l’image Docker GPU.
-
----
-
-## 21. Lancer l’application
-
-Démarrage avec 1 worker TensorFlow :
-
-```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.gpu.yml \
-  -f docker-compose.lambda.yml \
-  --env-file .env.lambda \
-  --profile audio \
-  --profile advanced-analysis \
-  --profile lambda-ui \
-  up -d --scale essentia-tensorflow-worker=1
-
-```
-
-Vérifier :
-
-```bash
-docker compose ps
-
-```
-
-Logs du worker TensorFlow :
-
-```bash
-docker compose logs -f essentia-tensorflow-worker
-
-```
-
-Tester l’API :
-
-```bash
-curl http://localhost:8000/api/v1/health
-
-```
-
-Tester le frontend :
-
-```bash
-curl http://localhost:5173
-
+Utiliser 127.0.0.1, pas localhost, pour Spotify OAuth.
 ```
 
 ---
 
-## 22. Créer le tunnel SSH UI/API
+## 7. Spotify OAuth via tunnel SSH
 
-Depuis le PC local, ouvrir un terminal et le laisser ouvert :
+Le tunnel SSH permet de faire fonctionner OAuth comme si l’API tournait localement, alors que la callback est traitée sur Lambda.
+
+### Tunnel à ouvrir depuis le PC local
 
 ```bash
 ssh -i ~/.ssh/lambda_spotify_curator \
-  -L 5173:localhost:5173 \
-  -L 8000:localhost:8000 \
+  -L 5173:127.0.0.1:5173 \
+  -L 8000:127.0.0.1:8000 \
   ubuntu@<LAMBDA_INSTANCE_IP>
-
 ```
 
 PowerShell :
 
 ```powershell
 ssh -i $env:USERPROFILE\.ssh\lambda_spotify_curator `
-  -L 5173:localhost:5173 `
-  -L 8000:localhost:8000 `
+  -L 5173:127.0.0.1:5173 `
+  -L 8000:127.0.0.1:8000 `
   ubuntu@<LAMBDA_INSTANCE_IP>
-
 ```
 
-Ensuite, ouvrir sur le PC local :
+Ensuite, ouvrir :
 
 ```text
-http://localhost:5173
-
+http://127.0.0.1:5173
 ```
 
-L’UI appelle l’API via :
+L’UI appelle :
 
 ```text
-http://localhost:8000
-
+http://127.0.0.1:8000
 ```
 
-Ces deux ports sont redirigés vers l’instance Lambda via SSH.
+### Redirect URI Spotify à configurer
+
+Dans Spotify Developer Dashboard, ajouter exactement :
+
+```text
+http://127.0.0.1:8000/api/v1/spotify/auth/callback
+```
+
+Ne pas utiliser :
+
+```text
+http://localhost:8000/...
+```
+
+Spotify exige que le `redirect_uri` corresponde exactement à celui déclaré dans le dashboard, et les URI loopback doivent utiliser une IP explicite comme `127.0.0.1`.
+
+### Ce qui se passe techniquement
+
+```text
+1. Tu ouvres l’UI via http://127.0.0.1:5173.
+2. Tu cliques sur Connect Spotify.
+3. L’UI demande à l’API distante Lambda de générer l’URL OAuth.
+4. Spotify ouvre la page d’autorisation dans ton navigateur local.
+5. Après validation, Spotify redirige vers :
+   http://127.0.0.1:8000/api/v1/spotify/auth/callback
+6. Le tunnel SSH transfère cette requête vers l’API Lambda.
+7. L’API Lambda échange le code OAuth contre des tokens.
+8. Les tokens sont stockés dans la SQLite Lambda.
+```
+
+Résultat : tu es reconnecté à Spotify directement dans la base Lambda.
 
 ---
 
-## 23. Lancer un benchmark court
+## 8. Téléchargement des modèles Essentia sur Lambda
 
-Avant d’analyser toute la bibliothèque, lancer un job de test sur 20 à 50 pistes.
+Les modèles ne sont plus transférés depuis le PC.
 
-Configuration :
+Ils doivent être téléchargés depuis l’UI du projet, sur la VM Lambda.
+
+Chemin persistant :
 
 ```text
-profile : phase6-recommended
-only_missing : true
-tensorflow : enabled
-limit : 20 à 50 pistes si l’UI/API le permet
-
+/lambda/nfs/persistent-storage/spotify-curator/models
 ```
 
-Surveiller GPU :
+Montage conteneur :
 
-```bash
-watch -n 1 nvidia-smi
-
+```text
+/app/models
 ```
 
-Surveiller logs :
+Workflow :
 
-```bash
-docker compose logs -f essentia-tensorflow-worker
-
+```text
+1. Ouvrir l’UI via tunnel SSH.
+2. Aller dans la page Features / Models / Advanced analysis.
+3. Accepter explicitement la licence si l’UI le demande.
+4. Télécharger le profil phase6-recommended.
+5. Vérifier le statut des modèles dans l’UI.
+6. Lancer un smoke test ou benchmark.
 ```
 
-Surveiller progression SQLite :
+Recommandation :
 
-```bash
-sqlite3 /home/ubuntu/spotify-curator-runtime/data/app.sqlite "
-SELECT stage_name, status, COUNT(*)
-FROM job_items
-GROUP BY stage_name, status
-ORDER BY stage_name, status;
-"
-
+```text
+Commencer par phase6-recommended.
+Éviter phase6-full pour le premier run complet.
 ```
-
-Mesurer les durées si les colonnes existent :
-
-```bash
-sqlite3 /home/ubuntu/spotify-curator-runtime/data/app.sqlite "
-SELECT stage_name,
-       AVG(duration_ms) / 1000.0 AS avg_seconds,
-       COUNT(*) AS n
-FROM job_events
-WHERE duration_ms IS NOT NULL
-GROUP BY stage_name
-ORDER BY avg_seconds DESC;
-"
-
-```
-
-Adapter les noms de colonnes au schéma réel.
 
 ---
 
-## 24. Tester 2 workers TensorFlow
+## 9. Démarrage complet Lambda
 
-Après validation avec 1 worker :
+### Sur l’instance Lambda
 
 ```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.gpu.yml \
-  -f docker-compose.lambda.yml \
-  --env-file .env.lambda \
-  --profile audio \
-  --profile advanced-analysis \
-  up -d --scale essentia-tensorflow-worker=2
+cd /lambda/nfs/persistent-storage
+git clone <REPO_GIT> spotify-curator
+cd spotify-curator
 
+cp .env.lambda.example .env.lambda
+nano .env.lambda
 ```
 
-Avant de relancer, modifier `.env.lambda` :
+Modifier au minimum :
 
 ```env
-ESSENTIA_TF_WORKERS=2
-TF_NUM_INTRAOP_THREADS=2
-TF_NUM_INTEROP_THREADS=1
-OMP_NUM_THREADS=2
-
+SPOTIFY_CLIENT_ID=<ton_client_id_spotify>
+SPOTIFY_REDIRECT_URI=http://127.0.0.1:8000/api/v1/spotify/auth/callback
+VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
-Puis benchmark sur 20 à 50 pistes.
+Préparer runtime et créer base :
+
+```bash
+bash scripts/lambda/prepare-runtime.sh
+bash scripts/lambda/init-empty-db.sh
+```
+
+Build :
+
+```bash
+make lambda-build
+```
+
+Vérification GPU :
+
+```bash
+make lambda-check-gpu
+```
+
+Démarrage A100 :
+
+```bash
+make lambda-up-a100
+# alias: make lambda-up
+```
+
+Démarrage A10 (même scale stable) :
+
+```bash
+make lambda-up-a10
+```
+
+Après benchmark A100 (2 workers TF) :
+
+```bash
+make lambda-up-a100-tf2
+# alias: make lambda-up-tf2
+```
+
+Vérification services :
+
+```bash
+bash scripts/lambda/check-services.sh
+```
+
+---
+
+## 10. Tunnel UI/API
+
+Depuis le PC local :
+
+```bash
+ssh -i ~/.ssh/lambda_spotify_curator \
+  -L 5173:127.0.0.1:5173 \
+  -L 8000:127.0.0.1:8000 \
+  ubuntu@<LAMBDA_INSTANCE_IP>
+```
+
+Ouvrir :
+
+```text
+http://127.0.0.1:5173
+```
+
+Puis :
+
+```text
+1. Connecter Spotify.
+2. Importer liked tracks/playlists.
+3. Télécharger modèles Essentia.
+4. Lancer benchmark.
+5. Lancer analyse complète.
+```
+
+---
+
+## 11. Benchmark recommandé
+
+### A100
+
+1 worker :
+
+```bash
+make lambda-down
+make lambda-up
+bash scripts/lambda/benchmark-pipeline.sh 30
+```
+
+2 workers :
+
+```bash
+make lambda-down
+make lambda-up-tf2
+bash scripts/lambda/benchmark-pipeline.sh 30
+```
 
 Comparer :
 
 ```text
-1 worker :
-- temps moyen par segment
-- GPU utilization
-- VRAM
-- erreurs
-
-2 workers :
-- temps moyen par segment
-- GPU utilization
-- VRAM
-- erreurs
-
+- temps total ;
+- segments/min ;
+- durée moyenne essentia_tensorflow ;
+- p95 essentia_tensorflow ;
+- utilisation GPU ;
+- VRAM ;
+- failures.
 ```
 
-Garder 2 workers seulement si :
+### A10
 
-```text
-- throughput global meilleur ;
-- pas d’OOM ;
-- pas de saturation CPU ;
-- pas de hausse importante des failures.
+Tester d’abord uniquement :
 
+```bash
+make lambda-up
+bash scripts/lambda/benchmark-pipeline.sh 30
 ```
+
+Tester 2 workers seulement si le GPU est sous-utilisé et la VRAM reste confortable.
 
 ---
 
-## 25. Lancer l’analyse complète
+## 12. Analyse complète
 
 Depuis l’UI :
 
 ```text
-Features → Audio analysis → Advanced
-
+Features → Run complete local analysis
 ```
 
-Paramètres recommandés :
+Configuration recommandée :
 
 ```text
 profile : phase6-recommended
 only_missing : true
-tensorflow : enabled
-mode : recommended ou fast
-
+include_tensorflow : true
 ```
 
-Éviter `phase6-full` sur toute la bibliothèque au premier passage.
+Ne pas utiliser `phase6-full` au premier passage.
 
 ---
 
-## 26. Suivi de l’analyse complète
+## 13. Suivi
 
-Commandes utiles :
-
-### GPU
+GPU :
 
 ```bash
 watch -n 1 nvidia-smi
-
 ```
 
-### Logs
+Logs TF :
 
 ```bash
-docker compose logs -f essentia-tensorflow-worker
-
+make lambda-logs-tf
 ```
 
-### Workers
+Progression jobs :
 
 ```bash
-sqlite3 /home/ubuntu/spotify-curator-runtime/data/app.sqlite "
-SELECT worker_id, stage_name, status, last_seen_at
-FROM worker_heartbeats
-ORDER BY last_seen_at DESC;
-"
-
-```
-
-### Jobs
-
-```bash
-sqlite3 /home/ubuntu/spotify-curator-runtime/data/app.sqlite "
+sqlite3 /home/ubuntu/spotify-curator-runtime/data/spotify_curator.sqlite "
 SELECT stage_name, status, COUNT(*)
 FROM job_items
 GROUP BY stage_name, status
 ORDER BY stage_name, status;
 "
-
 ```
 
-### Couverture embeddings
+Backups intermédiaires :
 
 ```bash
-sqlite3 /home/ubuntu/spotify-curator-runtime/data/app.sqlite "
-SELECT COUNT(*) FROM track_embeddings;
-"
-
-```
-
-### Couverture features avancées
-
-```bash
-sqlite3 /home/ubuntu/spotify-curator-runtime/data/app.sqlite "
-SELECT COUNT(*) FROM track_advanced_features;
-"
-
-```
-
-Adapter les noms de tables si nécessaire.
-
----
-
-## 27. Sauvegardes intermédiaires
-
-Créer un script `scripts/lambda/backup-runtime-sqlite.sh` :
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-SRC="/home/ubuntu/spotify-curator-runtime/data/app.sqlite"
-DST_DIR="/lambda/nfs/persistent-storage/spotify-curator/backups"
-TS="$(date +%Y%m%d-%H%M%S)"
-
-mkdir -p "$DST_DIR"
-
-sqlite3 "$SRC" "PRAGMA wal_checkpoint(FULL);"
-sqlite3 "$SRC" "PRAGMA integrity_check;"
-
-cp "$SRC" "$DST_DIR/app.${TS}.sqlite"
-
-echo "Backup created: $DST_DIR/app.${TS}.sqlite"
-
-```
-
-Lancer périodiquement :
-
-```bash
-bash scripts/lambda/backup-runtime-sqlite.sh
-
+make lambda-backup
 ```
 
 ---
 
-## 28. Arrêt propre après analyse
+## 14. Export final
 
-Arrêter les services :
-
-```bash
-docker compose \
-  -f docker-compose.yml \
-  -f docker-compose.gpu.yml \
-  -f docker-compose.lambda.yml \
-  --env-file .env.lambda \
-  --profile audio \
-  --profile advanced-analysis \
-  down
-
-```
-
-Checkpoint SQLite :
+Après analyse :
 
 ```bash
-sqlite3 /home/ubuntu/spotify-curator-runtime/data/app.sqlite "PRAGMA wal_checkpoint(FULL);"
-sqlite3 /home/ubuntu/spotify-curator-runtime/data/app.sqlite "PRAGMA integrity_check;"
-
+make lambda-down
+make lambda-export
 ```
 
-Résultat attendu :
+Le script doit produire :
 
 ```text
-ok
-
+/lambda/nfs/persistent-storage/spotify-curator/spotify-curator-lambda-output.tar.gz
 ```
 
-Créer l’archive finale :
+Contenu attendu :
 
-```bash
-cd /lambda/nfs/persistent-storage/spotify-curator
-
-mkdir -p final-output
-cp /home/ubuntu/spotify-curator-runtime/data/app.sqlite final-output/app.sqlite
-
-tar -czf spotify-curator-lambda-output.tar.gz final-output
-
+```text
+final-output/spotify_curator.sqlite
+final-output/app.sqlite
 ```
 
 ---
 
-## 29. Récupérer la base analysée
+## 15. Récupération locale
 
 Depuis le PC local :
 
@@ -1341,327 +698,144 @@ Depuis le PC local :
 scp -i ~/.ssh/lambda_spotify_curator \
   ubuntu@<LAMBDA_INSTANCE_IP>:/lambda/nfs/persistent-storage/spotify-curator/spotify-curator-lambda-output.tar.gz \
   .
-
 ```
 
-PowerShell :
+Extraction :
+
+```bash
+tar -xzf spotify-curator-lambda-output.tar.gz
+```
+
+La base finale est :
+
+```text
+final-output/spotify_curator.sqlite
+```
+
+Tu peux ensuite l’importer dans ton volume Docker local ou la conserver comme snapshot analysé.
+
+---
+
+## 16. Rôle de `restore-input.sh`
+
+`restore-input.sh` reste utile uniquement si tu veux reprendre une base existante ou restaurer un backup.
+
+Dans le workflow principal Lambda, il n’est plus utilisé.
+
+Nouveau workflow principal :
+
+```text
+prepare-runtime.sh
+→ init-empty-db.sh
+→ make lambda-build
+→ make lambda-up
+→ Spotify OAuth via tunnel
+→ import bibliothèque
+→ download modèles
+→ analyse
+→ export-final-sqlite.sh
+```
+
+---
+
+## 17. Cibles Makefile
+
+Référence : [`Makefile`](../Makefile).
+
+```bash
+make lambda-init-empty-db
+make lambda-build
+make lambda-check-gpu
+make lambda-up-a100      # ou make lambda-up / make lambda-up-a10
+make lambda-up-a100-tf2  # ou make lambda-up-tf2
+make lambda-down
+make lambda-backup
+make lambda-export
+make lambda-logs-tf
+```
+
+---
+
+## 18. Critères d’acceptation
+
+Le mode Lambda mis à jour est valide si :
+
+```text
+- aucune SQLite locale n’est nécessaire pour démarrer ;
+- une base vierge est créée sur Lambda ;
+- les migrations sont appliquées ;
+- Spotify OAuth fonctionne via tunnel SSH ;
+- les tokens Spotify sont stockés dans la SQLite Lambda ;
+- l’import Spotify remplit la base Lambda ;
+- les modèles Essentia sont téléchargeables depuis l’UI ;
+- TensorFlow voit le GPU ;
+- A100/A10 sont configurables via .env.lambda ;
+- 1 worker TF fonctionne ;
+- 2 workers TF sont benchmarkables sur A100 ;
+- l’export final produit spotify_curator.sqlite ;
+- la base finale passe PRAGMA integrity_check.
+```
+
+---
+
+## 19. Annexe — import SQLite legacy (PC → Lambda)
+
+Workflow **optionnel** si vous souhaitez reprendre une base existante au lieu de `init-empty-db.sh`.
+
+Depuis le PC Windows, exporter depuis le volume Docker `spotify_curator_data` :
 
 ```powershell
-scp -i $env:USERPROFILE\.ssh\lambda_spotify_curator `
-  ubuntu@<LAMBDA_INSTANCE_IP>:/lambda/nfs/persistent-storage/spotify-curator/spotify-curator-lambda-output.tar.gz `
-  .
-
-```
-
-Extraire :
-
-```bash
-tar -xzf spotify-curator-lambda-output.tar.gz
-
-```
-
-Sauvegarder la base locale actuelle :
-
-```bash
-cp data/app.sqlite data/app.before-lambda-result.sqlite
-
-```
-
-Remplacer :
-
-```bash
-cp final-output/app.sqlite data/app.sqlite
-
-```
-
-Vérifier :
-
-```bash
-sqlite3 data/app.sqlite "PRAGMA integrity_check;"
-
-```
-
-Relancer le projet local :
-
-```bash
-docker compose up -d
-
-```
-
----
-
-## 30. Terminer l’instance Lambda
-
-Après récupération de la base :
-
-```text
-Lambda Cloud → Instances → Terminate
-
-```
-
-Ne pas simplement éteindre la VM avec `shutdown`. Terminer l’instance depuis l’interface Lambda.
-
-Garder le filesystem persistant tant que les résultats n’ont pas été vérifiés localement.
-
-Après vérification locale :
-
-```text
-Lambda Cloud → Storage → supprimer le filesystem si inutile
-
-```
-
----
-
-## 31. Troubleshooting
-
-### TensorFlow ne voit pas le GPU
-
-Symptôme :
-
-```text
-GPUs: []
-
-```
-
-Vérifier :
-
-```bash
-nvidia-smi
-docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
-
-```
-
-Si Docker voit le GPU mais pas TensorFlow :
-
-```text
-- image TensorFlow CPU-only ;
-- mauvaise version TensorFlow/CUDA ;
-- dépendance `tensorflow[and-cuda]` absente ;
-- image Docker non adaptée au GPU.
-
-```
-
-### Le GPU est visible mais peu utilisé
-
-Causes possibles :
-
-```text
-- pas assez de jobs `essentia_tensorflow` en queue ;
-- pipeline bloquée sur download ou low-level ;
-- batch size 1 ;
-- un seul worker mais preprocessing CPU lent ;
-- workers trop peu nombreux ;
-- modèles non GPU réellement ;
-- graphes TensorFlow non utilisés par GPU.
-
-```
-
-Actions :
-
-```text
-1. Vérifier `job_items`.
-2. Vérifier `nvidia-smi`.
-3. Tester 2 workers TensorFlow.
-4. Ajouter métriques par stage.
-5. Vérifier les logs TensorFlow.
-
-```
-
-### OOM GPU
-
-Symptôme :
-
-```text
-ResourceExhaustedError
-CUDA out of memory
-container killed
-
-```
-
-Actions :
-
-```text
-1. Revenir à 1 worker TensorFlow.
-2. Réduire batch size.
-3. Activer memory growth TensorFlow.
-4. Réduire le profil modèle.
-5. Éviter phase6-full.
-
-```
-
-### UI inaccessible
-
-Vérifier côté Lambda :
-
-```bash
-curl http://localhost:5173
-curl http://localhost:8000/api/v1/health
-
-```
-
-Vérifier tunnel local :
-
-```bash
-ssh -i ~/.ssh/lambda_spotify_curator \
-  -L 5173:localhost:5173 \
-  -L 8000:localhost:8000 \
-  ubuntu@<LAMBDA_INSTANCE_IP>
-
-```
-
-Puis ouvrir :
-
-```text
-http://localhost:5173
-
-```
-
-### API inaccessible depuis UI
-
-Vérifier que le frontend utilise :
-
-```env
-VITE_API_BASE_URL=http://localhost:8000
-
-```
-
-Avec le tunnel SSH, `localhost:8000` côté navigateur local est redirigé vers l’API distante.
-
-### SQLite corrompue ou WAL non copié
-
-Toujours faire :
-
-```bash
-sqlite3 app.sqlite "PRAGMA wal_checkpoint(FULL);"
-sqlite3 app.sqlite "PRAGMA integrity_check;"
-
-```
-
-avant de copier la base.
-
----
-
-## 32. Configuration finale recommandée
-
-### Run complet stable
-
-```env
-ESSENTIA_MODEL_PROFILE=phase6-recommended
-ESSENTIA_TF_WORKERS=1
-ESSENTIA_LOWLEVEL_WORKERS=2
-AUDIO_DOWNLOADER_WORKERS=4
-PREVIEW_RESOLVER_WORKERS=2
-ESSENTIA_TF_BATCH_SIZE=1
-ESSENTIA_TF_WARMUP=true
-TF_FORCE_GPU_ALLOW_GROWTH=true
-TF_NUM_INTRAOP_THREADS=4
-TF_NUM_INTEROP_THREADS=2
-OMP_NUM_THREADS=4
-
-```
-
-### Run complet optimisé après benchmark
-
-```env
-ESSENTIA_MODEL_PROFILE=phase6-recommended
-ESSENTIA_TF_WORKERS=2
-ESSENTIA_LOWLEVEL_WORKERS=2
-AUDIO_DOWNLOADER_WORKERS=4
-PREVIEW_RESOLVER_WORKERS=2
-ESSENTIA_TF_BATCH_SIZE=1
-ESSENTIA_TF_WARMUP=true
-TF_FORCE_GPU_ALLOW_GROWTH=true
-TF_NUM_INTRAOP_THREADS=2
-TF_NUM_INTEROP_THREADS=1
-OMP_NUM_THREADS=2
-
-```
-
-### Run futur avec micro-batching
-
-```env
-ESSENTIA_MODEL_PROFILE=phase6-recommended
-ESSENTIA_TF_WORKERS=1
-ESSENTIA_TF_BATCH_SIZE=8
-ESSENTIA_TF_BATCH_TIMEOUT_MS=1000
-ESSENTIA_TF_WARMUP=true
-TF_FORCE_GPU_ALLOW_GROWTH=true
-
-```
-
-Si micro-batching efficace :
-
-```env
-ESSENTIA_TF_WORKERS=1
-ESSENTIA_TF_BATCH_SIZE=16
-
-```
-
-ou :
-
-```env
-ESSENTIA_TF_WORKERS=2
-ESSENTIA_TF_BATCH_SIZE=8
-
-```
-
-à valider uniquement par benchmark.
-
----
-
-## 33. Critères d’acceptation
-
-Le mode Lambda est considéré valide si :
-
-```text
-- l’instance Lambda voit le GPU avec `nvidia-smi` ;
-- Docker voit le GPU avec `docker run --gpus all ... nvidia-smi` ;
-- le worker TensorFlow voit le GPU via TensorFlow ;
-- l’API répond sur localhost:8000 ;
-- l’UI répond sur localhost:5173 ;
-- le tunnel SSH permet d’ouvrir l’UI depuis le PC local ;
-- l’analyse test sur 20–50 pistes fonctionne ;
-- `essentia_tensorflow` est plus rapide que localement ;
-- la base SQLite finale passe `PRAGMA integrity_check`;
-- la base récupérée localement fonctionne avec l’application.
-
-```
-
----
-
-## 34. Résumé opérationnel
-
-```bash
-# local
-docker compose down
-sqlite3 data/app.sqlite "PRAGMA wal_checkpoint(FULL);"
-sqlite3 data/app.sqlite "PRAGMA integrity_check;"
+docker compose stop core-api
+docker run --rm -v spotify_curator_data:/from -v ${PWD}/export-lambda/data:/to alpine:3.20 sh -c `
+  "sqlite3 /from/spotify_curator.sqlite 'PRAGMA wal_checkpoint(FULL);' && cp /from/spotify_curator.sqlite /to/"
 tar -czf spotify-curator-lambda-input.tar.gz export-lambda
-
-# lambda
-ssh -i ~/.ssh/lambda_spotify_curator ubuntu@<IP>
-git clone <REPO>
-scp archive depuis local
-cp app.sqlite vers /home/ubuntu/spotify-curator-runtime/data/app.sqlite
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.lambda.yml --env-file .env.lambda build
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.lambda.yml --env-file .env.lambda up -d --scale essentia-tensorflow-worker=1
-
-# local tunnel
-ssh -i ~/.ssh/lambda_spotify_curator -L 5173:localhost:5173 -L 8000:localhost:8000 ubuntu@<IP>
-
-# navigateur local
-http://localhost:5173
-
-# après analyse
-docker compose down
-sqlite3 /home/ubuntu/spotify-curator-runtime/data/app.sqlite "PRAGMA wal_checkpoint(FULL);"
-sqlite3 /home/ubuntu/spotify-curator-runtime/data/app.sqlite "PRAGMA integrity_check;"
-tar -czf spotify-curator-lambda-output.tar.gz final-output
-
-# local récupération
-scp ubuntu@<IP>:/lambda/nfs/persistent-storage/spotify-curator/spotify-curator-lambda-output.tar.gz .
-tar -xzf spotify-curator-lambda-output.tar.gz
-cp final-output/app.sqlite data/app.sqlite
-
+scp -i ~/.ssh/lambda_spotify_curator spotify-curator-lambda-input.tar.gz ubuntu@<IP>:/lambda/nfs/persistent-storage/spotify-curator/
 ```
 
+Sur Lambda :
+
+```bash
+bash scripts/lambda/prepare-runtime.sh
+bash scripts/lambda/restore-input.sh spotify-curator-lambda-input.tar.gz
+```
+
+---
+
+## 20. Annexe — réimporter la base analysée en local (Windows)
+
+Après `make lambda-export` et `scp` de l’archive :
+
+```powershell
+tar -xzf spotify-curator-lambda-output.tar.gz
+docker compose stop core-api
+docker run --rm -v spotify_curator_data:/app/data -v ${PWD}/final-output:/host alpine:3.20 sh -c `
+  "cp /host/spotify_curator.sqlite /app/data/spotify_curator.sqlite 2>/dev/null || cp /host/app.sqlite /app/data/spotify_curator.sqlite"
+docker compose up -d
+```
+
+---
+
+## 21. Résumé opérationnel
+
+```bash
+# --- Lambda ---
+cd /lambda/nfs/persistent-storage/spotify-curator
+cp .env.lambda.example .env.lambda   # renseigner SPOTIFY_CLIENT_ID
+bash scripts/lambda/prepare-runtime.sh
+bash scripts/lambda/init-empty-db.sh
+make lambda-build && make lambda-check-gpu
+make lambda-up-a100
+bash scripts/lambda/check-services.sh
+```
+
+```bash
+# --- PC local : tunnel ---
+ssh -i ~/.ssh/lambda_spotify_curator -L 5173:127.0.0.1:5173 -L 8000:127.0.0.1:8000 ubuntu@<IP>
+# http://127.0.0.1:5173 → OAuth Spotify → import bibliothèque → modèles UI → analyse
+```
+
+```bash
+# --- Lambda : export ---
+make lambda-export
+scp ubuntu@<IP>:/lambda/nfs/persistent-storage/spotify-curator/spotify-curator-lambda-output.tar.gz .
+```

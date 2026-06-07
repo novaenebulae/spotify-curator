@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+# LEGACY — restore an existing SQLite archive onto Lambda SSD.
+# Not used in the main workflow (empty DB + Spotify OAuth import on Lambda).
+# See docs/20-lambda-gpu-cloud-analysis.md §16.
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then

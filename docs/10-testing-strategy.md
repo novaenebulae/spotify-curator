@@ -523,10 +523,24 @@ Unitaires (sans GPU, mocks TensorFlow/Essentia) :
 cd core
 uv run pytest tests/test_lambda_settings.py tests/test_tf_warmup.py \
   tests/test_check_tf_gpu.py tests/test_tf_segment_metrics.py \
-  tests/test_tf_worker_parallel_reserve.py -q
+  tests/test_tf_worker_parallel_reserve.py tests/test_docker_compose_lambda_env.py \
+  tests/test_lambda_init_empty_db.py -q
 ```
 
-Vérification GPU sur instance Lambda (manuel) :
+Validation manuelle sur instance Lambda (workflow base vierge) :
+
+```bash
+bash scripts/lambda/prepare-runtime.sh
+bash scripts/lambda/init-empty-db.sh
+make lambda-build
+make lambda-check-gpu
+make lambda-up-a100
+bash scripts/lambda/check-services.sh
+bash scripts/lambda/benchmark-pipeline.sh 30
+make lambda-export
+```
+
+Vérification GPU sur instance Lambda :
 
 ```bash
 make lambda-check-gpu

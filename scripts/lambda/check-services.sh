@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Health checks for Lambda stack (run on the instance after make lambda-up-a100).
+# Requires tunnel from PC for UI/OAuth testing — API/frontend bind 127.0.0.1 on the VM.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

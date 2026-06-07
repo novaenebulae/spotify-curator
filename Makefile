@@ -1,23 +1,38 @@
 COMPOSE_LAMBDA := docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.lambda.yml --env-file .env.lambda --profile audio --profile advanced-analysis --profile lambda-ui
 
-.PHONY: lambda-build lambda-up lambda-up-tf1 lambda-up-tf2 lambda-down lambda-check-gpu lambda-backup lambda-export lambda-logs-tf
+.PHONY: lambda-build lambda-init-empty-db lambda-up lambda-up-tf1 lambda-up-tf2 \
+	lambda-up-a100 lambda-up-a100-tf2 lambda-up-a10 \
+	lambda-down lambda-check-gpu lambda-backup lambda-export lambda-logs-tf
 
 lambda-build:
 	$(COMPOSE_LAMBDA) build
 
-lambda-up: lambda-up-tf1
+lambda-init-empty-db:
+	bash scripts/lambda/init-empty-db.sh
 
-lambda-up-tf1:
-	$(COMPOSE_LAMBDA) up -d --scale audio-downloader=$${AUDIO_DOWNLOAD_WORKERS:-4} \
-		--scale preview-resolver-worker=$${PREVIEW_RESOLVER_WORKERS:-2} \
-		--scale essentia-lowlevel-worker=$${ESSENTIA_LOWLEVEL_WORKERS:-2} \
+lambda-up: lambda-up-a100
+
+lambda-up-tf1: lambda-up-a100
+
+lambda-up-tf2: lambda-up-a100-tf2
+
+lambda-up-a100:
+	$(COMPOSE_LAMBDA) up -d --scale audio-downloader=2 \
+		--scale preview-resolver-worker=1 \
+		--scale essentia-lowlevel-worker=1 \
 		--scale essentia-tensorflow-worker=1
 
-lambda-up-tf2:
-	$(COMPOSE_LAMBDA) up -d --scale audio-downloader=$${AUDIO_DOWNLOAD_WORKERS:-4} \
-		--scale preview-resolver-worker=$${PREVIEW_RESOLVER_WORKERS:-2} \
-		--scale essentia-lowlevel-worker=$${ESSENTIA_LOWLEVEL_WORKERS:-2} \
+lambda-up-a100-tf2:
+	$(COMPOSE_LAMBDA) up -d --scale audio-downloader=2 \
+		--scale preview-resolver-worker=1 \
+		--scale essentia-lowlevel-worker=1 \
 		--scale essentia-tensorflow-worker=2
+
+lambda-up-a10:
+	$(COMPOSE_LAMBDA) up -d --scale audio-downloader=2 \
+		--scale preview-resolver-worker=1 \
+		--scale essentia-lowlevel-worker=1 \
+		--scale essentia-tensorflow-worker=1
 
 lambda-down:
 	$(COMPOSE_LAMBDA) down
