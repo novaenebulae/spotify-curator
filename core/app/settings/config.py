@@ -59,8 +59,9 @@ class Settings(BaseSettings):
     deezer_api_base_url: str = "https://api.deezer.com"
     deezer_timeout_seconds: float = 15.0
     deezer_max_retries: int = 3
-    deezer_preview_ui_min_confidence: float = 0.55
-    deezer_preview_analysis_min_confidence: float = 0.70
+    deezer_preview_ui_min_confidence: float = 0.60
+    # Kept for API/runtime visibility; analysis uses track_previews.is_available (resolver gate).
+    deezer_preview_analysis_min_confidence: float = 0.60
     youtube_min_confidence: float = 0.50
     audio_preview_cache_metadata_days: int = 7
     audio_previews_enabled: bool = True

@@ -69,8 +69,9 @@ class AdvancedAnalysisJobService:
         live_check: bool = True,
     ) -> tuple[bool, float | None]:
         if not live_check:
-            # Segment download workers run yt-dlp resolve() before each YouTube fetch.
-            return True, settings.youtube_min_confidence
+            # Bulk jobs: skip YouTube-only planning (yt-dlp blocked server-side). Download
+            # workers still resolve YouTube when live_check is used for small batches.
+            return False, None
         try:
             candidates = self._segment_provider.resolve(ctx)
         except YtDlpError as exc:

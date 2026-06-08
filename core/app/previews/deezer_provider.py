@@ -83,5 +83,4 @@ class DeezerPreviewProvider:
         return (
             candidate.is_available
             and candidate.preview_url is not None
-            and candidate.match_confidence >= settings.deezer_preview_analysis_min_confidence
         )
