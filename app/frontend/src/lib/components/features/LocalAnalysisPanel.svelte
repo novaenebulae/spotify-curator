@@ -18,6 +18,7 @@
 
 	let { busy = false, modelsStatus = null, onJobComplete }: Props = $props();
 
+	let fullLibrary = $state(true);
 	let limit = $state<number | null>(10);
 	let onlyMissing = $state(true);
 	let modelProfile = $state<ModelProfileName>('phase6-recommended');
@@ -41,6 +42,18 @@
 		return { liked: true, sort: 'liked_added_at', order: 'desc' };
 	}
 
+	function applyTrackScope(opts: {
+		limit?: number;
+		filter?: Record<string, unknown>;
+	}): void {
+		if (fullLibrary) {
+			return;
+		}
+		const filter = trackSelectionFilter();
+		if (filter) opts.filter = filter;
+		if (limit != null && limit > 0) opts.limit = limit;
+	}
+
 	function jobOpts(): {
 		analysis_mode: 'fast' | 'precise';
 		limit?: number;
@@ -53,10 +66,25 @@
 			only_missing?: boolean;
 			filter?: Record<string, unknown>;
 		} = { analysis_mode: analysisMode, only_missing: onlyMissing };
-		const filter = trackSelectionFilter();
-		if (filter) opts.filter = filter;
-		if (limit != null && limit > 0) opts.limit = limit;
+		applyTrackScope(opts);
 		return opts;
+	}
+
+	function formatJobError(e: unknown): string {
+		if (e instanceof ApiClientError) {
+			const msg = e.message.replace(/\s*\(\d{3}\)\s*$/, '');
+			if (e.code === 'NO_TRACKS') {
+				return `${msg} Try disabling "Only missing", increasing the limit, or selecting tracks that still need analysis.`;
+			}
+			if (e.code === 'JOB_ALREADY_RUNNING') {
+				return `${msg} Wait for the current job to finish or cancel it from the progress bar above.`;
+			}
+			if (e.code === 'MODEL_MISSING') {
+				return `${msg} Download the model profile below, then retry.`;
+			}
+			return msg;
+		}
+		return e instanceof Error ? e.message : String(e);
 	}
 
 	async function runFullLocalAnalysis() {
@@ -73,9 +101,7 @@
 				include_tensorflow: true,
 				include_lowlevel: true
 			};
-			const filter = trackSelectionFilter();
-			if (filter) opts.filter = filter;
-			if (limit != null && limit > 0) opts.limit = limit;
+			applyTrackScope(opts);
 			const { job_id } = await startAdvancedAnalysis(opts);
 			actionMessage = 'Local analysis pipeline started.';
 			await trackJob(job_id, 'Local analysis pipeline', {
@@ -89,14 +115,7 @@
 				}
 			});
 		} catch (e) {
-			if (e instanceof ApiClientError) {
-				actionError =
-					e.code === 'MODEL_MISSING'
-						? `${e.message} Download the model profile below, then retry.`
-						: e.message;
-			} else {
-				actionError = e instanceof Error ? e.message : String(e);
-			}
+			actionError = formatJobError(e);
 		} finally {
 			actionBusy = false;
 		}
@@ -128,15 +147,23 @@
 		<code>audio</code> and <code>advanced-analysis</code>.
 	</p>
 
-	<label class="limit-row">
-		<span>Limit (tracks)</span>
-		<input type="number" min="1" bind:value={limit} />
+	<label class="checkbox-row">
+		<input type="checkbox" bind:checked={fullLibrary} />
+		<span>Full library (all tracks with incomplete local analysis, max 10 000 per job)</span>
 	</label>
 
-	<label class="checkbox-row">
-		<input type="checkbox" bind:checked={useRecentLiked} />
-		<span>Target: most recently liked tracks</span>
-	</label>
+	{#if !fullLibrary}
+		<label class="limit-row">
+			<span>Limit (tracks)</span>
+			<input type="number" min="1" bind:value={limit} />
+		</label>
+
+		<label class="checkbox-row">
+			<input type="checkbox" bind:checked={useRecentLiked} />
+			<span>Target: most recently liked tracks</span>
+		</label>
+	{/if}
+
 	<label class="checkbox-row">
 		<input type="checkbox" bind:checked={onlyMissing} />
 		<span>Only missing (skip tracks already analysed)</span>

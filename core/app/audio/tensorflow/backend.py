@@ -319,24 +319,13 @@ def build_predictor_kwargs(
     output: str | None = None,
     input_node: str | None = None,
 ) -> dict[str, object]:
-    """Map Essentia algorithm families to correct graph I/O parameter names.
+    """Map Essentia TensorFlow algorithms to graph I/O parameter names.
 
-    TensorflowPredict2D uses ``input`` / ``output``.
-    TensorflowPredict* (EffNet, MAEST, MusiCNN, …) use ``inputs`` / ``outputs`` lists.
+    Essentia 2.1b6 ``TensorflowPredict*`` families (2D, EffNet, MAEST, …) all use
+    singular ``input`` / ``output`` kwargs — not ``inputs`` / ``outputs`` lists.
     """
+    _ = algo_name  # reserved for algorithm-specific overrides if Essentia API diverges
     kwargs: dict[str, object] = {"graphFilename": graph}
-    if algo_name == "TensorflowPredict2D":
-        if output:
-            kwargs["output"] = output
-        if input_node:
-            kwargs["input"] = input_node
-        return kwargs
-    if algo_name.startswith("TensorflowPredict"):
-        if output:
-            kwargs["outputs"] = [output]
-        if input_node:
-            kwargs["inputs"] = [input_node]
-        return kwargs
     if output:
         kwargs["output"] = output
     if input_node:

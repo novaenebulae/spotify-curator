@@ -39,6 +39,8 @@ services:
   audio-downloader:
     env_file: !override
       - .env.lambda
+    cpus: 1.5
+    mem_limit: 768m
     volumes:
       - /home/ubuntu/spotify-curator-runtime/data:/app/data
       - /home/ubuntu/spotify-curator-runtime/logs:/app/logs
@@ -48,6 +50,8 @@ services:
   preview-resolver-worker:
     env_file: !override
       - .env.lambda
+    cpus: 1.0
+    mem_limit: 512m
     volumes:
       - /home/ubuntu/spotify-curator-runtime/data:/app/data
       - /home/ubuntu/spotify-curator-runtime/logs:/app/logs
@@ -55,6 +59,8 @@ services:
   essentia-lowlevel-worker:
     env_file: !override
       - .env.lambda
+    cpus: 4.0
+    mem_limit: 2g
     volumes:
       - /home/ubuntu/spotify-curator-runtime/data:/app/data
       - /home/ubuntu/spotify-curator-runtime/logs:/app/logs

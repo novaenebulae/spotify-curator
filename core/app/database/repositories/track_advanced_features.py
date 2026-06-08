@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database.models_advanced_features import TrackAdvancedFeature
@@ -83,39 +85,47 @@ class TrackAdvancedFeaturesRepository:
         now = datetime.now(tz=UTC).replace(tzinfo=None)
         written = 0
         for row in deduped.values():
-            with session.no_autoflush:
-                existing = self.get_active(
-                    session,
-                    track_id=row.track_id,
-                    feature_name=row.feature_name,
-                    source=row.source,
-                    model_name=row.model_name,
-                    pipeline_version=row.pipeline_version,
-                )
-            if existing is not None:
-                session.execute(
-                    delete(TrackAdvancedFeature).where(TrackAdvancedFeature.id == existing.id)
-                )
-                session.flush()
-            session.add(
-                TrackAdvancedFeature(
-                    track_id=row.track_id,
-                    feature_name=row.feature_name,
-                    value_float=row.value_float,
-                    value_text=row.value_text,
-                    value_json=row.value_json,
-                    confidence=row.confidence,
-                    source=row.source,
-                    model_name=row.model_name,
-                    model_version=row.model_version,
-                    model_hash=row.model_hash,
-                    pipeline_version=row.pipeline_version,
-                    aggregation_method=row.aggregation_method,
-                    status=row.status,
-                    created_at=now,
-                    updated_at=now,
-                )
-            )
-            session.flush()
-            written += 1
+            for attempt in range(3):
+                try:
+                    with session.begin_nested():
+                        with session.no_autoflush:
+                            existing = self.get_active(
+                                session,
+                                track_id=row.track_id,
+                                feature_name=row.feature_name,
+                                source=row.source,
+                                model_name=row.model_name,
+                                pipeline_version=row.pipeline_version,
+                            )
+                        if existing is not None:
+                            session.execute(
+                                delete(TrackAdvancedFeature).where(
+                                    TrackAdvancedFeature.id == existing.id
+                                )
+                            )
+                        session.add(
+                            TrackAdvancedFeature(
+                                track_id=row.track_id,
+                                feature_name=row.feature_name,
+                                value_float=row.value_float,
+                                value_text=row.value_text,
+                                value_json=row.value_json,
+                                confidence=row.confidence,
+                                source=row.source,
+                                model_name=row.model_name,
+                                model_version=row.model_version,
+                                model_hash=row.model_hash,
+                                pipeline_version=row.pipeline_version,
+                                aggregation_method=row.aggregation_method,
+                                status=row.status,
+                                created_at=now,
+                                updated_at=now,
+                            )
+                        )
+                    written += 1
+                    break
+                except IntegrityError:
+                    if attempt == 2:
+                        raise
+                    time.sleep(0.05 * (attempt + 1))
         return written

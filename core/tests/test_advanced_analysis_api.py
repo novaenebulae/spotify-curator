@@ -98,3 +98,21 @@ def test_require_real_tensorflow_blocks_when_models_missing(client) -> None:
         )
     assert res.status_code == 409
     assert res.json()["error"]["code"] == "MODEL_MISSING"
+
+
+def test_advanced_analysis_hybrid_survives_ytdlp_missing(client) -> None:
+    with patch("app.audio.ytdlp_provider.YtDlpSegmentProvider.resolve") as mock_resolve:
+        from app.audio.errors import YtDlpError
+
+        mock_resolve.side_effect = YtDlpError("YTDLP_NOT_FOUND", "yt-dlp binary not found on PATH")
+        res = client.post(
+            "/api/v1/audio/analysis/advanced",
+            json={
+                "track_ids": [1],
+                "strategy": "hybrid_deezer_youtube_representative",
+                "only_missing": False,
+                "include_tensorflow": False,
+            },
+        )
+    assert res.status_code == 400
+    assert res.json()["error"]["code"] == "NO_TRACKS"

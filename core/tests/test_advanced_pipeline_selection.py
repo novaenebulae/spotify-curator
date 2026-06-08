@@ -101,11 +101,56 @@ def test_only_missing_includes_when_both_missing(audio_db) -> None:
         assert _resolve(session) == [1]
 
 
-def test_only_missing_lowlevel_only_excludes_when_lowlevel_complete(audio_db) -> None:
+def test_only_missing_scans_beyond_limit_when_early_tracks_complete(audio_db) -> None:
+    from sqlalchemy import text
+
     with Session(audio_db) as session:
-        _add_lowlevel(session, track_id=1)
+        for tid in range(2, 16):
+            session.execute(
+                text(
+                    """
+                    INSERT INTO tracks (id, name, normalized_title, duration_ms, created_at, updated_at)
+                    VALUES (:id, :name, :name, 180000, datetime('now'), datetime('now'))
+                    """
+                ),
+                {"id": tid, "name": f"Track {tid}"},
+            )
+        for tid in range(1, 11):
+            _add_lowlevel(session, track_id=tid)
+            _add_tf_feature(session, track_id=tid)
         session.commit()
-        assert _resolve(session, include_tensorflow=False) == []
+        ids = AudioTrackSelectionService().resolve_for_advanced_pipeline(
+            session,
+            track_ids=None,
+            filter_dict=None,
+            only_missing=True,
+            retry_failed=False,
+            force_refresh=False,
+            limit=5,
+            include_lowlevel=True,
+            include_tensorflow=True,
+            model_profile="phase6-recommended",
+        )
+        assert ids == [11, 12, 13, 14, 15]
+
+
+def test_only_missing_null_limit_uses_max_enrich_cap(audio_db, monkeypatch) -> None:
+    monkeypatch.setattr("app.audio.track_selection.settings.audio_enrich_max_limit", 100)
+
+    with Session(audio_db) as session:
+        ids = AudioTrackSelectionService().resolve_for_advanced_pipeline(
+            session,
+            track_ids=None,
+            filter_dict=None,
+            only_missing=True,
+            retry_failed=False,
+            force_refresh=False,
+            limit=None,
+            include_lowlevel=True,
+            include_tensorflow=True,
+            model_profile="phase6-recommended",
+        )
+        assert ids == [1]
 
 
 def test_advanced_api_only_missing_creates_job_when_tf_missing(audio_db, monkeypatch, tmp_path) -> None:

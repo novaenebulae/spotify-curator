@@ -28,7 +28,7 @@ from app.database.repositories.audio_analysis_jobs import AudioAnalysisJobsRepos
 from app.database.repositories.track_segments import TrackSegmentsRepository
 from app.features.upsert import FeatureUpsertService
 from app.jobs.items.constants import WORKER_TYPE_ESSENTIA_LOWLEVEL
-from app.jobs.items.service import ReservedJobItem
+from app.jobs.items.service import PIPELINE_WORKER_ITEM_KWARGS, ReservedJobItem
 from app.settings.config import settings
 from app.workers.base_worker import BaseWorker
 
@@ -214,6 +214,7 @@ class EssentiaLowlevelWorker(BaseWorker):
                 item.id,
                 error_code="INVALID_ITEM",
                 error_message="Pipeline low-level item missing segment_id",
+                **PIPELINE_WORKER_ITEM_KWARGS,
             )
             return
 
@@ -233,6 +234,7 @@ class EssentiaLowlevelWorker(BaseWorker):
                 item.id,
                 error_code="SEGMENT_FILE_MISSING",
                 error_message="Segment audio file not found",
+                **PIPELINE_WORKER_ITEM_KWARGS,
             )
             return
 
@@ -250,6 +252,7 @@ class EssentiaLowlevelWorker(BaseWorker):
                     "pipeline_version": pipeline_version,
                     "idempotent": True,
                 },
+                **PIPELINE_WORKER_ITEM_KWARGS,
             )
             return
 
@@ -264,6 +267,7 @@ class EssentiaLowlevelWorker(BaseWorker):
                         "idempotent": True,
                         "source": "features_json",
                     },
+                    **PIPELINE_WORKER_ITEM_KWARGS,
                 )
                 return
             except (json.JSONDecodeError, ValueError):
@@ -335,6 +339,7 @@ class EssentiaLowlevelWorker(BaseWorker):
                 error_code="ESSENTIA_LOWLEVEL_FAILED",
                 error_message=str(e)[:500],
                 retryable=retryable,
+                **PIPELINE_WORKER_ITEM_KWARGS,
             )
             return
 
@@ -345,4 +350,5 @@ class EssentiaLowlevelWorker(BaseWorker):
                 "pipeline_version": pipeline_version,
                 "bpm": parsed.bpm,
             },
+            **PIPELINE_WORKER_ITEM_KWARGS,
         )

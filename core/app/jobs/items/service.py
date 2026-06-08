@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 from sqlalchemy import and_, or_, select, text, update
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.database.engine import get_engine
@@ -37,6 +40,36 @@ from app.jobs.items.constants import (
 from app.jobs.items.events import JobEventsService
 from app.jobs.service import JobService
 from app.settings.config import settings
+
+logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
+
+# Workers defer progress recompute to AnalysisPipelineTicker to avoid SQLite write storms.
+PIPELINE_WORKER_PROGRESS_KWARGS: dict[str, bool] = {"recompute_progress": False}
+PIPELINE_WORKER_ITEM_KWARGS: dict[str, bool] = {
+    **PIPELINE_WORKER_PROGRESS_KWARGS,
+    "refresh_pipeline": False,
+}
+
+
+def _is_sqlite_locked(exc: BaseException) -> bool:
+    if not isinstance(exc, OperationalError):
+        return False
+    orig = getattr(exc, "orig", None)
+    return orig is not None and "locked" in str(orig).lower()
+
+
+def _run_with_sqlite_retry(func: Callable[[], _T], *, attempts: int = 6) -> _T:
+    delay = 0.05
+    for attempt in range(attempts):
+        try:
+            return func()
+        except OperationalError as exc:
+            if not _is_sqlite_locked(exc) or attempt == attempts - 1:
+                raise
+            time.sleep(delay)
+            delay = min(delay * 2, 1.0)
 
 
 @dataclass(frozen=True)
@@ -374,8 +407,6 @@ class JobItemService:
 
                 conn.execute(text("COMMIT"))
                 session.commit()
-                self.recompute_job_progress(session, row[1])
-                session.commit()
                 self._emit_stage_started(
                     job_id=row[1],
                     item_id=row[0],
@@ -503,9 +534,6 @@ class JobItemService:
 
                 conn.execute(text("COMMIT"))
                 session.commit()
-                for job_id in job_ids_touched:
-                    self.recompute_job_progress(session, job_id)
-                    session.commit()
                 for job_id, item_id, stg, track_id, segment_id in started_events:
                     self._emit_stage_started(
                         job_id=job_id,
@@ -651,13 +679,16 @@ class JobItemService:
         *,
         result_json: dict[str, Any] | None = None,
         refresh_pipeline: bool = True,
+        recompute_progress: bool = True,
     ) -> None:
         now = datetime.now(tz=UTC).replace(tzinfo=None)
         engine = get_engine()
+        job_id: str | None = None
         with Session(engine) as session:
             item = self._items.get(session, item_id)
             if item is None:
                 return
+            job_id = item.job_id
             self._items.update_fields(
                 session,
                 item_id,
@@ -676,11 +707,19 @@ class JobItemService:
                 event_type="completed",
                 message="Item completed successfully",
             )
-            session.commit()
-            self.recompute_job_progress(session, item.job_id)
-            session.commit()
-            if refresh_pipeline:
-                self._maybe_refresh_pipeline_dependencies(item.job_id)
+            _run_with_sqlite_retry(lambda: session.commit())
+        if job_id is None:
+            return
+        if recompute_progress:
+            with Session(engine) as session:
+                _run_with_sqlite_retry(
+                    lambda: (
+                        self.recompute_job_progress(session, job_id),
+                        session.commit(),
+                    )[1]
+                )
+        if refresh_pipeline:
+            self._maybe_refresh_pipeline_dependencies(job_id)
 
     def mark_failed(
         self,
@@ -690,6 +729,8 @@ class JobItemService:
         error_message: str,
         retryable: bool = False,
         retry_delay_seconds: int = 60,
+        recompute_progress: bool = True,
+        refresh_pipeline: bool = True,
     ) -> None:
         now = datetime.now(tz=UTC).replace(tzinfo=None)
         engine = get_engine()
@@ -742,14 +783,26 @@ class JobItemService:
                 )
             job_id = item.job_id
             is_pipeline_stage = item.item_type == ITEM_TYPE_ANALYSIS_PIPELINE_STAGE
-            session.commit()
-            if retryable and is_pipeline_stage:
+            _run_with_sqlite_retry(lambda: session.commit())
+            if retryable and is_pipeline_stage and refresh_pipeline:
                 self.refresh_pipeline_for_job(job_id)
-            with Session(engine) as session2:
-                self.recompute_job_progress(session2, job_id)
-                session2.commit()
+            if recompute_progress:
+                with Session(engine) as session2:
+                    _run_with_sqlite_retry(
+                        lambda: (
+                            self.recompute_job_progress(session2, job_id),
+                            session2.commit(),
+                        )[1]
+                    )
 
-    def mark_skipped(self, item_id: str, *, reason: str) -> None:
+    def mark_skipped(
+        self,
+        item_id: str,
+        *,
+        reason: str,
+        recompute_progress: bool = True,
+        refresh_pipeline: bool = True,
+    ) -> None:
         now = datetime.now(tz=UTC).replace(tzinfo=None)
         engine = get_engine()
         with Session(engine) as session:
@@ -765,10 +818,18 @@ class JobItemService:
                 locked_by=None,
                 locked_at=None,
             )
-            session.commit()
-            self.recompute_job_progress(session, item.job_id)
-            session.commit()
-            self._maybe_refresh_pipeline_dependencies(item.job_id)
+            job_id = item.job_id
+            _run_with_sqlite_retry(lambda: session.commit())
+        if recompute_progress:
+            with Session(engine) as session:
+                _run_with_sqlite_retry(
+                    lambda: (
+                        self.recompute_job_progress(session, job_id),
+                        session.commit(),
+                    )[1]
+                )
+        if refresh_pipeline:
+            self._maybe_refresh_pipeline_dependencies(job_id)
 
     def mark_rate_limited(self, item_id: str, *, retry_after_seconds: int) -> None:
         now = datetime.now(tz=UTC).replace(tzinfo=None)
@@ -879,7 +940,13 @@ class JobItemService:
                     finished.append(job_id)
         return finished
 
-    def recompute_job_progress(self, session: Session, job_id: str) -> None:
+    def recompute_job_progress(
+        self,
+        session: Session,
+        job_id: str,
+        *,
+        include_track_progress: bool = True,
+    ) -> None:
         counts = self._items.count_by_status(session, job_id)
         total = sum(counts.values())
         terminal = sum(counts.get(s, 0) for s in TERMINAL_ITEM_STATUSES)
@@ -906,8 +973,10 @@ class JobItemService:
                 job.status = "running"
                 job.finished_at = None
             step = f"processing {terminal}/{total}"
-            tp_log: dict[str, int] | None = None
-            if job.job_type == JOB_TYPE_AUDIO_ANALYSIS_PIPELINE:
+            if (
+                include_track_progress
+                and job.job_type == JOB_TYPE_AUDIO_ANALYSIS_PIPELINE
+            ):
                 tp_log = self.pipeline_track_progress(job_id)
                 tt = tp_log.get("tracks_total") or 0
                 if tt > 0:
@@ -1135,9 +1204,15 @@ class JobItemService:
         from app.audio.pipeline.feature_aggregation import PipelineFeatureAggregationService
         from app.audio.pipeline.orchestrator import AnalysisPipelineOrchestrator
 
-        AnalysisPipelineOrchestrator(items=self).refresh_dependencies(job_id)
-        PipelineFeatureAggregationService(items=self).try_run_pending_for_job(job_id)
-        PipelineAudioCleanupService(items=self).try_run_pending_for_job(job_id)
+        try:
+            AnalysisPipelineOrchestrator(items=self).refresh_dependencies(job_id)
+            PipelineFeatureAggregationService(items=self).try_run_pending_for_job(job_id)
+            PipelineAudioCleanupService(items=self).try_run_pending_for_job(job_id)
+        except Exception:
+            logger.exception(
+                "Pipeline dependency refresh failed for job %s (worker continues)",
+                job_id,
+            )
 
 
 def _item_to_dict(row: JobItem) -> dict[str, Any]:

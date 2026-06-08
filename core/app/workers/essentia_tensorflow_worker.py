@@ -7,6 +7,7 @@ import threading
 import time
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.audio.paths import segment_absolute_path
@@ -29,13 +30,15 @@ from app.database.models_job_items import JobItem
 from app.database.models_jobs import Job
 from app.database.repositories.track_segments import TrackSegmentsRepository
 from app.jobs.items.constants import WORKER_TYPE_ESSENTIA_TENSORFLOW
-from app.jobs.items.service import ReservedJobItem
+from app.jobs.items.service import PIPELINE_WORKER_ITEM_KWARGS, ReservedJobItem
+
+_PIPELINE_TF_FAIL_KWARGS = PIPELINE_WORKER_ITEM_KWARGS
 from app.models_registry import ModelRegistry
 from app.models_registry.manager import ModelManager, ModelManagerError
 from app.models_registry.profile_scope import model_profile_from_job_result
 from app.observability.redact import redact_dict
 from app.settings.config import settings
-from app.workers.base_worker import BaseWorker
+from app.workers.base_worker import BaseWorker, _is_sqlite_locked
 
 logger = logging.getLogger(__name__)
 
@@ -163,49 +166,66 @@ class EssentiaTensorflowWorker(BaseWorker):
         idle_polls = 0
         try:
             while self._running:
-                self._heartbeat.register_or_update(
-                    worker_id=self._worker_id,
-                    worker_type=self.worker_type,
-                    status="idle",
-                )
-                self._items.release_stale_locks(worker_type=self.worker_type)
-                item = self._items.reserve_next(
-                    worker_id=self._worker_id,
-                    worker_type=self.worker_type,
-                )
-                if item is None:
-                    self._flush_pipeline_refresh(job_ids_to_refresh)
-                    job_ids_to_refresh.clear()
-                    processed_since_refresh = 0
-                    idle_polls += 1
-                    if idle_polls % _IDLE_LOG_EVERY_N_POLLS == 0:
-                        self._log_idle_pipeline_counts()
-                    time.sleep(settings.job_worker_heartbeat_interval_seconds)
-                    continue
-
-                idle_polls = 0
-
-                if self._items.is_job_cancelled(item.job_id):
-                    self._items.mark_skipped(item.id, reason="Parent job cancelled")
-                    continue
                 try:
-                    refresh = self._process_pipeline_item_with_heartbeat(item)
-                except Exception as e:  # noqa: BLE001
-                    logger.exception("Item %s failed: %s", item.id, e)
-                    self._items.mark_failed(
-                        item.id,
-                        error_code="WORKER_ERROR",
-                        error_message=str(e)[:500],
-                        retryable=True,
+                    self._heartbeat.register_or_update(
+                        worker_id=self._worker_id,
+                        worker_type=self.worker_type,
+                        status="idle",
                     )
-                    continue
-                if refresh:
-                    job_ids_to_refresh.add(item.job_id)
-                    processed_since_refresh += 1
-                    if processed_since_refresh >= refresh_batch_size:
+                    self._items.release_stale_locks(worker_type=self.worker_type)
+                    batch = self._items.reserve_pipeline_stage_batch(
+                        worker_id=self._worker_id,
+                        worker_type=self.worker_type,
+                        stage_names=_TF_RESERVE_STAGE_ORDER,
+                        limit=1,
+                    )
+                    if not batch:
                         self._flush_pipeline_refresh(job_ids_to_refresh)
                         job_ids_to_refresh.clear()
                         processed_since_refresh = 0
+                        idle_polls += 1
+                        if idle_polls % _IDLE_LOG_EVERY_N_POLLS == 0:
+                            self._log_idle_pipeline_counts()
+                        time.sleep(settings.job_worker_heartbeat_interval_seconds)
+                        continue
+
+                    idle_polls = 0
+
+                    for item in batch:
+                        if self._items.is_job_cancelled(item.job_id):
+                            self._items.mark_skipped(
+                                item.id,
+                                reason="Parent job cancelled",
+                                **_PIPELINE_TF_FAIL_KWARGS,
+                            )
+                            continue
+                        try:
+                            refresh = self._process_pipeline_item_with_heartbeat(item)
+                        except Exception as e:  # noqa: BLE001
+                            logger.exception("Item %s failed: %s", item.id, e)
+                            self._items.mark_failed(
+                                item.id,
+                                error_code="WORKER_ERROR",
+                                error_message=str(e)[:500],
+                                retryable=True,
+                                **_PIPELINE_TF_FAIL_KWARGS,
+                            )
+                            continue
+                        if refresh:
+                            job_ids_to_refresh.add(item.job_id)
+                            processed_since_refresh += 1
+                            if processed_since_refresh >= refresh_batch_size:
+                                self._flush_pipeline_refresh(job_ids_to_refresh)
+                                job_ids_to_refresh.clear()
+                                processed_since_refresh = 0
+                except OperationalError as exc:
+                    if not _is_sqlite_locked(exc):
+                        raise
+                    logger.warning(
+                        "SQLite locked in essentia-tensorflow worker loop, backing off: %s",
+                        self._worker_id,
+                    )
+                    time.sleep(settings.job_worker_heartbeat_interval_seconds)
         finally:
             self._heartbeat.register_or_update(
                 worker_id=self._worker_id,
@@ -314,6 +334,7 @@ class EssentiaTensorflowWorker(BaseWorker):
                 item.id,
                 error_code="INVALID_ITEM",
                 error_message="Pipeline tensorflow item missing segment_id",
+                **_PIPELINE_TF_FAIL_KWARGS,
             )
             return False
 
@@ -334,6 +355,7 @@ class EssentiaTensorflowWorker(BaseWorker):
                 item.id,
                 error_code="SEGMENT_FILE_MISSING",
                 error_message="Segment audio file not found for tensorflow stage",
+                **_PIPELINE_TF_FAIL_KWARGS,
             )
             return False
 
@@ -347,12 +369,18 @@ class EssentiaTensorflowWorker(BaseWorker):
             )
         except InferenceError as exc:
             self._items.mark_failed(
-                item.id, error_code=exc.code, error_message=exc.message
+                item.id,
+                error_code=exc.code,
+                error_message=exc.message,
+                **_PIPELINE_TF_FAIL_KWARGS,
             )
             return False
         except ModelManagerError as exc:
             self._items.mark_failed(
-                item.id, error_code=MODEL_INVALID, error_message=exc.message
+                item.id,
+                error_code=MODEL_INVALID,
+                error_message=exc.message,
+                **_PIPELINE_TF_FAIL_KWARGS,
             )
             return False
 
@@ -368,7 +396,9 @@ class EssentiaTensorflowWorker(BaseWorker):
                     **timing,
                 },
             )
-        self._items.mark_success(item.id, result_json=result, refresh_pipeline=False)
+        self._items.mark_success(
+            item.id, result_json=result, **PIPELINE_WORKER_ITEM_KWARGS
+        )
         missing = result.get("models_missing")
         if isinstance(missing, list) and missing:
             self._items.emit_model_missing(

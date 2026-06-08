@@ -17,7 +17,7 @@ def test_build_predictor_kwargs_2d_uses_singular_io() -> None:
     }
 
 
-def test_build_predictor_kwargs_maest_uses_io_lists() -> None:
+def test_build_predictor_kwargs_maest_uses_singular_io() -> None:
     kwargs = build_predictor_kwargs(
         "TensorflowPredictMAEST",
         graph="/models/maest.pb",
@@ -25,11 +25,11 @@ def test_build_predictor_kwargs_maest_uses_io_lists() -> None:
     )
     assert kwargs == {
         "graphFilename": "/models/maest.pb",
-        "outputs": ["PartitionedCall/Identity_13"],
+        "output": "PartitionedCall/Identity_13",
     }
 
 
-def test_build_predictor_kwargs_effnet_uses_io_lists() -> None:
+def test_build_predictor_kwargs_effnet_uses_singular_io() -> None:
     kwargs = build_predictor_kwargs(
         "TensorflowPredictEffnetDiscogs",
         graph="/models/effnet.pb",
@@ -38,6 +38,6 @@ def test_build_predictor_kwargs_effnet_uses_io_lists() -> None:
     )
     assert kwargs == {
         "graphFilename": "/models/effnet.pb",
-        "outputs": ["PartitionedCall:1"],
-        "inputs": ["serving_default_model_Placeholder"],
+        "output": "PartitionedCall:1",
+        "input": "serving_default_model_Placeholder",
     }

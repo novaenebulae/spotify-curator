@@ -1,20 +1,29 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.audio.errors import YtDlpError
 from app.audio.hybrid_availability import HybridAvailabilityService
 from app.audio.pipeline.constants import PIPELINE_MODE_STREAMING
 from app.audio.pipeline.orchestrator import AnalysisPipelineOrchestrator, TrackSegmentPlan
-from app.audio.provider import PlannedSegment
+from app.audio.provider import PlannedSegment, TrackContext
 from app.audio.segments import plan_hybrid_for_track, plan_segments_for_track
+from app.audio.strategy.hybrid import ANALYSIS_UNAVAILABLE
 from app.audio.track_context import load_track_context
 from app.audio.track_selection import AudioTrackSelectionService
+from app.audio.ytdlp_provider import YtDlpSegmentProvider
 from app.database.engine import get_engine
 from app.models_registry import ModelManager, ModelManagerError
 from app.observability.errors import ApiError
 from app.settings.config import settings
+
+logger = logging.getLogger(__name__)
+
+# Live yt-dlp search per track is too slow for full-library jobs; defer to download workers.
+_BULK_JOB_LIVE_YOUTUBE_CHECK_MAX_TRACKS = 25
 
 
 def _planned_segment_to_dict(seg: PlannedSegment) -> dict[str, Any]:
@@ -46,10 +55,38 @@ class AdvancedAnalysisJobService:
         selection: AudioTrackSelectionService | None = None,
         orchestrator: AnalysisPipelineOrchestrator | None = None,
         hybrid: HybridAvailabilityService | None = None,
+        segment_provider: YtDlpSegmentProvider | None = None,
     ) -> None:
         self._selection = selection or AudioTrackSelectionService()
         self._orchestrator = orchestrator or AnalysisPipelineOrchestrator()
         self._hybrid = hybrid or HybridAvailabilityService()
+        self._segment_provider = segment_provider or YtDlpSegmentProvider()
+
+    def _youtube_available_for_track(
+        self,
+        ctx: TrackContext,
+        *,
+        live_check: bool = True,
+    ) -> tuple[bool, float | None]:
+        if not live_check:
+            # Segment download workers run yt-dlp resolve() before each YouTube fetch.
+            return True, settings.youtube_min_confidence
+        try:
+            candidates = self._segment_provider.resolve(ctx)
+        except YtDlpError as exc:
+            logger.warning(
+                "YouTube availability check unavailable for track %s: %s",
+                ctx.track_id,
+                exc,
+            )
+            return False, None
+        selected = next((c for c in candidates if c.selected), None)
+        if selected is None:
+            return False, None
+        confidence = float(selected.confidence)
+        if confidence < settings.youtube_min_confidence:
+            return False, confidence
+        return True, confidence
 
     def start_advanced_analysis_job(
         self,
@@ -120,18 +157,29 @@ class AdvancedAnalysisJobService:
                 )
 
             track_plans: list[TrackSegmentPlan] = []
+            live_youtube_check = len(ids) <= _BULK_JOB_LIVE_YOUTUBE_CHECK_MAX_TRACKS
             for tid in ids:
                 ctx = load_track_context(session, tid)
                 if seg_strategy == "hybrid_deezer_youtube_representative":
                     deezer_ok, deezer_conf = self._hybrid.deezer_for_analysis(session, tid)
-                    planned, _decision = plan_hybrid_for_track(
+                    yt_available = False
+                    yt_conf: float | None = None
+                    if not deezer_ok:
+                        yt_available, yt_conf = self._youtube_available_for_track(
+                            ctx,
+                            live_check=live_youtube_check,
+                        )
+                    planned, decision = plan_hybrid_for_track(
                         ctx,
                         analysis_mode=analysis_mode,
                         segment_duration_seconds=segment_duration_seconds,
                         deezer_preview_available=deezer_ok,
-                        youtube_available=True,
+                        youtube_available=yt_available,
+                        youtube_confidence=yt_conf,
                         deezer_match_confidence=deezer_conf,
                     )
+                    if decision == ANALYSIS_UNAVAILABLE or not planned:
+                        continue
                 else:
                     planned = plan_segments_for_track(
                         ctx,
@@ -146,6 +194,13 @@ class AdvancedAnalysisJobService:
                         segment_ids=[None] * len(planned),
                         planned_segments=planned_dicts,
                     )
+                )
+
+            if not track_plans:
+                raise ApiError(
+                    code="NO_TRACKS",
+                    message="No tracks with an available Deezer preview or YouTube source for analysis.",
+                    status_code=400,
                 )
 
         return self._orchestrator.create_pipeline_job(

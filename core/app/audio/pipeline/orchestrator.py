@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.audio.pipeline.constants import (
     BLOCKED_REASON_DEPENDENCY_PENDING,
+    ITEM_TYPE_ANALYSIS_PIPELINE_STAGE,
     JOB_TYPE_AUDIO_ANALYSIS_PIPELINE,
     PIPELINE_MODE_STREAMING,
     STAGE_AUDIO_CLEANUP,
@@ -265,6 +266,52 @@ class AnalysisPipelineOrchestrator:
                 self._items.recompute_job_progress(session, job_id)
                 session.commit()
         return unblocked
+
+    def retry_failed_items_for_job(
+        self,
+        job_id: str,
+        *,
+        stage_names: tuple[str, ...] | None = None,
+        reset_attempt_count: bool = True,
+    ) -> int:
+        """Reset failed pipeline stage items to pending so workers can pick them up."""
+        engine = get_engine()
+        retried = 0
+        with Session(engine) as session:
+            job = session.get(Job, job_id)
+            if job is None or job.job_type != JOB_TYPE_AUDIO_ANALYSIS_PIPELINE:
+                return 0
+
+            blocked_items = self._items._items.list_for_job_by_status(
+                session, job_id, status="failed"
+            )
+            for item in blocked_items:
+                if item.item_type != ITEM_TYPE_ANALYSIS_PIPELINE_STAGE:
+                    continue
+                if stage_names is not None and item.stage_name not in stage_names:
+                    continue
+                fields: dict[str, object] = {
+                    "status": "pending",
+                    "error_code": None,
+                    "error_message": None,
+                    "finished_at": None,
+                    "locked_by": None,
+                    "locked_at": None,
+                    "next_retry_at": None,
+                }
+                if reset_attempt_count:
+                    fields["attempt_count"] = 0
+                self._items._items.update_fields(session, item.id, **fields)
+                retried += 1
+
+            if retried:
+                session.commit()
+                self._items.recompute_job_progress(session, job_id)
+                session.commit()
+
+        if retried:
+            self.refresh_dependencies(job_id)
+        return retried
 
     def retry_stage_item(self, item_id: str) -> bool:
         engine = get_engine()

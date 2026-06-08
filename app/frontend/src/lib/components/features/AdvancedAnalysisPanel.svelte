@@ -29,6 +29,23 @@
 		return { liked: true, sort: 'liked_added_at', order: 'desc' };
 	}
 
+	function formatJobError(e: unknown): string {
+		if (e instanceof ApiClientError) {
+			const msg = e.message.replace(/\s*\(\d{3}\)\s*$/, '');
+			if (e.code === 'NO_TRACKS') {
+				return `${msg} Try disabling "Only missing", increasing the limit, or selecting tracks that still need analysis.`;
+			}
+			if (e.code === 'JOB_ALREADY_RUNNING') {
+				return `${msg} Wait for the current job to finish or cancel it from the progress bar above.`;
+			}
+			if (e.code === 'MODEL_MISSING') {
+				return `${msg} Download models above or disable "Require real TensorFlow".`;
+			}
+			return msg;
+		}
+		return e instanceof Error ? e.message : String(e);
+	}
+
 	async function runAdvancedPipeline() {
 		actionError = null;
 		actionMessage = null;
@@ -57,14 +74,7 @@
 				}
 			});
 		} catch (e) {
-			if (e instanceof ApiClientError) {
-				actionError =
-					e.code === 'MODEL_MISSING'
-						? `${e.message} Download models above or disable "Require real TensorFlow".`
-						: e.message;
-			} else {
-				actionError = e instanceof Error ? e.message : String(e);
-			}
+			actionError = formatJobError(e);
 		} finally {
 			actionBusy = false;
 		}

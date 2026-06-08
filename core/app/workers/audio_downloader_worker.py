@@ -7,7 +7,8 @@ from datetime import UTC, datetime
 from sqlalchemy.orm import Session
 
 from app.audio.deezer_preview_download import download_deezer_preview_segment
-from app.audio.errors import LOCAL_ANALYSIS_UNAVAILABLE
+from app.audio.errors import LOCAL_ANALYSIS_UNAVAILABLE, is_download_failure_retryable
+from app.audio.provider import TrackContext
 from app.audio.hybrid_availability import HybridAvailabilityService
 from app.audio.segments import plan_hybrid_for_track, plan_segments_for_track
 from app.audio.strategy.hybrid import ANALYSIS_UNAVAILABLE
@@ -31,7 +32,7 @@ from app.audio.pipeline.segment_download import (
 from app.database.models_job_items import JobItem
 from app.database.models_jobs import Job
 from app.jobs.items.constants import WORKER_TYPE_AUDIO_DOWNLOADER
-from app.jobs.items.service import ReservedJobItem
+from app.jobs.items.service import PIPELINE_WORKER_ITEM_KWARGS, ReservedJobItem
 from app.observability.redact import redact_dict
 from app.previews.deezer_preview_refresh import ensure_fresh_deezer_preview_url
 from app.settings.config import settings
@@ -69,6 +70,42 @@ class AudioDownloaderWorker(BaseWorker):
         self._availability = availability or HybridAvailabilityService()
         self._previews = previews_repo or TrackPreviewsRepository()
         self._handoff = PipelineSegmentHandoffService()
+
+    def _resolve_youtube_source(self, ctx: TrackContext):
+        """Resolve a YouTube (or test) source for one planned segment."""
+        candidates = self._provider.resolve(ctx)  # type: ignore[union-attr]
+        selected = next((c for c in candidates if c.selected), None)
+        if self._is_test:
+            return selected
+        if selected is None:
+            return None
+        if selected.confidence < settings.youtube_min_confidence:
+            return None
+        return selected
+
+    def _mark_pipeline_download_failed(
+        self,
+        *,
+        item: ReservedJobItem,
+        download_id: int | None,
+        exc: Exception,
+    ) -> None:
+        engine = get_engine()
+        if download_id is not None:
+            with Session(engine) as session:
+                row = self._downloads.get(session, download_id)
+                if row:
+                    row.status = "failed"
+                    row.last_error = str(exc)[:2000]
+                    row.finished_at = datetime.now(tz=UTC).replace(tzinfo=None)
+                session.commit()
+        self._items.mark_failed(
+            item.id,
+            error_code="AUDIO_DOWNLOAD_FAILED",
+            error_message=str(exc)[:500],
+            retryable=is_download_failure_retryable(exc),
+            **PIPELINE_WORKER_ITEM_KWARGS,
+        )
 
     def process_item(self, item: object) -> None:
         assert isinstance(item, ReservedJobItem)
@@ -279,12 +316,11 @@ class AudioDownloaderWorker(BaseWorker):
                     row.last_error = str(e)[:2000]
                     row.finished_at = datetime.now(tz=UTC).replace(tzinfo=None)
                 session.commit()
-            retryable = "timeout" in str(e).lower() or "rate" in str(e).lower()
             self._items.mark_failed(
                 item.id,
                 error_code="AUDIO_DOWNLOAD_FAILED",
                 error_message=str(e)[:500],
-                retryable=retryable,
+                retryable=is_download_failure_retryable(e),
             )
 
     def _process_pipeline_segment_download(self, item: ReservedJobItem) -> None:
@@ -302,13 +338,15 @@ class AudioDownloaderWorker(BaseWorker):
 
         planned = planned_segment_from_dict(planned_raw)
         engine = get_engine()
+        download_id: int | None = None
         try:
             with Session(engine) as session:
                 ctx = load_track_context(session, item.track_id)
             selected = None
-            if self._is_test:
-                candidates = self._provider.resolve(ctx)  # type: ignore[union-attr]
-                selected = next((c for c in candidates if c.selected), None)
+            if planned.source == "youtube":
+                selected = self._resolve_youtube_source(ctx)
+                if selected is None:
+                    raise RuntimeError("No YouTube source for segment download")
 
             deezer_preview_url: str | None = None
             if planned.source == "deezer_preview":
@@ -378,12 +416,7 @@ class AudioDownloaderWorker(BaseWorker):
                     "source": source,
                     "handoff": "segment_ready",
                 },
+                **PIPELINE_WORKER_ITEM_KWARGS,
             )
         except Exception as e:
-            retryable = "timeout" in str(e).lower() or "rate" in str(e).lower()
-            self._items.mark_failed(
-                item.id,
-                error_code="AUDIO_DOWNLOAD_FAILED",
-                error_message=str(e)[:500],
-                retryable=retryable,
-            )
+            self._mark_pipeline_download_failed(item=item, download_id=download_id, exc=e)

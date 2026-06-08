@@ -184,13 +184,31 @@ class AudioTrackSelectionService:
         ``model_profile`` is reserved for future profile-scoped TF completeness checks.
         """
         _ = model_profile
-        max_limit = min(limit or settings.audio_enrich_default_limit, settings.audio_enrich_max_limit)
+        max_limit = min(
+            limit if limit is not None else settings.audio_enrich_max_limit,
+            settings.audio_enrich_max_limit,
+        )
+        scan_limit = max_limit
+        if (
+            track_ids is None
+            and only_missing
+            and not force_refresh
+            and not retry_failed
+        ):
+            if filter_dict:
+                # Filtered batches (e.g. recent liked): widen scan so only_missing can fill quota.
+                scan_limit = min(max(max_limit * 50, 500), settings.audio_enrich_max_limit)
+            else:
+                # Full-library only_missing: scan every track up to server max.
+                scan_limit = settings.audio_enrich_max_limit
         if track_ids is not None:
             ids = self._feature_selection._validate_track_ids(session, track_ids)  # noqa: SLF001
         elif filter_dict:
-            ids = self._feature_selection._ids_from_filter(session, filter_dict, max_limit)  # noqa: SLF001
+            ids = self._feature_selection._ids_from_filter(session, filter_dict, scan_limit)  # noqa: SLF001
         else:
-            ids = list(session.execute(select(Track.id).order_by(Track.id).limit(max_limit)).scalars())
+            ids = list(
+                session.execute(select(Track.id).order_by(Track.id).limit(scan_limit)).scalars()
+            )
 
         if not ids:
             return []

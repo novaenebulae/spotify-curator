@@ -175,6 +175,40 @@ def test_feature_aggregation_waits_all_segments(tmp_path, monkeypatch) -> None:
     assert grouped[STAGE_FEATURE_AGGREGATION][0]["status"] == "pending"
 
 
+def test_retry_failed_items_for_job_bulk(tmp_path, monkeypatch) -> None:
+    db_path = tmp_path / "pipeline_bulk_retry.sqlite"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
+    reset_engine()
+    init_db()
+
+    engine = get_engine()
+    with Session(engine) as session:
+        _seed_track(session, 1)
+        session.commit()
+
+    orch = AnalysisPipelineOrchestrator()
+    items = JobItemService()
+    job_id = orch.create_pipeline_job(
+        [TrackSegmentPlan(track_id=1, segment_ids=[10])],
+        include_lowlevel=True,
+        include_tensorflow=False,
+    )
+
+    download = _items_by_stage(job_id)[STAGE_SEGMENT_DOWNLOAD][0]
+    items.mark_failed(
+        download["id"],
+        error_code="AUDIO_DOWNLOAD_FAILED",
+        error_message="No YouTube source for segment download",
+        retryable=False,
+    )
+
+    retried = orch.retry_failed_items_for_job(job_id, stage_names=(STAGE_SEGMENT_DOWNLOAD,))
+    assert retried == 1
+    refreshed = _items_by_stage(job_id)[STAGE_SEGMENT_DOWNLOAD][0]
+    assert refreshed["status"] == "pending"
+    assert refreshed["error_code"] is None
+
+
 def test_retry_failed_stage(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "pipeline_retry.sqlite"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")

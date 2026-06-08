@@ -223,6 +223,68 @@ def test_pipeline_downloader_handoff_with_stub_provider(tmp_path, monkeypatch) -
     assert ll["segment_id"] is not None
 
 
+def test_pipeline_youtube_download_resolves_source_in_production(tmp_path, monkeypatch) -> None:
+    from app.audio.provider import AudioSourceCandidate
+
+    db_path = tmp_path / "pipeline_yt.sqlite"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")
+    reset_engine()
+    init_db()
+
+    engine = get_engine()
+    with Session(engine) as session:
+        _seed_track(session, 1)
+        session.commit()
+
+    orch = AnalysisPipelineOrchestrator()
+    job_id = orch.create_pipeline_job(
+        [TrackSegmentPlan(track_id=1, segment_ids=[None], planned_segments=(_planned_a(),))],
+        include_tensorflow=False,
+    )
+
+    class _FakeProvider:
+        def resolve(self, ctx):
+            expected = ctx.duration_ms / 1000.0
+            return [
+                AudioSourceCandidate(
+                    source="youtube",
+                    url="https://www.youtube.com/watch?v=test",
+                    candidate_title=ctx.title,
+                    candidate_channel=ctx.primary_artist,
+                    candidate_duration=expected,
+                    expected_duration=expected,
+                    duration_delta=0.0,
+                    text_match_score=1.0,
+                    confidence=0.95,
+                    selected=True,
+                    rejected_reason=None,
+                )
+            ]
+
+        def download_segment(self, _ctx, *, job_id, segment, source_url):
+            rel = f"audio_segments/1/{job_id}/yt.wav"
+            path = tmp_path / "cache" / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"\x00\x01")
+            return rel, "cafebabe"
+
+    monkeypatch.setenv("CACHE_DIR", str(tmp_path / "cache"))
+    items = JobItemService()
+    reserved = items.reserve_next(worker_id="dl-yt", worker_type="audio_downloader")
+    assert reserved is not None
+
+    worker = AudioDownloaderWorker(provider=_FakeProvider(), use_test_provider=False)
+    worker.process_item(reserved)
+
+    download = next(
+        i for i in items.list_items(job_id) if i["stage_name"] == STAGE_SEGMENT_DOWNLOAD
+    )
+    assert download["status"] == "success"
+    ll = next(i for i in items.list_items(job_id) if i["stage_name"] == STAGE_ESSENTIA_LOWLEVEL)
+    assert ll["status"] == "pending"
+    assert ll["segment_id"] is not None
+
+
 def test_legacy_mode_skips_pipeline_reservation(tmp_path, monkeypatch) -> None:
     db_path = tmp_path / "legacy_mode.sqlite"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path.as_posix()}")

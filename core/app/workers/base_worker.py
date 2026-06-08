@@ -8,11 +8,18 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 
+from sqlalchemy.exc import OperationalError
+
 from app.jobs.items.service import JobItemService
 from app.settings.config import settings
 from app.workers.heartbeat import WorkerHeartbeatService
 
 logger = logging.getLogger(__name__)
+
+
+def _is_sqlite_locked(exc: OperationalError) -> bool:
+    orig = getattr(exc, "orig", None)
+    return orig is not None and "locked" in str(orig).lower()
 
 
 class BaseWorker(ABC):
@@ -40,28 +47,16 @@ class BaseWorker(ABC):
         logger.info("Worker %s starting", self._worker_id)
         try:
             while self._running:
-                self._heartbeat.register_or_update(
-                    worker_id=self._worker_id,
-                    worker_type=self.worker_type,
-                    status="idle",
-                )
-                self._items.release_stale_locks(worker_type=self.worker_type)
-                item = self._items.reserve_next(
-                    worker_id=self._worker_id,
-                    worker_type=self.worker_type,
-                )
-                if item is None:
-                    self._heartbeat.register_or_update(
-                        worker_id=self._worker_id,
-                        worker_type=self.worker_type,
-                        status="idle",
+                try:
+                    self._run_worker_iteration()
+                except OperationalError as exc:
+                    if not _is_sqlite_locked(exc):
+                        raise
+                    logger.warning(
+                        "SQLite locked in worker loop, backing off: %s",
+                        self._worker_id,
                     )
                     time.sleep(settings.job_worker_heartbeat_interval_seconds)
-                    continue
-                if self._items.is_job_cancelled(item.job_id):
-                    self._items.mark_skipped(item.id, reason="Parent job cancelled")
-                    continue
-                self._process_item_with_heartbeat(item)
         finally:
             self._heartbeat.register_or_update(
                 worker_id=self._worker_id,
@@ -69,6 +64,30 @@ class BaseWorker(ABC):
                 status="stopping",
             )
             logger.info("Worker %s stopped", self._worker_id)
+
+    def _run_worker_iteration(self) -> None:
+        self._heartbeat.register_or_update(
+            worker_id=self._worker_id,
+            worker_type=self.worker_type,
+            status="idle",
+        )
+        self._items.release_stale_locks(worker_type=self.worker_type)
+        item = self._items.reserve_next(
+            worker_id=self._worker_id,
+            worker_type=self.worker_type,
+        )
+        if item is None:
+            self._heartbeat.register_or_update(
+                worker_id=self._worker_id,
+                worker_type=self.worker_type,
+                status="idle",
+            )
+            time.sleep(settings.job_worker_heartbeat_interval_seconds)
+            return
+        if self._items.is_job_cancelled(item.job_id):
+            self._items.mark_skipped(item.id, reason="Parent job cancelled")
+            return
+        self._process_item_with_heartbeat(item)
 
     def _handle_stop(self, *_args: object) -> None:
         self._running = False

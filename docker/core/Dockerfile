@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 COPY core/pyproject.toml core/uv.lock /app/
 
-RUN pip install --no-cache-dir uv \
+RUN pip install --no-cache-dir uv yt-dlp \
     && uv sync --frozen
 
 COPY core/app /app/app
