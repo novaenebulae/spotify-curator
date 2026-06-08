@@ -222,11 +222,9 @@ class EssentiaTensorflowBackend:
         if cached is not None:
             return cached
         algo_cls = getattr(es, algo_name)
-        kwargs: dict[str, object] = {"graphFilename": graph}
-        if output:
-            kwargs["output"] = output
-        if input_node:
-            kwargs["input"] = input_node
+        kwargs = build_predictor_kwargs(
+            algo_name, graph=graph, output=output, input_node=input_node
+        )
         predictor = algo_cls(**kwargs)
         self._predictor_cache[key] = predictor
         return predictor
@@ -309,6 +307,41 @@ class EssentiaTensorflowBackend:
             _meta_classes(meta) or fallback_classes or [f"class_{i}" for i in range(len(scores))]
         )
         return [(str(labels[i]), float(scores[i])) for i in range(min(len(labels), len(scores)))]
+
+
+# ----- predictor construction -----------------------------------------------
+
+
+def build_predictor_kwargs(
+    algo_name: str,
+    *,
+    graph: str,
+    output: str | None = None,
+    input_node: str | None = None,
+) -> dict[str, object]:
+    """Map Essentia algorithm families to correct graph I/O parameter names.
+
+    TensorflowPredict2D uses ``input`` / ``output``.
+    TensorflowPredict* (EffNet, MAEST, MusiCNN, …) use ``inputs`` / ``outputs`` lists.
+    """
+    kwargs: dict[str, object] = {"graphFilename": graph}
+    if algo_name == "TensorflowPredict2D":
+        if output:
+            kwargs["output"] = output
+        if input_node:
+            kwargs["input"] = input_node
+        return kwargs
+    if algo_name.startswith("TensorflowPredict"):
+        if output:
+            kwargs["outputs"] = [output]
+        if input_node:
+            kwargs["inputs"] = [input_node]
+        return kwargs
+    if output:
+        kwargs["output"] = output
+    if input_node:
+        kwargs["input"] = input_node
+    return kwargs
 
 
 # ----- metadata helpers -----------------------------------------------------

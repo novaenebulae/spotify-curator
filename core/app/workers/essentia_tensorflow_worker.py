@@ -6,6 +6,7 @@ import signal
 import threading
 import time
 
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.audio.paths import segment_absolute_path
@@ -51,6 +52,7 @@ _TF_RESERVE_STAGE_ORDER = (
     STAGE_ESSENTIA_TENSORFLOW_CLASSIFIERS,
 )
 _LEGACY_CLASSIFIER_SKIP_REASON = "fulfilled by embeddings merge"
+_IDLE_LOG_EVERY_N_POLLS = 12
 
 
 class EssentiaTensorflowWorker(BaseWorker):
@@ -91,10 +93,14 @@ class EssentiaTensorflowWorker(BaseWorker):
 
     def run_forever(self) -> None:
         device_info = configure_tensorflow_device()
+        models_summary = self._mm.get_status()["summary"]
         self._boot_metrics = {
             **device_info_to_dict(device_info),
             "run_env": settings.run_env,
             "app_env": settings.app_env,
+            "database_url": settings.database_url,
+            "models_dir": settings.models_dir,
+            "real_inference_ready": models_summary.get("real_inference_ready"),
             "essentia_model_profile": settings.effective_essentia_model_profile,
             "warmup_enabled": settings.essentia_tf_warmup,
             "worker_id": self._worker_id,
@@ -154,6 +160,7 @@ class EssentiaTensorflowWorker(BaseWorker):
         refresh_batch_size = max(1, settings.essentia_tensorflow_batch_size)
         job_ids_to_refresh: set[str] = set()
         processed_since_refresh = 0
+        idle_polls = 0
         try:
             while self._running:
                 self._heartbeat.register_or_update(
@@ -170,8 +177,13 @@ class EssentiaTensorflowWorker(BaseWorker):
                     self._flush_pipeline_refresh(job_ids_to_refresh)
                     job_ids_to_refresh.clear()
                     processed_since_refresh = 0
+                    idle_polls += 1
+                    if idle_polls % _IDLE_LOG_EVERY_N_POLLS == 0:
+                        self._log_idle_pipeline_counts()
                     time.sleep(settings.job_worker_heartbeat_interval_seconds)
                     continue
+
+                idle_polls = 0
 
                 if self._items.is_job_cancelled(item.job_id):
                     self._items.mark_skipped(item.id, reason="Parent job cancelled")
@@ -204,6 +216,34 @@ class EssentiaTensorflowWorker(BaseWorker):
 
     def _handle_stop(self, *_args: object) -> None:
         self._running = False
+
+    def _log_idle_pipeline_counts(self) -> None:
+        engine = get_engine()
+        counts: dict[str, dict[str, int]] = {}
+        with Session(engine) as session:
+            rows = session.execute(
+                select(JobItem.stage_name, JobItem.status, func.count())
+                .where(
+                    JobItem.stage_name.in_(tuple(_TF_PIPELINE_STAGES)),
+                    JobItem.status.in_(
+                        ("pending", "running", "failed", "rate_limited", "blocked")
+                    ),
+                )
+                .group_by(JobItem.stage_name, JobItem.status)
+            ).all()
+        for stage_name, status, count in rows:
+            if stage_name is None:
+                continue
+            counts.setdefault(stage_name, {})[status] = int(count)
+        logger.info(
+            "essentia-tensorflow-worker idle: no pipeline item reserved",
+            extra={
+                "worker_id": self._worker_id,
+                "database_url": settings.database_url,
+                "stage_counts": counts,
+                "status_only": self._status_only,
+            },
+        )
 
     def _flush_pipeline_refresh(self, job_ids: set[str]) -> None:
         for job_id in job_ids:

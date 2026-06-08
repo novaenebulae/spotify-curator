@@ -230,7 +230,7 @@ CACHE_DIR=/app/temp-audio
 SPOTIFY_REDIRECT_URI=http://127.0.0.1:8000/api/v1/spotify/auth/callback
 ESSENTIA_MODEL_PROFILE=phase6-recommended
 ESSENTIA_TF_DEVICE=gpu
-ESSENTIA_TF_WARMUP=true
+ESSENTIA_TF_WARMUP=false
 ESSENTIA_TENSORFLOW_WORKERS=1
 ESSENTIA_LOWLEVEL_WORKERS=1
 AUDIO_DOWNLOAD_WORKERS=2
@@ -239,9 +239,11 @@ AUDIO_DOWNLOAD_CONCURRENCY=2
 VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
-- Utiliser **`127.0.0.1`** (pas `localhost`) pour OAuth Spotify et le frontend tunnel ;
-- API exposée sur l’instance : `127.0.0.1:8000` → conteneur `core-api:8765` ;
-- UI dev : service `frontend-dev` (profil `lambda-ui`) sur `127.0.0.1:5173` ;
+- Utiliser **`127.0.0.1`** (pas `localhost`) pour OAuth Spotify ;
+- API exposée sur l’instance : `127.0.0.1:8000` → conteneur `core-api:8765` ; tunnel SSH **API seul** (`-L 8000:127.0.0.1:8000`) ;
+- UI recommandée : frontend local PC avec `VITE_API_BASE_URL=http://127.0.0.1:8000` ;
+- UI optionnelle VM : service `frontend-dev` (profil `lambda-ui`, `make lambda-up-a100-ui`) sur `127.0.0.1:5173` ;
+- GPU check : `scripts/lambda/check_essentia_tf.py` (pas `tensorflow` Python obligatoire) ;
 - SQLite actif sur SSD local (`/home/ubuntu/spotify-curator-runtime/data`), pas sur NFS ;
 - `ESSENTIA_TF_BATCH_SIZE=1` par défaut (micro-batching inference non implémenté).
 - Variables pipeline non listées dans `.env.lambda.example` (Deezer, yt-dlp, ReccoBeats, jobs…) : valeurs par défaut de `x-app-env` ; surcharger dans `.env.lambda` si besoin.

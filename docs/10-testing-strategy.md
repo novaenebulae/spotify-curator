@@ -522,9 +522,10 @@ Unitaires (sans GPU, mocks TensorFlow/Essentia) :
 ```bash
 cd core
 uv run pytest tests/test_lambda_settings.py tests/test_tf_warmup.py \
-  tests/test_check_tf_gpu.py tests/test_tf_segment_metrics.py \
-  tests/test_tf_worker_parallel_reserve.py tests/test_docker_compose_lambda_env.py \
-  tests/test_lambda_init_empty_db.py -q
+  tests/test_tf_predictor_kwargs.py tests/test_check_tf_gpu.py \
+  tests/test_check_essentia_tf.py tests/test_inspect_reset_jobs_scripts.py \
+  tests/test_tf_segment_metrics.py tests/test_tf_worker_parallel_reserve.py \
+  tests/test_docker_compose_lambda_env.py tests/test_lambda_init_empty_db.py -q
 ```
 
 Validation manuelle sur instance Lambda (workflow base vierge) :
@@ -547,7 +548,7 @@ make lambda-check-gpu
 # ou
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.lambda.yml \
   --env-file .env.lambda --profile advanced-analysis run --rm -e REQUIRE_GPU=true \
-  essentia-tensorflow-worker uv run python scripts/lambda/check_tf_gpu.py
+  essentia-tensorflow-worker uv run python scripts/lambda/check_essentia_tf.py
 ```
 
 Benchmark pipeline (20–50 pistes, API locale ou tunnel) :

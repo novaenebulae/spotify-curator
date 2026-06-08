@@ -4,13 +4,21 @@ import logging
 import time
 from typing import Any
 
-from app.audio.tensorflow.backend import EssentiaTensorflowBackend
+from app.audio.tensorflow.backend import (
+    EssentiaTensorflowBackend,
+    _use_direct_extractor_predictions,
+)
 from app.audio.tensorflow.errors import MODEL_MISSING, InferenceError
-from app.audio.tensorflow.model_map import EMBEDDINGS_EXTRACTOR_KEY
+from app.audio.tensorflow.model_map import (
+    EMBEDDINGS_EXTRACTOR_KEY,
+    GENRE_EXTRACTOR_KEY,
+)
 from app.models_registry.manager import ModelManager
 from app.settings.config import settings
 
 logger = logging.getLogger(__name__)
+
+_WARMUP_CRITICAL_KEYS = frozenset({EMBEDDINGS_EXTRACTOR_KEY, GENRE_EXTRACTOR_KEY})
 
 
 def _meta_algorithm(meta: dict) -> str | None:
@@ -81,12 +89,47 @@ def _predictions_output(meta: dict) -> str | None:
     return None
 
 
-def _use_direct_extractor_predictions(extractor_key: str, head_key: str, ext_meta: dict) -> bool:
-    if _predictions_output(ext_meta) is None:
-        return False
-    if extractor_key == head_key:
-        return True
-    return "maest" in extractor_key.lower()
+def _is_warmup_critical(model_key: str) -> bool:
+    return model_key in _WARMUP_CRITICAL_KEYS
+
+
+def _warmup_head_model(
+    be: EssentiaTensorflowBackend,
+    es,
+    mm: ModelManager,
+    *,
+    model_key: str,
+    entry,
+    meta: dict,
+    graph: str,
+    task: str,
+) -> None:
+    ext_key = (entry.depends_on or [EMBEDDINGS_EXTRACTOR_KEY])[0]
+    ext_meta = mm.read_metadata(ext_key) or {}
+    if _use_direct_extractor_predictions(ext_key, model_key, ext_meta):
+        output = _predictions_output(ext_meta) or _meta_output(ext_meta, purpose="predictions")
+        algo = _meta_algorithm(ext_meta) or _default_extractor_algorithm(ext_key)
+        be._get_predictor(  # noqa: SLF001
+            es,
+            algo,
+            graph=str(mm.weights_path(ext_key)),
+            output=output,
+        )
+        return
+    head_meta = meta
+    input_node = _meta_input(head_meta) or "model/Placeholder"
+    output = (
+        entry.output
+        or _meta_output(head_meta, purpose="predictions")
+        or "model/Identity"
+    )
+    be._get_predictor(  # noqa: SLF001
+        es,
+        "TensorflowPredict2D",
+        graph=graph,
+        output=output,
+        input_node=input_node,
+    )
 
 
 def warmup_tensorflow_predictors(
@@ -101,13 +144,14 @@ def warmup_tensorflow_predictors(
     active_profile = profile or settings.effective_essentia_model_profile
     started = time.perf_counter()
     loaded: list[str] = []
-    missing: list[str] = []
+    disk_missing: list[str] = []
+    warmup_failed: list[str] = []
 
     import essentia.standard as es  # type: ignore[import-not-found]
 
     for model_key in mm.resolve_profile(active_profile):
         if not mm.is_available(model_key):
-            missing.append(model_key)
+            disk_missing.append(model_key)
             continue
         entry = mm.get_entry(model_key)
         meta = mm.read_metadata(model_key) or {}
@@ -119,28 +163,17 @@ def warmup_tensorflow_predictors(
                 output = entry.output or _meta_output(meta, purpose="embeddings")
                 algo = _meta_algorithm(meta) or _default_extractor_algorithm(model_key)
                 be._get_predictor(es, algo, graph=graph, output=output)  # noqa: SLF001
-            elif task == "classifier":
-                ext_key = (entry.depends_on or [EMBEDDINGS_EXTRACTOR_KEY])[0]
-                ext_meta = mm.read_metadata(ext_key) or {}
-                if _use_direct_extractor_predictions(ext_key, model_key, ext_meta):
-                    output = _predictions_output(ext_meta)
-                    algo = _meta_algorithm(ext_meta) or _default_extractor_algorithm(ext_key)
-                    be._get_predictor(es, algo, graph=str(mm.weights_path(ext_key)), output=output)  # noqa: SLF001
-                else:
-                    head_meta = meta
-                    input_node = _meta_input(head_meta) or "model/Placeholder"
-                    output = (
-                        entry.output
-                        or _meta_output(head_meta, purpose="predictions")
-                        or "model/Identity"
-                    )
-                    be._get_predictor(  # noqa: SLF001
-                        es,
-                        "TensorflowPredict2D",
-                        graph=graph,
-                        output=output,
-                        input_node=input_node,
-                    )
+            elif task in ("classifier", "genre_classifier", "regression"):
+                _warmup_head_model(
+                    be,
+                    es,
+                    mm,
+                    model_key=model_key,
+                    entry=entry,
+                    meta=meta,
+                    graph=graph,
+                    task=task,
+                )
             else:
                 output = entry.output or _meta_output(meta, purpose="predictions")
                 algo = _meta_algorithm(meta) or _default_extractor_algorithm(model_key)
@@ -148,25 +181,40 @@ def warmup_tensorflow_predictors(
             loaded.append(model_key)
         except Exception as exc:  # noqa: BLE001
             logger.warning("Warmup failed for %s: %s", model_key, exc)
-            missing.append(model_key)
+            warmup_failed.append(model_key)
 
     duration_ms = int((time.perf_counter() - started) * 1000)
+    optional_warmup_failed = [k for k in warmup_failed if not _is_warmup_critical(k)]
+    critical_warmup_failed = [k for k in warmup_failed if _is_warmup_critical(k)]
+    critical_disk_missing = [k for k in disk_missing if _is_warmup_critical(k)]
+
     result = {
         "essentia_model_profile": active_profile,
         "loaded_predictors": loaded,
-        "models_missing": missing,
+        "models_missing": disk_missing + warmup_failed,
+        "disk_missing": disk_missing,
+        "warmup_failed": warmup_failed,
+        "warmup_failed_optional": optional_warmup_failed,
         "warmup_duration_ms": duration_ms,
         "predictor_cache_size": len(be._predictor_cache),  # noqa: SLF001
     }
 
-    if missing:
+    if critical_disk_missing or critical_warmup_failed:
         raise InferenceError(
             code=MODEL_MISSING,
             message=(
                 f"Warmup incomplete for profile {active_profile!r}: "
-                f"missing predictors for {missing}"
+                f"critical models unavailable "
+                f"(disk={critical_disk_missing}, warmup={critical_warmup_failed})"
             ),
             details=result,
+        )
+
+    if optional_warmup_failed:
+        logger.warning(
+            "Warmup skipped optional predictors: %s",
+            optional_warmup_failed,
+            extra=result,
         )
 
     return result

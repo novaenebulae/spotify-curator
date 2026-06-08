@@ -46,8 +46,9 @@ def configure_tensorflow_device() -> TensorflowDeviceInfo:
 
     if mode == "gpu":
         if not gpus:
-            logger.error(
-                "ESSENTIA_TF_DEVICE=gpu but TensorFlow sees no GPU devices",
+            logger.warning(
+                "ESSENTIA_TF_DEVICE=gpu but TensorFlow Python sees no GPU devices "
+                "(Essentia TensorFlow may still use the GPU via bundled runtime)",
                 extra={"device_mode": mode},
             )
         for gpu in gpus:

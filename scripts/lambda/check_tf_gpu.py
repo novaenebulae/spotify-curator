@@ -1,10 +1,26 @@
+"""Legacy TensorFlow Python GPU probe (optional when only essentia-tensorflow is installed)."""
+
+from __future__ import annotations
+
 import os
 import subprocess
 import sys
 
 
 def main() -> int:
-    import tensorflow as tf
+    try:
+        import tensorflow as tf
+    except ImportError:
+        print(
+            "WARNING: tensorflow Python package not installed; "
+            "use scripts/lambda/check_essentia_tf.py for Essentia GPU checks",
+            file=sys.stderr,
+        )
+        require_gpu = os.getenv("REQUIRE_GPU", "false").lower() == "true"
+        if require_gpu:
+            print("ERROR: REQUIRE_GPU=true but tensorflow is not importable", file=sys.stderr)
+            return 1
+        return 0
 
     print("TensorFlow:", tf.__version__)
     gpus = tf.config.list_physical_devices("GPU")
@@ -13,7 +29,7 @@ def main() -> int:
     try:
         out = subprocess.check_output(["nvidia-smi"], text=True)
         print(out)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         print("nvidia-smi unavailable:", exc)
 
     require_gpu = os.getenv("REQUIRE_GPU", "false").lower() == "true"

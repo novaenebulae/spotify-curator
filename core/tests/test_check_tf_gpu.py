@@ -29,6 +29,22 @@ def test_check_tf_gpu_main_ok_without_require_gpu(monkeypatch) -> None:
             assert mod.main() == 0
 
 
+def test_check_tf_gpu_main_ok_when_tensorflow_missing(monkeypatch) -> None:
+    import builtins
+
+    mod = _load_module()
+    monkeypatch.delenv("REQUIRE_GPU", raising=False)
+    real_import = builtins.__import__
+
+    def _import(name, *args, **kwargs):
+        if name == "tensorflow":
+            raise ImportError("no tensorflow")
+        return real_import(name, *args, **kwargs)
+
+    with patch.object(builtins, "__import__", side_effect=_import):
+        assert mod.main() == 0
+
+
 def test_check_tf_gpu_main_fails_when_required(monkeypatch) -> None:
     fake_tf = MagicMock()
     fake_tf.__version__ = "2.15.0"

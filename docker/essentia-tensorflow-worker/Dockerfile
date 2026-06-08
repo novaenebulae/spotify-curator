@@ -57,6 +57,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
+# essentia-tensorflow wheels bundle TensorFlow C++ built for CUDA 11.2 / cuDNN 8.1.
+# The host driver is newer; conda-forge supplies compatible user-space libs.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         python3.11 \
@@ -64,10 +66,19 @@ RUN apt-get update \
         python3-pip \
         ffmpeg \
         curl \
+        bzip2 \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3.11 /usr/local/bin/python \
     && ln -sf /usr/bin/python3.11 /usr/local/bin/python3 \
-    && pip install --no-cache-dir uv
+    && pip install --no-cache-dir uv \
+    && curl -L -o /tmp/Miniforge3.sh \
+        "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh" \
+    && bash /tmp/Miniforge3.sh -b -p /opt/conda \
+    && /opt/conda/bin/conda install -y -c conda-forge cudatoolkit=11.2 cudnn=8.1 \
+    && /opt/conda/bin/conda clean -afy \
+    && rm -f /tmp/Miniforge3.sh
+
+ENV LD_LIBRARY_PATH=/opt/conda/lib:/usr/local/nvidia/lib:/usr/local/nvidia/lib64
 
 COPY core/pyproject.toml core/uv.lock /app/
 RUN uv sync --frozen

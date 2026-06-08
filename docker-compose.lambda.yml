@@ -62,6 +62,9 @@ services:
       - ./profiles:/app/profiles:ro
 
   essentia-tensorflow-worker:
+    mem_limit: "24g"
+    memswap_limit: "24g"
+    shm_size: "4gb"
     env_file: !override
       - .env.lambda
     volumes:

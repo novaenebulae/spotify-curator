@@ -31,7 +31,8 @@ Le workflow n’impose donc plus d’envoyer une base SQLite locale vers Lambda.
 | `make lambda-up` / `lambda-up-a100` | Stack stable (1 worker TF) |
 | `make lambda-up-a100-tf2` / `lambda-up-tf2` | 2 workers TF (après benchmark) |
 | `make lambda-up-a10` | Même scale que A100 stable |
-| `make lambda-check-gpu` | Vérif TensorFlow + GPU |
+| `make lambda-check-gpu` | Vérif Essentia TensorFlow + `nvidia-smi` |
+| `make lambda-up-a100-ui` | Stack + frontend VM (optionnel) |
 | `make lambda-export` | Export final vers NFS |
 
 ---
@@ -110,7 +111,7 @@ PREVIEW_RESOLVER_WORKERS=1
 AUDIO_DOWNLOAD_CONCURRENCY=2
 
 ESSENTIA_TF_BATCH_SIZE=1
-ESSENTIA_TF_WARMUP=true
+ESSENTIA_TF_WARMUP=false
 TF_FORCE_GPU_ALLOW_GROWTH=true
 TF_NUM_INTRAOP_THREADS=4
 TF_NUM_INTEROP_THREADS=2
@@ -127,7 +128,7 @@ PREVIEW_RESOLVER_WORKERS=1
 AUDIO_DOWNLOAD_CONCURRENCY=2
 
 ESSENTIA_TF_BATCH_SIZE=1
-ESSENTIA_TF_WARMUP=true
+ESSENTIA_TF_WARMUP=false
 TF_FORCE_GPU_ALLOW_GROWTH=true
 TF_NUM_INTRAOP_THREADS=2
 TF_NUM_INTEROP_THREADS=1
@@ -168,7 +169,7 @@ PREVIEW_RESOLVER_WORKERS=1
 AUDIO_DOWNLOAD_CONCURRENCY=2
 
 ESSENTIA_TF_BATCH_SIZE=1
-ESSENTIA_TF_WARMUP=true
+ESSENTIA_TF_WARMUP=false
 TF_FORCE_GPU_ALLOW_GROWTH=true
 TF_NUM_INTRAOP_THREADS=4
 TF_NUM_INTEROP_THREADS=2
@@ -329,7 +330,7 @@ ESSENTIA_MODELS_VERIFY_HASH=true
 ESSENTIA_MODELS_ACCEPT_LICENSE=false
 
 ESSENTIA_TF_DEVICE=gpu
-ESSENTIA_TF_WARMUP=true
+ESSENTIA_TF_WARMUP=false
 ESSENTIA_TF_BATCH_SIZE=1
 ESSENTIA_TENSORFLOW_BATCH_SIZE=1
 ESSENTIA_TF_REAL_INFERENCE_ENABLED=true
@@ -365,39 +366,44 @@ Utiliser 127.0.0.1, pas localhost, pour Spotify OAuth.
 
 ---
 
-## 7. Spotify OAuth via tunnel SSH
+## 7. Frontend local + tunnel API (recommandé)
 
-Le tunnel SSH permet de faire fonctionner OAuth comme si l’API tournait localement, alors que la callback est traitée sur Lambda.
+Le workflow principal utilise le **frontend Svelte sur le PC local** et un tunnel SSH **API uniquement**. Le service `frontend-dev` sur Lambda (profil `lambda-ui`) reste optionnel (`make lambda-up-a100-ui`).
 
 ### Tunnel à ouvrir depuis le PC local
 
 ```bash
-ssh -i ~/.ssh/lambda_spotify_curator \
-  -L 5173:127.0.0.1:5173 \
-  -L 8000:127.0.0.1:8000 \
-  ubuntu@<LAMBDA_INSTANCE_IP>
+ssh -i ~/.ssh/lambda_spotify_curator -L 8000:127.0.0.1:8000 ubuntu@<LAMBDA_INSTANCE_IP>
 ```
 
 PowerShell :
 
 ```powershell
 ssh -i $env:USERPROFILE\.ssh\lambda_spotify_curator `
-  -L 5173:127.0.0.1:5173 `
   -L 8000:127.0.0.1:8000 `
   ubuntu@<LAMBDA_INSTANCE_IP>
 ```
 
-Ensuite, ouvrir :
+### Frontend local (PC)
+
+```bash
+cd app/frontend
+VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev -- --host 127.0.0.1 --port 5173
+```
+
+Ouvrir :
 
 ```text
 http://127.0.0.1:5173
 ```
 
-L’UI appelle :
+L’UI appelle l’API Lambda via le tunnel :
 
 ```text
 http://127.0.0.1:8000
 ```
+
+Ne pas forwarder le port `5173` sur la VM si le frontend tourne localement.
 
 ### Redirect URI Spotify à configurer
 
@@ -476,6 +482,9 @@ Commencer par phase6-recommended.
 ### Sur l’instance Lambda
 
 ```bash
+sudo bash scripts/lambda/install-host-prereqs.sh
+bash scripts/lambda/verify-docker-gpu.sh   # après reconnexion SSH si groupe docker ajouté
+
 cd /lambda/nfs/persistent-storage
 git clone <REPO_GIT> spotify-curator
 cd spotify-curator
@@ -539,32 +548,27 @@ bash scripts/lambda/check-services.sh
 
 ---
 
-## 10. Tunnel UI/API
+## 10. Tunnel API + UI locale
 
-Depuis le PC local :
+Depuis le PC local (tunnel API seul) :
 
 ```bash
 ssh -i ~/.ssh/lambda_spotify_curator \
-  -L 5173:127.0.0.1:5173 \
   -L 8000:127.0.0.1:8000 \
   ubuntu@<LAMBDA_INSTANCE_IP>
 ```
 
-Ouvrir :
-
-```text
-http://127.0.0.1:5173
-```
-
-Puis :
+Frontend local : voir §7. Puis :
 
 ```text
 1. Connecter Spotify.
 2. Importer liked tracks/playlists.
 3. Télécharger modèles Essentia.
-4. Lancer benchmark.
+4. Lancer benchmark (scripts/lambda/benchmark-pipeline.sh via conteneur core-api).
 5. Lancer analyse complète.
 ```
+
+`check-services.sh` exige l’API ; le frontend VM est un avertissement seulement (`CHECK_FRONTEND=0` pour ignorer).
 
 ---
 
@@ -650,12 +654,16 @@ make lambda-logs-tf
 Progression jobs :
 
 ```bash
-sqlite3 /home/ubuntu/spotify-curator-runtime/data/spotify_curator.sqlite "
-SELECT stage_name, status, COUNT(*)
-FROM job_items
-GROUP BY stage_name, status
-ORDER BY stage_name, status;
-"
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.lambda.yml \
+  --env-file .env.lambda exec -T core-api \
+  uv run python scripts/inspect_jobs.py
+```
+
+Reset locks stale (après crash worker, avec backup SQLite) :
+
+```bash
+docker compose ... exec -T core-api uv run python scripts/reset_stale_jobs.py --dry-run
+docker compose ... exec -T core-api uv run python scripts/reset_stale_jobs.py --stage essentia_tensorflow_embeddings
 ```
 
 Backups intermédiaires :
@@ -746,7 +754,8 @@ Référence : [`Makefile`](../Makefile).
 make lambda-init-empty-db
 make lambda-build
 make lambda-check-gpu
-make lambda-up-a100      # ou make lambda-up / make lambda-up-a10
+make lambda-up-a100      # ou make lambda-up / make lambda-up-a10 (sans frontend VM)
+make lambda-up-a100-ui   # optionnel : profil lambda-ui
 make lambda-up-a100-tf2  # ou make lambda-up-tf2
 make lambda-down
 make lambda-backup
@@ -756,7 +765,43 @@ make lambda-logs-tf
 
 ---
 
-## 18. Critères d’acceptation
+## 18. Checklist de validation incrémentale
+
+Ordre recommandé (post-mortem A100) :
+
+```text
+1. install-host-prereqs.sh + verify-docker-gpu.sh
+2. init-empty-db + lambda-build + lambda-check-gpu (check_essentia_tf.py)
+3. make lambda-up-a100 (sans lambda-ui)
+4. Tunnel API seul + frontend local PC
+5. OAuth Spotify + import bibliothèque
+6. Téléchargement modèles phase6-recommended depuis l’UI
+7. Workers audio + heartbeat essentia_tensorflow visible
+8. 1 job pipeline avec au moins 1 job_item essentia_tensorflow traité
+9. nvidia-smi actif pendant inférence
+10. benchmark-pipeline.sh (30 pistes)
+11. export final + integrity_check
+```
+
+## 19. Dépannage
+
+| Symptôme | Diagnostic |
+|----------|------------|
+| Worker TF restart loop | Logs : warmup MAEST ; `ESSENTIA_TF_WARMUP=false` dans `.env.lambda` ; pas d’override dans `docker-compose.gpu.yml` |
+| `Cannot dlopen GPU libraries` | Image `gpu` : CUDA 11.2/cuDNN via conda + `LD_LIBRARY_PATH` (voir Dockerfile) |
+| `check_tf_gpu` échoue sans `tensorflow` Python | Utiliser `make lambda-check-gpu` → `check_essentia_tf.py` |
+| Pipeline bloquée | `inspect_jobs.py` ; `reset_stale_jobs.py --dry-run` |
+| Frontend VM inaccessible | Normal si `lambda-ui` off ; utiliser frontend local + tunnel API |
+
+Inspecter l’environnement **par service** (pas un grep global ambigu) :
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.lambda.yml \
+  --env-file .env.lambda exec essentia-tensorflow-worker \
+  bash -lc 'env | grep -E "ESSENTIA_TF_WARMUP|ESSENTIA_TENSORFLOW_WORKERS|DATABASE_URL|LD_LIBRARY_PATH"'
+```
+
+## 20. Critères d’acceptation
 
 Le mode Lambda mis à jour est valide si :
 
@@ -768,7 +813,8 @@ Le mode Lambda mis à jour est valide si :
 - les tokens Spotify sont stockés dans la SQLite Lambda ;
 - l’import Spotify remplit la base Lambda ;
 - les modèles Essentia sont téléchargeables depuis l’UI ;
-- TensorFlow voit le GPU ;
+- `check_essentia_tf.py` + `nvidia-smi` OK dans le conteneur TF ;
+- `ESSENTIA_TF_WARMUP=false` n’empêche pas l’inférence (warmup optionnel) ;
 - A100/A10 sont configurables via .env.lambda ;
 - 1 worker TF fonctionne ;
 - 2 workers TF sont benchmarkables sur A100 ;
@@ -778,7 +824,7 @@ Le mode Lambda mis à jour est valide si :
 
 ---
 
-## 19. Annexe — import SQLite legacy (PC → Lambda)
+## 21. Annexe — import SQLite legacy (PC → Lambda)
 
 Workflow **optionnel** si vous souhaitez reprendre une base existante au lieu de `init-empty-db.sh`.
 
@@ -801,7 +847,7 @@ bash scripts/lambda/restore-input.sh spotify-curator-lambda-input.tar.gz
 
 ---
 
-## 20. Annexe — réimporter la base analysée en local (Windows)
+## 22. Annexe — réimporter la base analysée en local (Windows)
 
 Après `make lambda-export` et `scp` de l’archive :
 
@@ -815,7 +861,7 @@ docker compose up -d
 
 ---
 
-## 21. Résumé opérationnel
+## 23. Résumé opérationnel
 
 ```bash
 # --- Lambda ---
@@ -829,8 +875,9 @@ bash scripts/lambda/check-services.sh
 ```
 
 ```bash
-# --- PC local : tunnel ---
-ssh -i ~/.ssh/lambda_spotify_curator -L 5173:127.0.0.1:5173 -L 8000:127.0.0.1:8000 ubuntu@<IP>
+# --- PC local : tunnel API + frontend dev ---
+ssh -i ~/.ssh/lambda_spotify_curator -L 8000:127.0.0.1:8000 ubuntu@<IP>
+cd app/frontend && VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev -- --host 127.0.0.1 --port 5173
 # http://127.0.0.1:5173 → OAuth Spotify → import bibliothèque → modèles UI → analyse
 ```
 
