@@ -3,7 +3,7 @@ COMPOSE_LAMBDA_UI := $(COMPOSE_LAMBDA_API) --profile lambda-ui
 COMPOSE_LAMBDA := $(COMPOSE_LAMBDA_API)
 
 .PHONY: lambda-build lambda-init-empty-db lambda-up lambda-up-tf1 lambda-up-tf2 \
-	lambda-up-a100 lambda-up-a100-tf2 lambda-up-a10-tuned lambda-up-a10-max lambda-up-a10-ultra lambda-up-a10-download-max lambda-up-a10-tf-focus lambda-up-a10-balanced lambda-up-a10-tf-lean lambda-up-a10-balanced-tf4 lambda-up-a10-stable-tf4 lambda-retry-pipeline-failed lambda-up-a100-ui lambda-up-a10 \
+	lambda-up-a100 lambda-up-a100-tf2 lambda-up-a10-tuned lambda-up-a10-max lambda-up-a10-ultra lambda-up-a10-download-max lambda-up-a10-tf-focus lambda-up-a10-balanced lambda-up-a10-tf-lean lambda-up-a10-balanced-tf4 lambda-up-a10-stable-tf4 lambda-up-a10-stable-tf6 lambda-retry-pipeline-failed lambda-up-a100-ui lambda-up-a10 \
 	lambda-down lambda-check-gpu lambda-backup lambda-export lambda-logs-tf
 
 lambda-build:
@@ -94,6 +94,13 @@ lambda-up-a10-stable-tf4:
 		--scale preview-resolver-worker=1 \
 		--scale essentia-lowlevel-worker=3 \
 		--scale essentia-tensorflow-worker=4
+
+# A10 stable-tf6: same upstream balance, more TF replicas (~3.4 GiB/worker → ~20 GiB VRAM on A10).
+lambda-up-a10-stable-tf6:
+	$(COMPOSE_LAMBDA) up -d --scale audio-downloader=6 \
+		--scale preview-resolver-worker=1 \
+		--scale essentia-lowlevel-worker=3 \
+		--scale essentia-tensorflow-worker=6
 
 lambda-retry-pipeline-failed:
 	$(COMPOSE_LAMBDA) exec -T core-api uv run python scripts/retry_pipeline_failed.py $(JOB_ID)

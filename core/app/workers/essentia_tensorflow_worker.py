@@ -266,8 +266,18 @@ class EssentiaTensorflowWorker(BaseWorker):
         )
 
     def _flush_pipeline_refresh(self, job_ids: set[str]) -> None:
+        # Unblock downstream stages only; aggregation/cleanup run via AnalysisPipelineTicker.
+        from app.audio.pipeline.orchestrator import AnalysisPipelineOrchestrator
+
+        orchestrator = AnalysisPipelineOrchestrator(items=self._items)
         for job_id in job_ids:
-            self._items.refresh_pipeline_for_job(job_id)
+            try:
+                orchestrator.refresh_dependencies(job_id)
+            except Exception:
+                logger.exception(
+                    "essentia-tensorflow pipeline dependency refresh failed for job %s",
+                    job_id,
+                )
 
     def process_item(self, item: object) -> None:
         assert isinstance(item, ReservedJobItem)
