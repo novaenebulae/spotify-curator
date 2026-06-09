@@ -6,8 +6,9 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from app.audio.errors import YtDlpError
+from app.audio.errors import YtDlpError, is_youtube_transient_error
 from app.audio.ytdlp_cmd import build_download_section_command, build_search_command
+from app.audio.ytdlp_throttle import throttle_ytdlp
 from app.settings.config import settings
 
 
@@ -18,6 +19,7 @@ def ytdlp_available() -> bool:
 def run_search(query: str, *, max_results: int = 5) -> list[dict[str, Any]]:
     if not ytdlp_available():
         raise YtDlpError("YTDLP_NOT_FOUND", "yt-dlp binary not found on PATH")
+    throttle_ytdlp()
     cmd = build_search_command(query, max_results=max_results)
     try:
         proc = subprocess.run(
@@ -30,7 +32,12 @@ def run_search(query: str, *, max_results: int = 5) -> list[dict[str, Any]]:
     except subprocess.TimeoutExpired as e:
         raise YtDlpError("YTDLP_TIMEOUT", "yt-dlp search timed out", retryable=True) from e
     if proc.returncode != 0:
-        raise YtDlpError("YTDLP_SEARCH_FAILED", (proc.stderr or proc.stdout or "search failed")[:500])
+        message = (proc.stderr or proc.stdout or "search failed")[:500]
+        raise YtDlpError(
+            "YTDLP_SEARCH_FAILED",
+            message,
+            retryable=is_youtube_transient_error(message),
+        )
     entries: list[dict[str, Any]] = []
     for line in (proc.stdout or "").splitlines():
         line = line.strip()
@@ -57,6 +64,7 @@ def run_download_section(
     if not ytdlp_available():
         raise YtDlpError("YTDLP_NOT_FOUND", "yt-dlp binary not found on PATH")
     output_template.parent.mkdir(parents=True, exist_ok=True)
+    throttle_ytdlp()
     cmd = build_download_section_command(
         url,
         start_seconds=start_seconds,
@@ -75,9 +83,11 @@ def run_download_section(
     except subprocess.TimeoutExpired as e:
         raise YtDlpError("YTDLP_TIMEOUT", "yt-dlp download timed out", retryable=True) from e
     if proc.returncode != 0:
+        message = (proc.stderr or proc.stdout or "download failed")[:500]
         raise YtDlpError(
             "YTDLP_DOWNLOAD_FAILED",
-            (proc.stderr or proc.stdout or "download failed")[:500],
+            message,
+            retryable=is_youtube_transient_error(message),
         )
     # Find downloaded file (template may use ext placeholder)
     parent = output_template.parent

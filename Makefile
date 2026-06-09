@@ -4,7 +4,7 @@ COMPOSE_LAMBDA_UI := $(COMPOSE_LAMBDA_API) --profile lambda-ui
 COMPOSE_LAMBDA := $(COMPOSE_LAMBDA_API)
 
 .PHONY: lambda-build lambda-init-empty-db lambda-up lambda-up-tf1 lambda-up-tf2 \
-	lambda-up-a100 lambda-up-a100-tf2 lambda-up-a10-tuned lambda-up-a10-max lambda-up-a10-ultra lambda-up-a10-download-max lambda-up-a10-tf-focus lambda-up-a10-balanced lambda-up-a10-tf-lean lambda-up-a10-balanced-tf4 lambda-up-a10-stable-tf4 lambda-up-a10-stable-tf6 lambda-up-a10-stable-tf6-pg lambda-migrate-sqlite-to-postgres lambda-retry-pipeline-failed lambda-up-a100-ui lambda-up-a10 \
+	lambda-up-a100 lambda-up-a100-tf2 lambda-up-a10-tuned lambda-up-a10-max lambda-up-a10-ultra lambda-up-a10-download-max lambda-up-a10-tf-focus lambda-up-a10-balanced lambda-up-a10-tf-lean lambda-up-a10-balanced-tf4 lambda-up-a10-stable-tf4 lambda-up-a10-youtube-job lambda-up-a10-stable-tf6 lambda-up-a10-stable-tf6-pg lambda-migrate-sqlite-to-postgres lambda-retry-pipeline-failed lambda-up-a100-ui lambda-up-a10 \
 	lambda-down lambda-check-gpu lambda-backup lambda-export lambda-logs-tf
 
 lambda-build:
@@ -95,6 +95,14 @@ lambda-up-a10-stable-tf4:
 		--scale preview-resolver-worker=1 \
 		--scale essentia-lowlevel-worker=3 \
 		--scale essentia-tensorflow-worker=4
+
+# A10 YouTube fallback job: 4 throttled downloaders + 3 LL + 4 TF.
+lambda-up-a10-youtube-job:
+	$(COMPOSE_LAMBDA) up -d --scale audio-downloader=4 \
+		--scale preview-resolver-worker=1 \
+		--scale essentia-lowlevel-worker=3 \
+		--scale essentia-tensorflow-worker=4 \
+		--scale pipeline-ticker-worker=1
 
 # A10 stable-tf6: 5 TF + dedicated pipeline-ticker-worker (agg/cleanup off core-api).
 lambda-up-a10-stable-tf6:

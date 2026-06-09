@@ -210,10 +210,8 @@ class EssentiaLowlevelWorker(BaseWorker):
         self, item: ReservedJobItem, job_item: JobItem
     ) -> None:
         if item.segment_id is None:
-            self._items.mark_failed(
+            self._items.mark_blocked_waiting_for_dependency(
                 item.id,
-                error_code="INVALID_ITEM",
-                error_message="Pipeline low-level item missing segment_id",
                 **PIPELINE_WORKER_ITEM_KWARGS,
             )
             return

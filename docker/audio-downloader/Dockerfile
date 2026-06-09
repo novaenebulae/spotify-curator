@@ -7,9 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get install -y --no-install-recommends ffmpeg curl ca-certificates unzip \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir uv yt-dlp
+    && pip install --no-cache-dir uv "yt-dlp[default]" \
+    && curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
+    && deno --version
 
 COPY core/pyproject.toml core/uv.lock /app/
 RUN uv sync --frozen

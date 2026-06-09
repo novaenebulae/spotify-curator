@@ -75,7 +75,9 @@ def score_deezer_match(track: TrackContext, candidate: DeezerTrackResult) -> tup
     expected_s = track.duration_ms / 1000.0 if track.duration_ms else None
     dur_s = duration_score(expected_s, candidate.duration_seconds)
 
-    isrc_bonus = 0.35 if is_isrc_exact_match(track, candidate) else 0.0
+    isrc_bonus = 0.0
+    if track.isrc and candidate.isrc and track.isrc.upper() == candidate.isrc.upper():
+        isrc_bonus = 0.35
 
     base = 0.45 * title_s + 0.35 * artist_s + 0.20 * dur_s + isrc_bonus
     pen = penalty_for_title(candidate.title)

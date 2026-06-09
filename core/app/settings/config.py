@@ -76,6 +76,16 @@ class Settings(BaseSettings):
     ytdlp_timeout_seconds: int = 120
     ffmpeg_timeout_seconds: int = 120
     ytdlp_duration_tolerance_seconds: int = 15
+    # Mitigate YouTube bot checks on server-side yt-dlp (android/tv_embedded/web).
+    ytdlp_youtube_player_client: str = "android"
+    ytdlp_cookies_file: str | None = None
+    ytdlp_sleep_interval: float = 2.0
+    ytdlp_max_sleep_interval: float = 8.0
+    ytdlp_sleep_requests: float = 1.5
+    # Minimum seconds between yt-dlp invocations (shared lock across downloader replicas).
+    ytdlp_min_interval_seconds: float = 5.0
+    # Live yt-dlp search during job planning; above this, YouTube is deferred to download workers.
+    bulk_job_live_youtube_check_max_tracks: int = 25
 
     # Essentia low-level
     essentia_lowlevel_workers: int = 2

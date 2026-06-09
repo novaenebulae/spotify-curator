@@ -7,7 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 COPY core/pyproject.toml core/uv.lock /app/
 
-RUN pip install --no-cache-dir uv yt-dlp \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates unzip \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir uv "yt-dlp[default]" \
+    && curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh \
     && uv sync --frozen
 
 COPY core/app /app/app

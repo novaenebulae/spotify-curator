@@ -22,8 +22,6 @@ from app.settings.config import settings
 
 logger = logging.getLogger(__name__)
 
-# Live yt-dlp search per track is too slow for full-library jobs; defer to download workers.
-_BULK_JOB_LIVE_YOUTUBE_CHECK_MAX_TRACKS = 25
 
 
 def _planned_segment_to_dict(seg: PlannedSegment) -> dict[str, Any]:
@@ -158,7 +156,9 @@ class AdvancedAnalysisJobService:
                 )
 
             track_plans: list[TrackSegmentPlan] = []
-            live_youtube_check = len(ids) <= _BULK_JOB_LIVE_YOUTUBE_CHECK_MAX_TRACKS
+            live_youtube_check = (
+                len(ids) <= settings.bulk_job_live_youtube_check_max_tracks
+            )
             for tid in ids:
                 ctx = load_track_context(session, tid)
                 if seg_strategy == "hybrid_deezer_youtube_representative":
@@ -166,10 +166,15 @@ class AdvancedAnalysisJobService:
                     yt_available = False
                     yt_conf: float | None = None
                     if not deezer_ok:
-                        yt_available, yt_conf = self._youtube_available_for_track(
-                            ctx,
-                            live_check=live_youtube_check,
-                        )
+                        if live_youtube_check:
+                            yt_available, yt_conf = self._youtube_available_for_track(
+                                ctx,
+                                live_check=True,
+                            )
+                        else:
+                            # Bulk: plan YouTube segment now; audio-downloader resolves at download.
+                            yt_available = True
+                            yt_conf = None
                     planned, decision = plan_hybrid_for_track(
                         ctx,
                         analysis_mode=analysis_mode,

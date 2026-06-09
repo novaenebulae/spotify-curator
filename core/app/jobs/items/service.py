@@ -731,6 +731,41 @@ class JobItemService:
         if refresh_pipeline:
             self._maybe_refresh_pipeline_dependencies(job_id)
 
+    def mark_blocked_waiting_for_dependency(
+        self,
+        item_id: str,
+        *,
+        recompute_progress: bool = False,
+        refresh_pipeline: bool = False,
+    ) -> None:
+        from app.audio.pipeline.constants import BLOCKED_REASON_DEPENDENCY_PENDING
+
+        engine = get_engine()
+        with Session(engine) as session:
+            item = self._items.get(session, item_id)
+            if item is None:
+                return
+            self._items.update_fields(
+                session,
+                item_id,
+                status="blocked",
+                blocked_reason=BLOCKED_REASON_DEPENDENCY_PENDING,
+                error_code=None,
+                error_message=None,
+                finished_at=None,
+                locked_by=None,
+                locked_at=None,
+                next_retry_at=None,
+            )
+            job_id = item.job_id
+            session.commit()
+        if refresh_pipeline:
+            self.refresh_pipeline_for_job(job_id)
+        if recompute_progress:
+            with Session(engine) as session2:
+                self.recompute_job_progress(session2, job_id)
+                session2.commit()
+
     def mark_failed(
         self,
         item_id: str,

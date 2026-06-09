@@ -3,6 +3,39 @@ from __future__ import annotations
 import shlex
 from dataclasses import dataclass
 
+from app.settings.config import settings
+
+
+def _effective_youtube_player_client() -> str:
+    configured = (settings.ytdlp_youtube_player_client or "").strip()
+    if settings.ytdlp_cookies_file:
+        # android/ios ignore --cookies; web/mweb/tv use them.
+        if configured in ("android", "ios"):
+            return "web"
+        return configured or "web"
+    return configured or "android"
+
+
+def _ytdlp_base_argv() -> list[str]:
+    argv = ["yt-dlp", "--remote-components", "ejs:github"]
+    if settings.ytdlp_cookies_file:
+        argv.extend(["--cookies", settings.ytdlp_cookies_file])
+    client = _effective_youtube_player_client()
+    if client:
+        argv.extend(["--extractor-args", f"youtube:player_client={client}"])
+    if settings.ytdlp_sleep_interval > 0:
+        argv.extend(
+            [
+                "--sleep-interval",
+                str(settings.ytdlp_sleep_interval),
+                "--max-sleep-interval",
+                str(settings.ytdlp_max_sleep_interval),
+            ]
+        )
+    if settings.ytdlp_sleep_requests > 0:
+        argv.extend(["--sleep-requests", str(settings.ytdlp_sleep_requests)])
+    return argv
+
 
 @dataclass(frozen=True)
 class YtDlpSearchCommand:
@@ -18,7 +51,7 @@ class YtDlpDownloadCommand:
 def build_search_command(query: str, *, max_results: int = 5) -> YtDlpSearchCommand:
     safe_query = query.replace('"', "")
     argv = [
-        "yt-dlp",
+        *_ytdlp_base_argv(),
         "--flat-playlist",
         "--dump-single-json",
         "--no-playlist",
@@ -38,7 +71,7 @@ def build_download_section_command(
 ) -> YtDlpDownloadCommand:
     section = f"*{start_seconds:.3f}-{end_seconds:.3f}"
     argv = [
-        "yt-dlp",
+        *_ytdlp_base_argv(),
         "-f",
         audio_format,
         "--no-playlist",

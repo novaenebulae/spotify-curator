@@ -65,7 +65,22 @@ def _streaming_segment_handoff_met(session: Session, item: JobItem) -> bool:
     dep = session.get(JobItem, item.depends_on_item_id)
     if dep is None or dep.stage_name != STAGE_SEGMENT_DOWNLOAD:
         return False
-    return dep.segment_id == item.segment_id
+    return dep.status == "success" and dep.segment_id == item.segment_id
+
+
+def _segment_download_dependency_met(session: Session, item: JobItem, dep: JobItem) -> bool:
+    """Segment download must succeed and hand off segment_id before analysis runs."""
+    if dep.stage_name != STAGE_SEGMENT_DOWNLOAD:
+        return False
+    if dep.status != "success":
+        return False
+    if _pipeline_mode(session, item.job_id) == PIPELINE_MODE_STREAMING:
+        return (
+            item.segment_id is not None
+            and dep.segment_id is not None
+            and item.segment_id == dep.segment_id
+        )
+    return item.segment_id is not None
 
 
 def _prerequisites_met(session: Session, item: JobItem) -> bool:
@@ -82,6 +97,8 @@ def _prerequisites_met(session: Session, item: JobItem) -> bool:
         return True
     if item.depends_on_item_id:
         dep = session.get(JobItem, item.depends_on_item_id)
+        if dep is not None and dep.stage_name == STAGE_SEGMENT_DOWNLOAD:
+            return _segment_download_dependency_met(session, item, dep)
         if _dependency_met(dep):
             return True
         if (
@@ -342,6 +359,97 @@ class AnalysisPipelineOrchestrator:
         if retried:
             self.refresh_dependencies(job_id)
         return retried
+
+    def reblock_failed_analysis_waiting_for_segment(self, job_id: str) -> int:
+        """Move failed/skipped analysis stages back to blocked when segment is not ready."""
+        engine = get_engine()
+        reblocked = 0
+        analysis_stages = (
+            STAGE_ESSENTIA_LOWLEVEL,
+            STAGE_ESSENTIA_TENSORFLOW,
+            STAGE_FEATURE_AGGREGATION,
+        )
+        with Session(engine) as session:
+            job = session.get(Job, job_id)
+            if job is None or job.job_type != JOB_TYPE_AUDIO_ANALYSIS_PIPELINE:
+                return 0
+
+            download_by_track: dict[int, JobItem] = {}
+            for dl_status in ("success", "pending", "running", "failed", "rate_limited"):
+                for item in self._items._items.list_for_job_stages_by_status(
+                    session,
+                    job_id,
+                    stage_names=(STAGE_SEGMENT_DOWNLOAD,),
+                    status=dl_status,
+                    limit=10_000,
+                ):
+                    if item.track_id is None:
+                        continue
+                    tid = int(item.track_id)
+                    existing = download_by_track.get(tid)
+                    if existing is None or (
+                        existing.status != "success" and item.status == "success"
+                    ):
+                        download_by_track[tid] = item
+            for status in ("failed", "skipped"):
+                for item in self._items._items.list_for_job_stages_by_status(
+                    session,
+                    job_id,
+                    stage_names=analysis_stages,
+                    status=status,
+                    limit=10_000,
+                ):
+                    if item.stage_name not in analysis_stages:
+                        continue
+                    track_id = item.track_id
+                    if track_id is None:
+                        continue
+                    download = download_by_track.get(int(track_id))
+                    handoff_ready = (
+                        download is not None
+                        and download.status == "success"
+                        and item.segment_id is not None
+                        and download.segment_id is not None
+                        and item.segment_id == download.segment_id
+                    )
+                    if handoff_ready:
+                        self._items._items.update_fields(
+                            session,
+                            item.id,
+                            status="pending",
+                            blocked_reason=None,
+                            error_code=None,
+                            error_message=None,
+                            finished_at=None,
+                            locked_by=None,
+                            locked_at=None,
+                            next_retry_at=None,
+                            attempt_count=0,
+                        )
+                        reblocked += 1
+                        continue
+                    if download is None or download.status != "success" or item.segment_id is None:
+                        self._items._items.update_fields(
+                            session,
+                            item.id,
+                            status="blocked",
+                            blocked_reason=BLOCKED_REASON_DEPENDENCY_PENDING,
+                            error_code=None,
+                            error_message=None,
+                            finished_at=None,
+                            locked_by=None,
+                            locked_at=None,
+                            next_retry_at=None,
+                        )
+                        reblocked += 1
+
+            if reblocked:
+                self._items.recompute_job_progress(session, job_id)
+                session.commit()
+
+        if reblocked:
+            self.refresh_dependencies(job_id)
+        return reblocked
 
     def retry_stage_item(self, item_id: str) -> bool:
         engine = get_engine()

@@ -340,10 +340,8 @@ class EssentiaTensorflowWorker(BaseWorker):
             return True
 
         if item.segment_id is None:
-            self._items.mark_failed(
+            self._items.mark_blocked_waiting_for_dependency(
                 item.id,
-                error_code="INVALID_ITEM",
-                error_message="Pipeline tensorflow item missing segment_id",
                 **_PIPELINE_TF_FAIL_KWARGS,
             )
             return False

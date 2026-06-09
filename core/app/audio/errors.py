@@ -31,15 +31,41 @@ def _is_sqlite_locked(exc: BaseException) -> bool:
     return orig is not None and "locked" in str(orig).lower()
 
 
+def is_youtube_transient_error(message: str) -> bool:
+    lowered = message.lower()
+    needles = (
+        "not a bot",
+        "sign in to confirm",
+        "try again later",
+        "http error 403",
+        "http error 429",
+        "http error 503",
+        "too many requests",
+        "rate-limit",
+        "rate limit",
+        "challenge",
+        "googlevideo.com",
+        "unable to download",
+        "fragment",
+        "no youtube source",
+        "timed out",
+        "timeout",
+    )
+    return any(needle in lowered for needle in needles)
+
+
 def is_download_failure_retryable(exc: BaseException) -> bool:
     """Whether an audio download error should return the job item to pending."""
     if isinstance(exc, AudioToolError):
         return exc.retryable
     if isinstance(exc, OperationalError):
         return _is_sqlite_locked(exc)
-    message = str(exc).lower()
-    if "database is locked" in message:
+    message = str(exc)
+    lowered = message.lower()
+    if "database is locked" in lowered:
         return True
-    if "no such file or directory" in message:
+    if "no such file or directory" in lowered:
         return True
-    return "timeout" in message or "rate" in message
+    if is_youtube_transient_error(message):
+        return True
+    return "timeout" in lowered or "rate" in lowered
