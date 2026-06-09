@@ -8,6 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.audio.pipeline.constants import (
     JOB_TYPE_AUDIO_ANALYSIS_PIPELINE,
+    STAGE_AUDIO_CLEANUP,
+    STAGE_ESSENTIA_LOWLEVEL,
+    STAGE_ESSENTIA_TENSORFLOW,
+    STAGE_FEATURE_AGGREGATION,
     STAGE_SEGMENT_DOWNLOAD,
 )
 from app.audio.pipeline.consumers import consumer_group_for_segment
@@ -89,7 +93,20 @@ class PipelineSegmentHandoffService:
 
     def complete_segment_handoff(self, job_id: str) -> int:
         """Refresh blocked stages after the caller has committed segment binding."""
-        return self._orchestrator.refresh_dependencies(job_id)
+        stages = (
+            STAGE_ESSENTIA_LOWLEVEL,
+            STAGE_ESSENTIA_TENSORFLOW,
+            STAGE_FEATURE_AGGREGATION,
+            STAGE_AUDIO_CLEANUP,
+        )
+        unblocked = 0
+        for stage in stages:
+            unblocked += self._orchestrator.refresh_dependencies(
+                job_id,
+                stage_names=(stage,),
+                limit=500,
+            )
+        return unblocked
 
     def _bind_segment_to_slot(
         self,

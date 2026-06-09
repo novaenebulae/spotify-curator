@@ -10,6 +10,8 @@ from app.audio.pipeline.audio_cleanup import PipelineAudioCleanupService
 from app.audio.pipeline.constants import (
     JOB_TYPE_AUDIO_ANALYSIS_PIPELINE,
     STAGE_AUDIO_CLEANUP,
+    STAGE_ESSENTIA_LOWLEVEL,
+    STAGE_ESSENTIA_TENSORFLOW,
     STAGE_FEATURE_AGGREGATION,
 )
 from app.audio.pipeline.feature_aggregation import PipelineFeatureAggregationService
@@ -72,14 +74,20 @@ class AnalysisPipelineTicker:
         include_track_progress = (
             self._tick_count % max(1, settings.analysis_pipeline_tick_progress_every_n) == 0
         )
-        downstream_stages = (STAGE_FEATURE_AGGREGATION, STAGE_AUDIO_CLEANUP)
+        downstream_stages = (
+            STAGE_ESSENTIA_LOWLEVEL,
+            STAGE_ESSENTIA_TENSORFLOW,
+            STAGE_FEATURE_AGGREGATION,
+            STAGE_AUDIO_CLEANUP,
+        )
 
         for job_id in job_ids:
-            deps_unblocked += self._orchestrator.refresh_dependencies(
-                job_id,
-                stage_names=downstream_stages,
-                limit=settings.analysis_pipeline_refresh_batch_size,
-            )
+            for stage in downstream_stages:
+                deps_unblocked += self._orchestrator.refresh_dependencies(
+                    job_id,
+                    stage_names=(stage,),
+                    limit=settings.analysis_pipeline_refresh_batch_size,
+                )
             agg_batches = self._agg_batches_for_job(job_id)
             for _ in range(agg_batches):
                 ran = self._aggregation.try_run_pending_for_job(job_id)
