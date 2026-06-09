@@ -1156,18 +1156,9 @@ class JobItemService:
             except json.JSONDecodeError:
                 existing = {}
             track_count = int(existing.get("track_count") or 0)
-            cleanup_by_track: dict[int, str] = {}
-            failed_tracks: set[int] = set()
-            track_ids: set[int] = set()
-            for item in self._items.list_for_job(session, job_id, limit=100_000, offset=0):
-                if item.track_id is None:
-                    continue
-                tid = int(item.track_id)
-                track_ids.add(tid)
-                if item.stage_name == STAGE_AUDIO_CLEANUP:
-                    cleanup_by_track[tid] = str(item.status)
-                elif item.status == "failed":
-                    failed_tracks.add(tid)
+            cleanup_by_track, failed_tracks, track_ids = (
+                self._items.pipeline_track_progress_maps(session, job_id)
+            )
             if track_count <= 0:
                 track_count = len(track_ids) or len(cleanup_by_track)
             completed = failed = pending = 0

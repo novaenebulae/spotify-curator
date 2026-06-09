@@ -18,6 +18,9 @@ services:
       - /home/ubuntu/spotify-curator-runtime/postgres-data:/var/lib/postgresql/data
 
   core-api:
+    restart: unless-stopped
+    mem_limit: 2048m
+    cpus: 2.0
     depends_on:
       postgres:
         condition: service_healthy

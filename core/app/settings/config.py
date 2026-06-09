@@ -96,6 +96,9 @@ class Settings(BaseSettings):
     analysis_pipeline_agg_priority_batches: int = 2
     database_pool_size: int = 5
     database_max_overflow: int = 10
+    database_lock_timeout_ms: int = 5000
+    database_idle_in_transaction_session_timeout_ms: int = 60_000
+    database_statement_timeout_ms: int = 120_000
     audio_cleanup_wait_for_all_consumers: bool = True
     essentia_lowlevel_item_lock_timeout_seconds: int = 900
     essentia_lowlevel_image: str = "ghcr.io/mtg/essentia"

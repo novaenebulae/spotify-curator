@@ -32,6 +32,7 @@ class TrackPreview(Base):
     duration_delta_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     match_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     match_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    match_strategy: Mapped[str | None] = mapped_column(String(32), nullable=True)
     is_available: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)

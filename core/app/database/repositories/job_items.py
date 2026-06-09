@@ -57,6 +57,40 @@ class JobItemsRepository:
             result.setdefault(str(stage_name), {})[str(status)] = int(count)
         return result
 
+    def pipeline_track_progress_maps(
+        self, session: Session, job_id: str
+    ) -> tuple[dict[int, str], set[int], set[int]]:
+        """Lightweight maps for per-track pipeline progress (no full job_items hydration)."""
+        from app.audio.pipeline.constants import STAGE_AUDIO_CLEANUP
+
+        cleanup_rows = session.execute(
+            select(JobItem.track_id, JobItem.status).where(
+                JobItem.job_id == job_id,
+                JobItem.stage_name == STAGE_AUDIO_CLEANUP,
+                JobItem.track_id.is_not(None),
+            )
+        ).all()
+        cleanup_by_track = {int(tid): str(status) for tid, status in cleanup_rows}
+
+        failed_rows = session.execute(
+            select(func.distinct(JobItem.track_id)).where(
+                JobItem.job_id == job_id,
+                JobItem.status == "failed",
+                JobItem.track_id.is_not(None),
+            )
+        ).scalars()
+        failed_tracks = {int(tid) for tid in failed_rows if tid is not None}
+
+        track_rows = session.execute(
+            select(func.distinct(JobItem.track_id)).where(
+                JobItem.job_id == job_id,
+                JobItem.track_id.is_not(None),
+            )
+        ).scalars()
+        track_ids = {int(tid) for tid in track_rows if tid is not None}
+
+        return cleanup_by_track, failed_tracks, track_ids
+
     def list_for_job_by_status(
         self,
         session: Session,

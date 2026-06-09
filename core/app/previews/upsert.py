@@ -29,6 +29,7 @@ class PreviewUpsertService:
             "duration_delta_seconds": candidate.duration_delta_seconds,
             "match_score": candidate.match_score,
             "match_confidence": candidate.match_confidence,
+            "match_strategy": candidate.match_strategy,
             "is_available": candidate.is_available,
             "last_error": candidate.last_error,
             "resolved_at": now if candidate.is_available else None,

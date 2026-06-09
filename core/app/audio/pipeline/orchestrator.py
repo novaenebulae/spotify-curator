@@ -248,6 +248,7 @@ class AnalysisPipelineOrchestrator:
     ) -> int:
         engine = get_engine()
         unblocked = 0
+        batch_limit = limit or settings.analysis_pipeline_refresh_batch_size
         with Session(engine) as session:
             job = session.get(Job, job_id)
             if job is None or job.job_type != JOB_TYPE_AUDIO_ANALYSIS_PIPELINE:
@@ -259,16 +260,24 @@ class AnalysisPipelineOrchestrator:
                     job_id,
                     stage_names=stage_names,
                     status="blocked",
-                    limit=limit or settings.analysis_pipeline_refresh_batch_size,
+                    limit=batch_limit,
                 )
             else:
                 blocked_items = self._items._items.list_for_job_by_status(
                     session,
                     job_id,
                     status="blocked",
-                    limit=limit or 10_000,
+                    limit=batch_limit if batch_limit else 10_000,
                 )
-            for item in blocked_items:
+            blocked_ids = [item.id for item in blocked_items]
+
+        # One short transaction per item so refresh_dependencies does not hold
+        # row/table locks across hundreds of concurrent worker updates (Postgres).
+        for item_id in blocked_ids:
+            with Session(engine) as session:
+                item = session.get(JobItem, item_id)
+                if item is None or item.status != "blocked":
+                    continue
                 if not _prerequisites_met(session, item):
                     continue
                 self._items._items.update_fields(
@@ -277,10 +286,11 @@ class AnalysisPipelineOrchestrator:
                     status="pending",
                     blocked_reason=None,
                 )
+                session.commit()
                 unblocked += 1
 
-            if unblocked:
-                session.commit()
+        if unblocked:
+            with Session(engine) as session:
                 self._items.recompute_job_progress(
                     session, job_id, include_track_progress=False
                 )

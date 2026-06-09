@@ -47,7 +47,27 @@ class DeezerClient:
         data = self._get_json(url)
         return self._parse_track(data)
 
-    def _get_json(self, url: str, *, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    def get_track_by_isrc(self, isrc: str) -> DeezerTrackResult | None:
+        normalized = isrc.strip().upper().replace(" ", "")
+        if not normalized:
+            return None
+        url = f"{self._base}/track/isrc:{normalized}"
+        try:
+            data = self._get_json(url, allow_not_found=True)
+        except DeezerClientError as exc:
+            _logger.debug("Deezer ISRC lookup failed for %s: %s", normalized, exc)
+            return None
+        if data is None:
+            return None
+        return self._parse_track(data)
+
+    def _get_json(
+        self,
+        url: str,
+        *,
+        params: dict[str, Any] | None = None,
+        allow_not_found: bool = False,
+    ) -> dict[str, Any] | None:
         last_err: Exception | None = None
         for attempt in range(self._max_retries + 1):
             try:
@@ -58,10 +78,14 @@ class DeezerClient:
                         time.sleep(0.5 * (attempt + 1))
                         continue
                     raise DeezerHTTPError(429, "Deezer rate limited")
+                if allow_not_found and resp.status_code == 404:
+                    return None
                 if resp.status_code >= 400:
                     raise DeezerHTTPError(resp.status_code, resp.text[:500])
                 body = resp.json()
                 if isinstance(body, dict) and body.get("error"):
+                    if allow_not_found:
+                        return None
                     err = body["error"]
                     msg = err.get("message", "Deezer API error") if isinstance(err, dict) else str(err)
                     raise DeezerClientError(msg)

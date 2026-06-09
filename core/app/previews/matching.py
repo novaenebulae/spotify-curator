@@ -52,16 +52,30 @@ def penalty_for_title(title: str) -> float:
     return min(total, 0.6)
 
 
+def is_isrc_exact_match(track: TrackContext, candidate: DeezerTrackResult) -> bool:
+    if not track.isrc or not candidate.isrc:
+        return False
+    return track.isrc.strip().upper() == candidate.isrc.strip().upper()
+
+
+def score_isrc_exact_match(track: TrackContext, candidate: DeezerTrackResult) -> tuple[float, float]:
+    if is_isrc_exact_match(track, candidate) and candidate.preview_url:
+        return 1.0, 1.0
+    return 0.0, 0.0
+
+
 def score_deezer_match(track: TrackContext, candidate: DeezerTrackResult) -> tuple[float, float]:
     """Return (match_score 0-1, match_confidence 0-1)."""
+    isrc_score, isrc_conf = score_isrc_exact_match(track, candidate)
+    if isrc_conf >= 1.0:
+        return isrc_score, isrc_conf
+
     title_s = token_overlap(track.title, candidate.title)
     artist_s = token_overlap(track.primary_artist, candidate.artist_name)
     expected_s = track.duration_ms / 1000.0 if track.duration_ms else None
     dur_s = duration_score(expected_s, candidate.duration_seconds)
 
-    isrc_bonus = 0.0
-    if track.isrc and candidate.isrc and track.isrc.upper() == candidate.isrc.upper():
-        isrc_bonus = 0.35
+    isrc_bonus = 0.35 if is_isrc_exact_match(track, candidate) else 0.0
 
     base = 0.45 * title_s + 0.35 * artist_s + 0.20 * dur_s + isrc_bonus
     pen = penalty_for_title(candidate.title)

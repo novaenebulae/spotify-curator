@@ -21,6 +21,7 @@ class PreviewResolveRequest(BaseModel):
     only_missing: bool = True
     force_refresh: bool = False
     limit: int | None = None
+    track_ids: list[int] | None = None
 
 
 class PreviewResolveResponse(BaseModel):
@@ -34,6 +35,7 @@ class TrackPreviewResponse(BaseModel):
     preview_url: str | None = None
     playback_url: str | None = None
     match_confidence: float | None = None
+    match_strategy: str | None = None
     is_available: bool = False
     resolve_job_id: str | None = None
 
@@ -62,6 +64,7 @@ def get_track_preview(
                 preview_url=row.preview_url,
                 playback_url=f"/api/v1/tracks/{track_id}/preview/stream",
                 match_confidence=row.match_confidence,
+                match_strategy=row.match_strategy,
                 is_available=bool(row.is_available),
             )
         if resolve_if_missing:
@@ -89,6 +92,7 @@ def start_preview_resolve(body: PreviewResolveRequest) -> PreviewResolveResponse
         only_missing=body.only_missing,
         force_refresh=body.force_refresh,
         limit=body.limit,
+        track_ids=body.track_ids,
     )
     return PreviewResolveResponse(job_id=job_id, status=map_job_status("queued"))
 

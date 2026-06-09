@@ -50,6 +50,31 @@ Voir [`05-domain-model.md`](05-domain-model.md) § track_previews.
 
 **Types segment** : `YOUTUBE_1_3`, `YOUTUBE_2_3`, `YOUTUBE_1_4`, `YOUTUBE_1_2`, `YOUTUBE_3_4`, `DEEZER_PREVIEW`, … (legacy `A`/`B`/`C` pour `abc_default`)
 
+## Résolution Deezer (ISRC-first)
+
+Ordre dans [`core/app/previews/deezer_provider.py`](../core/app/previews/deezer_provider.py) :
+
+1. **ISRC Spotify** (`ExternalId`) → `GET /track/isrc:{ISRC}` (Deezer, non documenté).
+2. Si ISRC identique **et** `preview` non vide → `match_strategy=isrc_exact`, `match_confidence=1.0`, pas de recherche texte.
+3. Sinon (404, pas de preview, pas d’ISRC) → recherche `"{artist} {title}"` (fuzzy, `match_strategy=metadata_fuzzy`).
+4. Si fuzzy trouve aussi un ISRC exact avec preview → court-circuit `1.0` comme en (2).
+5. Si `match_confidence < DEEZER_PREVIEW_UI_MIN_CONFIDENCE` (0.60) ou pas de preview → `is_available=false` ; le download hybrid bascule sur **YouTube** (`YOUTUBE_MIN_CONFIDENCE=0.50`).
+
+Champ persisté : `track_previews.match_strategy` ∈ `isrc_exact`, `metadata_fuzzy`, `unavailable`.
+
+### Audit des analyses Deezer existantes
+
+Script : [`core/scripts/audit_deezer_preview_mismatches.py`](../core/scripts/audit_deezer_preview_mismatches.py)
+
+Compare `track_previews.provider_track_id` (preview utilisée) au track canonique Deezer résolu par ISRC Spotify. Verdicts : `ok`, `mismatch`, `isrc_unresolvable`, `no_spotify_isrc`, `low_confidence_fuzzy`.
+
+```bash
+uv run --project core python core/scripts/audit_deezer_preview_mismatches.py --output /tmp/deezer_audit.json
+uv run --project core python core/scripts/audit_deezer_preview_mismatches.py --output /tmp/deezer_audit.json --reresolve --reanalyze
+```
+
+`POST /api/v1/previews/resolve` accepte aussi `track_ids` pour une re-résolution ciblée (avec `force_refresh: true` si besoin).
+
 ## Confiance
 
 ```text
@@ -79,6 +104,7 @@ Seuils : `DEEZER_PREVIEW_UI_MIN_CONFIDENCE`, `DEEZER_PREVIEW_ANALYSIS_MIN_CONFID
 ### Resolve previews
 
 - `POST /api/v1/previews/resolve` — `only_missing: true` par défaut : **exclut** les titres avec preview Deezer déjà valide.
+- `track_ids` optionnel : sous-ensemble ciblé (ex. mismatches audit).
 - `limit: null` : traite **tous** les titres manquants (pas de cap 5000 implicite).
 
 ## API

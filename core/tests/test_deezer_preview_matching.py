@@ -1,5 +1,10 @@
 from app.audio.provider import TrackContext
-from app.previews.matching import penalty_for_title, score_deezer_match
+from app.previews.matching import (
+    is_isrc_exact_match,
+    penalty_for_title,
+    score_deezer_match,
+    score_isrc_exact_match,
+)
 from app.previews.schemas import DeezerTrackResult
 
 
@@ -39,3 +44,31 @@ def test_score_prefers_non_live_match() -> None:
 
 def test_live_penalty() -> None:
     assert penalty_for_title("Song (Live at Wembley)") >= 0.25
+
+
+def test_isrc_exact_match_returns_full_confidence_despite_weak_title() -> None:
+    track = TrackContext(
+        track_id=3,
+        title="Completely Different Title",
+        primary_artist="Other Artist",
+        album=None,
+        duration_ms=224000,
+        isrc="GBDUW0100057",
+    )
+    candidate = DeezerTrackResult(
+        id="99",
+        title="Wrong Title On Deezer",
+        artist_name="Wrong Artist",
+        album_title=None,
+        preview_url="https://example/p.mp3",
+        duration_seconds=999.0,
+        link=None,
+        isrc="gbduw0100057",
+    )
+    assert is_isrc_exact_match(track, candidate)
+    score, conf = score_isrc_exact_match(track, candidate)
+    assert score == 1.0
+    assert conf == 1.0
+    fuzzy_score, fuzzy_conf = score_deezer_match(track, candidate)
+    assert fuzzy_score == 1.0
+    assert fuzzy_conf == 1.0

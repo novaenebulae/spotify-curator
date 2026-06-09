@@ -55,7 +55,10 @@ def get_engine() -> Engine:
         "future": True,
         "connect_args": connect_args,
     }
-    if database_url.startswith("postgresql") or database_url.startswith("postgres"):
+    is_postgres = database_url.startswith("postgresql") or database_url.startswith(
+        "postgres"
+    )
+    if is_postgres:
         engine_kwargs["pool_size"] = settings.database_pool_size
         engine_kwargs["max_overflow"] = settings.database_max_overflow
         engine_kwargs["pool_pre_ping"] = True
@@ -70,5 +73,19 @@ def get_engine() -> Engine:
         @event.listens_for(_engine, "connect")
         def _on_connect(dbapi_connection: Any, _connection_record: Any) -> None:
             _configure_sqlite_connection(dbapi_connection)
+    elif is_postgres:
+
+        @event.listens_for(_engine, "connect")
+        def _on_pg_connect(dbapi_connection: Any, _connection_record: Any) -> None:
+            lock_ms = max(1000, settings.database_lock_timeout_ms)
+            idle_ms = max(
+                30_000, settings.database_idle_in_transaction_session_timeout_ms
+            )
+            stmt_ms = max(30_000, settings.database_statement_timeout_ms)
+            cursor = dbapi_connection.cursor()
+            cursor.execute(f"SET lock_timeout = '{lock_ms}ms'")
+            cursor.execute(f"SET idle_in_transaction_session_timeout = '{idle_ms}ms'")
+            cursor.execute(f"SET statement_timeout = '{stmt_ms}ms'")
+            cursor.close()
 
     return _engine

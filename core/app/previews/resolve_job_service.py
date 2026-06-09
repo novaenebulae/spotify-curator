@@ -33,6 +33,7 @@ class PreviewResolveJobService:
         only_missing: bool = True,
         force_refresh: bool = False,
         limit: int | None = None,
+        track_ids: list[int] | None = None,
     ) -> str:
         engine = get_engine()
         with Session(engine) as session:
@@ -46,6 +47,7 @@ class PreviewResolveJobService:
                 session,
                 only_missing=only_missing and not force_refresh,
                 limit=limit,
+                track_ids=track_ids,
             )
             if not ids:
                 raise ApiError(
@@ -79,7 +81,20 @@ class PreviewResolveJobService:
         *,
         only_missing: bool,
         limit: int | None,
+        track_ids: list[int] | None = None,
     ) -> list[int]:
+        if track_ids is not None:
+            unique = list(dict.fromkeys(track_ids))
+            if only_missing:
+                missing = set(
+                    self._previews.list_track_ids_missing(
+                        session, provider="deezer", limit=None
+                    )
+                )
+                unique = [tid for tid in unique if tid in missing]
+            if limit is not None:
+                unique = unique[:limit]
+            return unique
         if only_missing:
             return self._previews.list_track_ids_missing(
                 session, provider="deezer", limit=limit

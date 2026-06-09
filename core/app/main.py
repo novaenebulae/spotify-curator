@@ -43,9 +43,15 @@ async def lifespan(_app: FastAPI):
         init_db()
         logger.info("Database migrations applied")
         jobs_svc = JobService()
-        reconciled = jobs_svc.reconcile_orphaned_jobs()
-        if reconciled:
-            logger.info("Reconciled orphaned jobs: %s", reconciled)
+        try:
+            reconciled = jobs_svc.reconcile_orphaned_jobs()
+            if reconciled:
+                logger.info("Reconciled orphaned jobs: %s", reconciled)
+        except Exception:
+            logger.warning(
+                "Orphaned job reconcile skipped at startup (database busy); will retry later",
+                exc_info=True,
+            )
         try:
             stale_items = jobs_svc.reconcile_orphaned_job_items()
             if stale_items:
@@ -57,10 +63,16 @@ async def lifespan(_app: FastAPI):
             )
         from app.jobs.items.service import JobItemService
 
-        stale_pending = JobItemService().cancel_pending_for_terminal_parent_jobs()
-        if stale_pending:
-            logger.info(
-                "Cancelled pending items for terminal parent jobs: %d", stale_pending
+        try:
+            stale_pending = JobItemService().cancel_pending_for_terminal_parent_jobs()
+            if stale_pending:
+                logger.info(
+                    "Cancelled pending items for terminal parent jobs: %d", stale_pending
+                )
+        except Exception:
+            logger.warning(
+                "Cancel pending for terminal jobs skipped at startup (database busy)",
+                exc_info=True,
             )
         try:
             pipeline_finished = JobItemService().reconcile_audio_analysis_pipeline_jobs()

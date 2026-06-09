@@ -32,3 +32,4 @@ class PreviewCandidate:
     match_confidence: float
     is_available: bool
     last_error: str | None = None
+    match_strategy: str | None = None
