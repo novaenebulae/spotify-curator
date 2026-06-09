@@ -12,6 +12,7 @@ from sqlalchemy import and_, or_, select, text, update
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from app.database.dialect import begin_exclusive_write, is_postgresql_database
 from app.database.engine import get_engine
 from app.database.models_job_items import JobItem
 from app.database.models_jobs import Job
@@ -58,6 +59,12 @@ def _is_sqlite_locked(exc: BaseException) -> bool:
         return False
     orig = getattr(exc, "orig", None)
     return orig is not None and "locked" in str(orig).lower()
+
+
+def _reserve_row_lock_sql() -> str:
+    if is_postgresql_database():
+        return " FOR UPDATE OF i SKIP LOCKED"
+    return ""
 
 
 def _run_with_sqlite_retry(func: Callable[[], _T], *, attempts: int = 6) -> _T:
@@ -247,7 +254,7 @@ class JobItemService:
 
         with Session(engine) as session:
             conn = session.connection()
-            conn.execute(text("BEGIN IMMEDIATE"))
+            begin_exclusive_write(conn)
             try:
                 placeholders = ", ".join(f":t{i}" for i in range(len(item_types)))
                 params: dict[str, Any] = {
@@ -257,6 +264,7 @@ class JobItemService:
                 }
                 for i, it in enumerate(item_types):
                     params[f"t{i}"] = it
+                row_lock = _reserve_row_lock_sql()
 
                 row = conn.execute(
                     text(
@@ -271,7 +279,7 @@ class JobItemService:
                           AND (i.next_retry_at IS NULL OR i.next_retry_at <= :now)
                           AND (i.locked_by IS NULL OR i.locked_at < :stale_before)
                         ORDER BY i.priority DESC, i.created_at ASC
-                        LIMIT 1
+                        LIMIT 1{row_lock}
                         """
                     ),
                     params,
@@ -340,11 +348,12 @@ class JobItemService:
 
         with Session(engine) as session:
             conn = session.connection()
-            conn.execute(text("BEGIN IMMEDIATE"))
+            begin_exclusive_write(conn)
             try:
+                row_lock = _reserve_row_lock_sql()
                 row = conn.execute(
                     text(
-                        """
+                        f"""
                         SELECT i.id, i.job_id, i.item_type, i.track_id, i.segment_id,
                                i.input_json, i.attempt_count, i.stage_name
                         FROM job_items i
@@ -357,7 +366,7 @@ class JobItemService:
                           AND (i.next_retry_at IS NULL OR i.next_retry_at <= :now)
                           AND (i.locked_by IS NULL OR i.locked_at < :stale_before)
                         ORDER BY i.priority DESC, i.created_at ASC
-                        LIMIT 1
+                        LIMIT 1{row_lock}
                         """
                     ),
                     {
@@ -447,11 +456,12 @@ class JobItemService:
 
         with Session(engine) as session:
             conn = session.connection()
-            conn.execute(text("BEGIN IMMEDIATE"))
+            begin_exclusive_write(conn)
             try:
+                row_lock = _reserve_row_lock_sql()
                 rows = conn.execute(
                     text(
-                        """
+                        f"""
                         SELECT i.id, i.job_id, i.item_type, i.track_id, i.segment_id,
                                i.input_json, i.attempt_count, i.stage_name
                         FROM job_items i
@@ -464,7 +474,7 @@ class JobItemService:
                           AND (i.next_retry_at IS NULL OR i.next_retry_at <= :now)
                           AND (i.locked_by IS NULL OR i.locked_at < :stale_before)
                         ORDER BY i.priority DESC, i.created_at ASC
-                        LIMIT :limit
+                        LIMIT :limit{row_lock}
                         """
                     ),
                     {
@@ -1195,17 +1205,28 @@ class JobItemService:
         return self._jobs.is_cancelled(job_id)
 
     def _maybe_refresh_pipeline_dependencies(self, job_id: str) -> None:
+        if settings.analysis_pipeline_tick_enabled:
+            return
         engine = get_engine()
         with Session(engine) as session:
             job = session.get(Job, job_id)
             if job is None or job.job_type != JOB_TYPE_AUDIO_ANALYSIS_PIPELINE:
                 return
         from app.audio.pipeline.audio_cleanup import PipelineAudioCleanupService
+        from app.audio.pipeline.constants import (
+            STAGE_AUDIO_CLEANUP,
+            STAGE_FEATURE_AGGREGATION,
+        )
         from app.audio.pipeline.feature_aggregation import PipelineFeatureAggregationService
         from app.audio.pipeline.orchestrator import AnalysisPipelineOrchestrator
 
         try:
-            AnalysisPipelineOrchestrator(items=self).refresh_dependencies(job_id)
+            downstream = (STAGE_FEATURE_AGGREGATION, STAGE_AUDIO_CLEANUP)
+            AnalysisPipelineOrchestrator(items=self).refresh_dependencies(
+                job_id,
+                stage_names=downstream,
+                limit=settings.analysis_pipeline_refresh_batch_size,
+            )
             PipelineFeatureAggregationService(items=self).try_run_pending_for_job(job_id)
             PipelineAudioCleanupService(items=self).try_run_pending_for_job(job_id)
         except Exception:

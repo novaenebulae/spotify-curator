@@ -50,7 +50,19 @@ x-app-env: &app-env
   ANALYSIS_ADVANCED_ENABLED: ${ANALYSIS_ADVANCED_ENABLED:-true}
   ANALYSIS_DEFAULT_INCLUDE_TENSORFLOW: ${ANALYSIS_DEFAULT_INCLUDE_TENSORFLOW:-true}
   ANALYSIS_PIPELINE_TICK_ENABLED: ${ANALYSIS_PIPELINE_TICK_ENABLED:-true}
+  ANALYSIS_PIPELINE_TICK_IN_CORE_API: ${ANALYSIS_PIPELINE_TICK_IN_CORE_API:-true}
   ANALYSIS_PIPELINE_TICK_INTERVAL_SECONDS: ${ANALYSIS_PIPELINE_TICK_INTERVAL_SECONDS:-45}
+  ANALYSIS_PIPELINE_AGG_BATCH_SIZE: ${ANALYSIS_PIPELINE_AGG_BATCH_SIZE:-25}
+  ANALYSIS_PIPELINE_CLEANUP_BATCH_SIZE: ${ANALYSIS_PIPELINE_CLEANUP_BATCH_SIZE:-25}
+  ANALYSIS_PIPELINE_REFRESH_BATCH_SIZE: ${ANALYSIS_PIPELINE_REFRESH_BATCH_SIZE:-200}
+  ANALYSIS_PIPELINE_TICK_PROGRESS_EVERY_N: ${ANALYSIS_PIPELINE_TICK_PROGRESS_EVERY_N:-5}
+  ANALYSIS_PIPELINE_AGG_PRIORITY_BACKLOG: ${ANALYSIS_PIPELINE_AGG_PRIORITY_BACKLOG:-100}
+  ANALYSIS_PIPELINE_AGG_PRIORITY_BATCHES: ${ANALYSIS_PIPELINE_AGG_PRIORITY_BATCHES:-2}
+  DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-5}
+  DATABASE_MAX_OVERFLOW: ${DATABASE_MAX_OVERFLOW:-10}
+  POSTGRES_USER: ${POSTGRES_USER:-spotify}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spotify}
+  POSTGRES_DB: ${POSTGRES_DB:-spotify_curator}
   AUDIO_CLEANUP_WAIT_FOR_ALL_CONSUMERS: ${AUDIO_CLEANUP_WAIT_FOR_ALL_CONSUMERS:-true}
   ESSENTIA_TENSORFLOW_PIPELINE_VERSION: ${ESSENTIA_TENSORFLOW_PIPELINE_VERSION:-essentia_tensorflow_v1}
   ESSENTIA_TF_PIPELINE_VERSION: ${ESSENTIA_TF_PIPELINE_VERSION:-phase6_tf_unified_v1}
@@ -87,6 +99,26 @@ x-app-env: &app-env
   RECCOBEATS_ENRICH_MAX_LIMIT: ${RECCOBEATS_ENRICH_MAX_LIMIT:-10000}
 
 services:
+  postgres:
+    profiles: ["postgres"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-spotify}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-spotify}
+      POSTGRES_DB: ${POSTGRES_DB:-spotify_curator}
+    volumes:
+      - spotify_curator_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-spotify} -d ${POSTGRES_DB:-spotify_curator}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   core-api:
     build:
       context: .
@@ -122,6 +154,30 @@ services:
       - --log-level
       - info
       - --access-log
+
+  pipeline-ticker-worker:
+    profiles: ["advanced-analysis"]
+    build:
+      context: .
+      dockerfile: docker/core/Dockerfile
+    env_file:
+      - .env
+    environment:
+      <<: *app-env
+    volumes:
+      - spotify_curator_data:/app/data
+      - spotify_curator_cache:/app/cache
+      - ./models:/app/models
+      - ./logs:/app/logs
+      - ./profiles:/app/profiles:ro
+    mem_limit: 1024m
+    cpus: 2.0
+    restart: unless-stopped
+    command:
+      - uv
+      - run
+      - python
+      - scripts/run_pipeline_ticker_worker.py
 
   audio-downloader:
     profiles: ["audio"]
@@ -200,4 +256,7 @@ volumes:
     external: false
   spotify_curator_cache:
     name: spotify_curator_cache
+    external: false
+  spotify_curator_postgres:
+    name: spotify_curator_postgres
     external: false

@@ -10,7 +10,18 @@
 # instance. Variables are still expanded into each service via x-app-env + --env-file.
 
 services:
+  postgres:
+    profiles: ["postgres"]
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - /home/ubuntu/spotify-curator-runtime/postgres-data:/var/lib/postgresql/data
+
   core-api:
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
     env_file: !override
       - .env.lambda
     volumes:
@@ -37,6 +48,10 @@ services:
       - core-api
 
   audio-downloader:
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
     env_file: !override
       - .env.lambda
     cpus: 1.5
@@ -67,7 +82,24 @@ services:
       - /home/ubuntu/spotify-curator-runtime/temp-audio:/app/temp-audio
       - ./profiles:/app/profiles:ro
 
+  pipeline-ticker-worker:
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
+    env_file: !override
+      - .env.lambda
+    volumes:
+      - /home/ubuntu/spotify-curator-runtime/data:/app/data
+      - /home/ubuntu/spotify-curator-runtime/logs:/app/logs
+      - /home/ubuntu/spotify-curator-runtime/temp-audio:/app/temp-audio
+      - ./profiles:/app/profiles:ro
+
   essentia-tensorflow-worker:
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
     mem_limit: "24g"
     memswap_limit: "24g"
     shm_size: "4gb"

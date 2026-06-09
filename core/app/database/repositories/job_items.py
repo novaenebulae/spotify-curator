@@ -73,6 +73,27 @@ class JobItemsRepository:
         )
         return list(session.scalars(stmt))
 
+    def list_for_job_stages_by_status(
+        self,
+        session: Session,
+        job_id: str,
+        *,
+        stage_names: tuple[str, ...],
+        status: str,
+        limit: int = 200,
+    ) -> list[JobItem]:
+        stmt = (
+            select(JobItem)
+            .where(
+                JobItem.job_id == job_id,
+                JobItem.stage_name.in_(stage_names),
+                JobItem.status == status,
+            )
+            .order_by(JobItem.created_at.asc())
+            .limit(limit)
+        )
+        return list(session.scalars(stmt))
+
     def get_dependents(self, session: Session, item_id: str) -> list[JobItem]:
         return list(
             session.scalars(

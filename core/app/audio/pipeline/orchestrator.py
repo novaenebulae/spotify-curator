@@ -239,7 +239,13 @@ class AnalysisPipelineOrchestrator:
 
         return job_id
 
-    def refresh_dependencies(self, job_id: str) -> int:
+    def refresh_dependencies(
+        self,
+        job_id: str,
+        *,
+        stage_names: tuple[str, ...] | None = None,
+        limit: int | None = None,
+    ) -> int:
         engine = get_engine()
         unblocked = 0
         with Session(engine) as session:
@@ -247,9 +253,21 @@ class AnalysisPipelineOrchestrator:
             if job is None or job.job_type != JOB_TYPE_AUDIO_ANALYSIS_PIPELINE:
                 return 0
 
-            blocked_items = self._items._items.list_for_job_by_status(
-                session, job_id, status="blocked"
-            )
+            if stage_names:
+                blocked_items = self._items._items.list_for_job_stages_by_status(
+                    session,
+                    job_id,
+                    stage_names=stage_names,
+                    status="blocked",
+                    limit=limit or settings.analysis_pipeline_refresh_batch_size,
+                )
+            else:
+                blocked_items = self._items._items.list_for_job_by_status(
+                    session,
+                    job_id,
+                    status="blocked",
+                    limit=limit or 10_000,
+                )
             for item in blocked_items:
                 if not _prerequisites_met(session, item):
                     continue
@@ -263,7 +281,9 @@ class AnalysisPipelineOrchestrator:
 
             if unblocked:
                 session.commit()
-                self._items.recompute_job_progress(session, job_id)
+                self._items.recompute_job_progress(
+                    session, job_id, include_track_progress=False
+                )
                 session.commit()
         return unblocked
 

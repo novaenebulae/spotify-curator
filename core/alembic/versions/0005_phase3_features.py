@@ -12,6 +12,9 @@ import sqlalchemy as sa
 
 from alembic import op
 
+from app.database.migration_bool_defaults import false, true
+from app.database.migration_sql import sql_now
+
 revision: str = "0005_phase3_features"
 down_revision: str | None = "0004_album_covers"
 branch_labels: str | Sequence[str] | None = None
@@ -35,9 +38,9 @@ def upgrade() -> None:
         sa.Column("source_type", sa.String(length=32), nullable=False, server_default="api"),
         sa.Column("version", sa.String(length=32), nullable=True),
         sa.Column("priority", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")),
-        sa.Column("requires_audio", sa.Boolean(), nullable=False, server_default=sa.text("0")),
-        sa.Column("requires_api_key", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=true()),
+        sa.Column("requires_audio", sa.Boolean(), nullable=False, server_default=false()),
+        sa.Column("requires_api_key", sa.Boolean(), nullable=False, server_default=false()),
         sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.Column("updated_at", sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
@@ -76,7 +79,7 @@ def upgrade() -> None:
         sa.Column("time_signature", sa.Integer(), nullable=True),
         sa.Column("duration_ms", sa.Integer(), nullable=True),
         sa.Column("feature_confidence", sa.Float(), nullable=True),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=true()),
         sa.Column("status", sa.String(length=32), nullable=False, server_default="pending"),
         sa.Column("error_code", sa.String(length=64), nullable=True),
         sa.Column("error_message", sa.String(length=2000), nullable=True),
@@ -101,13 +104,23 @@ def upgrade() -> None:
         unique=False,
     )
     op.create_index("ix_audio_features_status", "audio_features", ["status"], unique=False)
-    op.create_index(
-        "uq_audio_features_active_track_source",
-        "audio_features",
-        ["track_id", "feature_source_id"],
-        unique=True,
-        sqlite_where=sa.text("is_active = 1"),
-    )
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.create_index(
+            "uq_audio_features_active_track_source",
+            "audio_features",
+            ["track_id", "feature_source_id"],
+            unique=True,
+            postgresql_where=sa.text("is_active = true"),
+        )
+    else:
+        op.create_index(
+            "uq_audio_features_active_track_source",
+            "audio_features",
+            ["track_id", "feature_source_id"],
+            unique=True,
+            sqlite_where=sa.text("is_active = 1"),
+        )
 
     op.create_table(
         "audio_feature_raw_payloads",
@@ -131,34 +144,45 @@ def upgrade() -> None:
     )
 
     conn = op.get_bind()
+    now_sql = sql_now()
     for name, display_name, source_type, version, priority, is_active, requires_audio, requires_api_key in FEATURE_SOURCES_SEED:
-        conn.execute(
-            sa.text(
+        if bind.dialect.name == "postgresql":
+            insert_sql = f"""
+                INSERT INTO feature_sources
+                    (name, display_name, source_type, version, priority, is_active,
+                     requires_audio, requires_api_key, created_at, updated_at)
+                VALUES
+                    (:name, :display_name, :source_type, :version, :priority, :is_active,
+                     :requires_audio, :requires_api_key, {now_sql}, {now_sql})
+                ON CONFLICT (name) DO NOTHING
                 """
+        else:
+            insert_sql = f"""
                 INSERT OR IGNORE INTO feature_sources
                     (name, display_name, source_type, version, priority, is_active,
                      requires_audio, requires_api_key, created_at, updated_at)
                 VALUES
                     (:name, :display_name, :source_type, :version, :priority, :is_active,
-                     :requires_audio, :requires_api_key, datetime('now'), datetime('now'))
+                     :requires_audio, :requires_api_key, {now_sql}, {now_sql})
                 """
-            ),
+        conn.execute(
+            sa.text(insert_sql),
             {
                 "name": name,
                 "display_name": display_name,
                 "source_type": source_type,
                 "version": version,
                 "priority": priority,
-                "is_active": is_active,
-                "requires_audio": requires_audio,
-                "requires_api_key": requires_api_key,
+                "is_active": bool(is_active),
+                "requires_audio": bool(requires_audio),
+                "requires_api_key": bool(requires_api_key),
             },
         )
     conn.execute(
         sa.text(
-            """
+            f"""
             UPDATE feature_sources
-            SET version = '1.0.0', updated_at = datetime('now')
+            SET version = '1.0.0', updated_at = {now_sql}
             WHERE name = 'reccobeats' AND (version IS NULL OR version = '')
             """
         )

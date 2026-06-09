@@ -34,6 +34,19 @@ Le workflow n’impose donc plus d’envoyer une base SQLite locale vers Lambda.
 | `make lambda-check-gpu` | Vérif Essentia TensorFlow + `nvidia-smi` |
 | `make lambda-up-a100-ui` | Stack + frontend VM (optionnel) |
 | `make lambda-export` | Export final vers NFS |
+| `make lambda-migrate-sqlite-to-postgres` | Copie SQLite → Postgres (workers arrêtés) |
+| `make lambda-up-a10-stable-tf6-pg` | 6 TF + Postgres sidecar (SSD local) |
+
+### PostgreSQL sidecar (jobs >5k pistes)
+
+Pour supprimer le plafond **single-writer** SQLite avec 15+ workers :
+
+1. `make lambda-migrate-sqlite-to-postgres` — backup NFS, Alembic PG, copie batch, bascule `.env.lambda`
+2. `DATABASE_URL=postgresql+psycopg://spotify:spotify@postgres:5432/spotify_curator`
+3. Données Postgres sur `/home/ubuntu/spotify-curator-runtime/postgres-data` (SSD, pas NFS)
+4. Benchmark : `scripts/measure_full_pipeline_benchmark.py --database-url postgresql+psycopg://...`
+
+Retour SQLite : restaurer `.env.lambda.sqlite.bak` puis `make lambda-up-a10-stable-tf6`.
 
 ---
 

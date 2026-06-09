@@ -12,6 +12,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
+from app.database.migration_bool_defaults import false, true
+
 revision: str = "0002_phase2_library"
 down_revision: str | None = "0001_initial"
 branch_labels: str | Sequence[str] | None = None
@@ -27,8 +29,8 @@ def upgrade() -> None:
         sa.Column("filter_json", sa.Text(), nullable=False, server_default="{}"),
         sa.Column("selected_track_ids_json", sa.Text(), nullable=False, server_default="[]"),
         sa.Column("affected_count", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("dry_run", sa.Boolean(), nullable=False, server_default=sa.text("1")),
-        sa.Column("spotify_applied", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("dry_run", sa.Boolean(), nullable=False, server_default=true()),
+        sa.Column("spotify_applied", sa.Boolean(), nullable=False, server_default=false()),
         sa.Column("result_json", sa.Text(), nullable=False, server_default="{}"),
         sa.Column("warning_json", sa.Text(), nullable=True),
         sa.Column("created_by_context", sa.String(length=32), nullable=False, server_default="api"),
@@ -66,17 +68,29 @@ def upgrade() -> None:
     )
     op.create_index("ix_tracks_duration_ms", "tracks", ["duration_ms"])
 
-    op.execute(
-        """
-        UPDATE spotify_tracks
-        SET album_id = (
-            SELECT sa.album_id
-            FROM spotify_albums sa
-            WHERE sa.spotify_album_id = json_extract(spotify_tracks.raw_json, '$.album.id')
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute(
+            """
+            UPDATE spotify_tracks AS st
+            SET album_id = sa.album_id
+            FROM spotify_albums AS sa
+            WHERE sa.spotify_album_id = (st.raw_json::json->'album'->>'id')
+              AND (st.raw_json::json->'album'->>'id') IS NOT NULL
+            """
         )
-        WHERE json_extract(spotify_tracks.raw_json, '$.album.id') IS NOT NULL
-        """
-    )
+    else:
+        op.execute(
+            """
+            UPDATE spotify_tracks
+            SET album_id = (
+                SELECT sa.album_id
+                FROM spotify_albums sa
+                WHERE sa.spotify_album_id = json_extract(spotify_tracks.raw_json, '$.album.id')
+            )
+            WHERE json_extract(spotify_tracks.raw_json, '$.album.id') IS NOT NULL
+            """
+        )
 
 
 def downgrade() -> None:

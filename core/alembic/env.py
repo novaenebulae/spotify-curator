@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, inspect, pool, text
 
 from alembic import context
 from app.database.models import Base
@@ -65,6 +65,10 @@ def get_url() -> str:
     return "sqlite:////app/data/spotify_curator.sqlite"
 
 
+def _render_as_batch(url: str) -> bool:
+    return url.startswith("sqlite")
+
+
 def run_migrations_offline() -> None:
     url = get_url()
     context.configure(
@@ -72,11 +76,22 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        render_as_batch=True,
+        render_as_batch=_render_as_batch(url),
     )
 
     with context.begin_transaction():
         context.run_migrations()
+
+
+def _ensure_alembic_version_width(connection) -> None:
+    """Revision ids exceed Alembic's default version_num VARCHAR(32) on PostgreSQL."""
+    if connection.dialect.name != "postgresql":
+        return
+    if "alembic_version" not in inspect(connection).get_table_names():
+        return
+    connection.execute(
+        text("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(64)")
+    )
 
 
 def run_migrations_online() -> None:
@@ -88,15 +103,18 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
 
+    url = get_url()
     with connectable.connect() as connection:
+        _ensure_alembic_version_width(connection)
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            render_as_batch=True,
+            render_as_batch=_render_as_batch(url),
         )
 
         with context.begin_transaction():
             context.run_migrations()
+        connection.commit()
 
 
 if context.is_offline_mode():

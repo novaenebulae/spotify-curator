@@ -1,0 +1,30 @@
+=== optimized-3tf ===
+job=7d5cdb9ea98d4807bfa6068ce2408bd9 status=running type=audio_analysis_pipeline
+sqlite=/home/ubuntu/spotify-curator-runtime/data/spotify_curator.sqlite
+duration=180s interval=30s
+start_utc=2026-06-09T14:09:55.108688+00:00
+
+--- status at start (agg/cleanup) ---
+      agg: blocked=4179 pending=823 skipped=21 success=93
+  cleanup: blocked=5002 pending=1 success=113
+t=    0s  dl= 907  ll= 851  tf= 911  agg=  93  cleanup= 113  tf_q=  0 agg_q=772 cl_q=  1  VRAM 9265/23028 MiB, GPU 0%
+t=   32s  dl= 912  ll= 864  tf= 916  agg=  93  cleanup= 113  tf_q=  0 agg_q=785 cl_q=  1  VRAM 9265/23028 MiB, GPU 0%
+t=   63s  dl= 922  ll= 878  tf= 923  agg=  93  cleanup= 113  tf_q=  0 agg_q=800 cl_q=  1  VRAM 9265/23028 MiB, GPU 0%
+t=   94s  dl= 928  ll= 890  tf= 929  agg=  93  cleanup= 113  tf_q=  0 agg_q=809 cl_q=  1  VRAM 9265/23028 MiB, GPU 0%
+t=  126s  dl= 935  ll= 903  tf= 934  agg=  94  cleanup= 114  tf_q=  0 agg_q=822 cl_q=  1  VRAM 9265/23028 MiB, GPU 0%
+t=  157s  dl= 943  ll= 915  tf= 944  agg=  94  cleanup= 114  tf_q=  0 agg_q=834 cl_q=  1  VRAM 9265/23028 MiB, GPU 0%
+
+--- rates (optimized-3tf, window 157s) ---
+       dl: +  36  =>  13.7/min
+       ll: +  64  =>  24.4/min
+       tf: +  33  =>  12.6/min
+      agg: +   1  =>   0.4/min
+  cleanup: +   1  =>   0.4/min
+
+--- backlogs at end ---
+  tf_ready_pending=0  agg_ready_pending=834  cleanup_ready_pending=1
+
+--- status at end (agg/cleanup) ---
+      agg: blocked=4110 pending=891 skipped=21 success=94
+  cleanup: blocked=5001 pending=1 success=114
+end_utc=2026-06-09T14:12:34.241372+00:00 VRAM 9265/23028 MiB, GPU 0%

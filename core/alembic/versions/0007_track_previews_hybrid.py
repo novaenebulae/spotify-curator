@@ -12,6 +12,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
+from app.database.migration_bool_defaults import false
+
 revision: str = "0007_track_previews_hybrid"
 down_revision: str | None = "0006_phase4_audio_local"
 branch_labels: str | Sequence[str] | None = None
@@ -38,7 +40,7 @@ def upgrade() -> None:
         sa.Column("duration_delta_seconds", sa.Float(), nullable=True),
         sa.Column("match_score", sa.Float(), nullable=True),
         sa.Column("match_confidence", sa.Float(), nullable=True),
-        sa.Column("is_available", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("is_available", sa.Boolean(), nullable=False, server_default=false()),
         sa.Column("last_error", sa.Text(), nullable=True),
         sa.Column("resolved_at", sa.DateTime(), nullable=True),
         sa.Column("last_checked_at", sa.DateTime(), nullable=True),

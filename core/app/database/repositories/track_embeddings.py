@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database.models_track_embeddings import TrackEmbedding
@@ -65,7 +65,17 @@ class TrackEmbeddingsRepository:
         )
         now = datetime.now(tz=UTC).replace(tzinfo=None)
         if existing is not None:
-            session.execute(delete(TrackEmbedding).where(TrackEmbedding.id == existing.id))
+            existing.model_version = row.model_version
+            existing.model_hash = row.model_hash
+            existing.dimension = row.dimension
+            existing.vector_json = row.vector_json
+            existing.aggregation_method = row.aggregation_method
+            existing.segments_used = row.segments_used
+            existing.status = row.status
+            existing.confidence = row.confidence
+            existing.updated_at = now
+            session.flush()
+            return existing
 
         entity = TrackEmbedding(
             track_id=row.track_id,

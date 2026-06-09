@@ -34,12 +34,24 @@ class AudioCleanupService:
             return result
 
         engine = get_engine()
-        with Session(engine) as session:
-            if track_id is not None:
+        if track_id is not None:
+            with Session(engine) as session:
                 segments = self._segments.list_for_track(
                     session, track_id, include_deleted=include_failed
                 )
-            else:
+                self._cleanup_segment_list(
+                    session,
+                    segments,
+                    result=result,
+                    job_id=job_id,
+                    cutoff=cutoff,
+                    include_failed=include_failed,
+                    dry_run=dry_run,
+                )
+                if not dry_run:
+                    session.commit()
+        else:
+            with Session(engine) as session:
                 segments = []
                 for track_dir in root.iterdir():
                     if not track_dir.is_dir():
@@ -48,15 +60,40 @@ class AudioCleanupService:
                         tid = int(track_dir.name)
                     except ValueError:
                         continue
-                    if track_id is not None and tid != track_id:
-                        continue
                     segments.extend(
                         self._segments.list_for_track(
                             session, tid, include_deleted=include_failed
                         )
                     )
+                self._cleanup_segment_list(
+                    session,
+                    segments,
+                    result=result,
+                    job_id=job_id,
+                    cutoff=cutoff,
+                    include_failed=include_failed,
+                    dry_run=dry_run,
+                )
+                if not dry_run:
+                    session.commit()
 
+        if not dry_run:
+            self._prune_empty_dirs(root)
+        return result
+
+    def _cleanup_segment_list(
+        self,
+        session: Session,
+        segments: list,
+        *,
+        result: CleanupResult,
+        job_id: str | None,
+        cutoff: datetime,
+        include_failed: bool,
+        dry_run: bool,
+    ) -> None:
         seen_paths: set[Path] = set()
+        now = datetime.now(tz=UTC).replace(tzinfo=None)
         for seg in segments:
             if job_id and seg.temporary_path and job_id not in seg.temporary_path:
                 continue
@@ -67,9 +104,8 @@ class AudioCleanupService:
             if not seg.temporary_path:
                 continue
             if settings.audio_cleanup_wait_for_all_consumers and seg.id is not None:
-                with Session(get_engine()) as check_session:
-                    if not segment_cleanup_allowed(check_session, segment_id=seg.id):
-                        continue
+                if not segment_cleanup_allowed(session, segment_id=seg.id):
+                    continue
             path = segment_absolute_path(seg.temporary_path)
             if path in seen_paths:
                 continue
@@ -83,17 +119,10 @@ class AudioCleanupService:
                     path.unlink(missing_ok=True)
                     result.deleted_files += 1
                     result.freed_bytes += size
-                now = datetime.now(tz=UTC).replace(tzinfo=None)
-                with Session(get_engine()) as session:
-                    self._segments.mark_deleted(session, seg.id, deleted_at=now)
-                    self._segments.update_fields(session, seg.id, temporary_path=None)
-                    session.commit()
+                self._segments.mark_deleted(session, seg.id, deleted_at=now)
+                self._segments.update_fields(session, seg.id, temporary_path=None)
             except OSError as e:
                 result.errors.append(str(e))
-
-        if not dry_run:
-            self._prune_empty_dirs(root)
-        return result
 
     def cleanup_orphan_files(self, *, dry_run: bool = False) -> CleanupResult:
         result = CleanupResult()

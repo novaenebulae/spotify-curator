@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import json
+import time
+from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.audio.essentia_aggregate import aggregate_segment_features
@@ -28,6 +31,7 @@ _TF_STAGE_PRIORITY = {
 }
 from app.audio.tensorflow.genre_runner import GENRE_MODEL_KEY
 from app.audio.pipeline.orchestrator import _prerequisites_met
+from app.database.dialect import begin_exclusive_write, is_postgresql_database
 from app.database.engine import get_engine
 from app.database.models_job_items import JobItem
 from app.database.repositories.track_advanced_features import (
@@ -50,9 +54,12 @@ from app.features.advanced.aggregate import aggregate_track_classifier_features
 from app.features.advanced.energy_proxy import compute_energy_proxy
 from app.features.advanced.mappers import feature_names_for_model_key
 from app.features.upsert import FeatureUpsertService
-from app.jobs.items.service import JobItemService
+from app.jobs.items.service import PIPELINE_WORKER_ITEM_KWARGS, JobItemService
 from app.models_registry.profile_scope import model_key_in_default_profile
 from app.settings.config import settings
+from app.workers.base_worker import _is_sqlite_locked
+
+_NO_TICKER_STAGE_KWARGS = PIPELINE_WORKER_ITEM_KWARGS
 
 
 class PipelineFeatureAggregationService:
@@ -71,117 +78,135 @@ class PipelineFeatureAggregationService:
         self._advanced = advanced_repo or TrackAdvancedFeaturesRepository()
         self._embeddings = embeddings_repo or TrackEmbeddingsRepository()
 
-    def try_run_pending_for_job(self, job_id: str) -> int:
+    def try_run_pending_for_job(self, job_id: str, *, limit: int | None = None) -> int:
+        batch = max(1, limit or settings.analysis_pipeline_agg_batch_size)
+        delays = (0.0, 0.5, 1.0, 2.0, 4.0)
+        for delay in delays:
+            if delay:
+                time.sleep(delay)
+            try:
+                return self._run_pending_batch(job_id, batch)
+            except OperationalError as exc:
+                if not _is_sqlite_locked(exc):
+                    raise
+        return 0
+
+    def _run_pending_batch(self, job_id: str, batch: int) -> int:
         processed = 0
         engine = get_engine()
         with Session(engine) as session:
-            pending = list(
-                session.scalars(
-                    select(JobItem).where(
-                        JobItem.job_id == job_id,
-                        JobItem.stage_name == STAGE_FEATURE_AGGREGATION,
-                        JobItem.status == "pending",
-                    )
+            begin_exclusive_write(session.connection())
+            pending_stmt = (
+                select(JobItem)
+                .where(
+                    JobItem.job_id == job_id,
+                    JobItem.stage_name == STAGE_FEATURE_AGGREGATION,
+                    JobItem.status == "pending",
                 )
+                .order_by(JobItem.created_at.asc())
+                .limit(batch)
             )
-        for item in pending:
-            if self._run_aggregation_item(item.id):
-                processed += 1
+            if is_postgresql_database():
+                pending_stmt = pending_stmt.with_for_update(skip_locked=True)
+            pending = list(session.scalars(pending_stmt))
+            for item in pending:
+                if self._run_aggregation_item(session, item.id):
+                    processed += 1
+            session.commit()
         return processed
 
-    def _run_aggregation_item(self, item_id: str) -> bool:
-        engine = get_engine()
-        with Session(engine) as session:
-            item = session.get(JobItem, item_id)
-            if item is None or item.stage_name != STAGE_FEATURE_AGGREGATION:
-                return False
-            if item.status != "pending":
-                return False
-            if not _prerequisites_met(session, item):
-                return False
-            track_id = item.track_id
-            job_id = item.job_id
-            if track_id is None:
-                return False
+    def _run_aggregation_item(self, session: Session, item_id: str) -> bool:
+        item = session.get(JobItem, item_id)
+        if item is None or item.stage_name != STAGE_FEATURE_AGGREGATION:
+            return False
+        if item.status != "pending":
+            return False
+        if not _prerequisites_met(session, item):
+            return False
+        track_id = item.track_id
+        job_id = item.job_id
+        if track_id is None:
+            return False
 
-            ll_items = list(
-                session.scalars(
-                    select(JobItem).where(
-                        JobItem.job_id == job_id,
-                        JobItem.track_id == track_id,
-                        JobItem.stage_name == STAGE_ESSENTIA_LOWLEVEL,
-                        JobItem.status == "success",
-                    )
+        ll_items = list(
+            session.scalars(
+                select(JobItem).where(
+                    JobItem.job_id == job_id,
+                    JobItem.track_id == track_id,
+                    JobItem.stage_name == STAGE_ESSENTIA_LOWLEVEL,
+                    JobItem.status == "success",
                 )
             )
-            parsed_list = []
-            for ll in ll_items:
-                if ll.segment_id is None:
-                    continue
-                seg = self._segments.get(session, ll.segment_id)
-                if seg is None or not seg.features_json:
-                    continue
-                try:
-                    parsed = parsed_segment_from_features_json(seg.features_json)
-                except (json.JSONDecodeError, ValueError):
-                    continue
-                parsed_list.append(parsed)
+        )
+        parsed_list = []
+        for ll in ll_items:
+            if ll.segment_id is None:
+                continue
+            seg = self._segments.get(session, ll.segment_id)
+            if seg is None or not seg.features_json:
+                continue
+            try:
+                parsed = parsed_segment_from_features_json(seg.features_json)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            parsed_list.append(parsed)
 
-            aggregated = None
-            if parsed_list:
-                segments_planned = len(ll_items)
-                aggregated = aggregate_segment_features(
-                    parsed_list,
-                    segments_planned=segments_planned,
-                    segments_missing_reason="segment_analysis_incomplete"
-                    if len(parsed_list) < segments_planned
-                    else None,
-                )
-                self._upsert.upsert_essentia_lowlevel(
-                    session,
-                    track_id=track_id,
-                    aggregated=aggregated,
-                    force_refresh=False,
-                )
-
-            clf_segment_outputs, clf_models_missing = self._collect_classifier_outputs(
-                session, job_id=job_id, track_id=track_id
+        aggregated = None
+        if parsed_list:
+            segments_planned = len(ll_items)
+            aggregated = aggregate_segment_features(
+                parsed_list,
+                segments_planned=segments_planned,
+                segments_missing_reason="segment_analysis_incomplete"
+                if len(parsed_list) < segments_planned
+                else None,
             )
-            emb_vectors, genre_segments, emb_models_missing, genre_error_codes = (
-                self._collect_embedding_outputs(session, job_id=job_id, track_id=track_id)
-            )
-
-            advanced_rows = self._build_advanced_rows(
-                track_id=track_id,
-                segment_outputs=clf_segment_outputs,
-                models_missing=clf_models_missing,
-                aggregated=aggregated,
-                genre_segments=genre_segments,
-                emb_models_missing=emb_models_missing,
-                genre_error_codes=genre_error_codes,
-            )
-            if advanced_rows:
-                self._advanced.upsert_many(session, advanced_rows)
-
-            embeddings_written = self._persist_track_embeddings(
+            self._upsert.upsert_essentia_lowlevel(
                 session,
                 track_id=track_id,
-                vectors_by_key=emb_vectors,
-                emb_models_missing=emb_models_missing,
+                aggregated=aggregated,
+                force_refresh=False,
             )
 
-            if aggregated is None and not advanced_rows and embeddings_written == 0:
-                session.commit()
-                self._items.mark_skipped(
-                    item_id,
-                    reason="no_features_to_aggregate: prerequisites terminal but no low-level, TF or embedding data",
-                )
-                return True
+        tf_segment_payloads = self._collect_tensorflow_segment_outputs(
+            session, job_id=job_id, track_id=track_id
+        )
+        clf_segment_outputs, clf_models_missing = self._classifier_outputs_from_tf_segments(
+            tf_segment_payloads
+        )
+        emb_vectors, genre_segments, emb_models_missing, genre_error_codes = (
+            self._embedding_outputs_from_tf_segments(tf_segment_payloads)
+        )
 
-            session.commit()
-            segments_analyzed = len(parsed_list)
-            result_bpm = aggregated.bpm if aggregated else None
+        advanced_rows = self._build_advanced_rows(
+            track_id=track_id,
+            segment_outputs=clf_segment_outputs,
+            models_missing=clf_models_missing,
+            aggregated=aggregated,
+            genre_segments=genre_segments,
+            emb_models_missing=emb_models_missing,
+            genre_error_codes=genre_error_codes,
+        )
+        if advanced_rows:
+            self._advanced.upsert_many(session, advanced_rows)
 
+        embeddings_written = self._persist_track_embeddings(
+            session,
+            track_id=track_id,
+            vectors_by_key=emb_vectors,
+            emb_models_missing=emb_models_missing,
+        )
+
+        if aggregated is None and not advanced_rows and embeddings_written == 0:
+            self._mark_item_skipped_in_session(
+                session,
+                item,
+                reason="no_features_to_aggregate: prerequisites terminal but no low-level, TF or embedding data",
+            )
+            return True
+
+        segments_analyzed = len(parsed_list)
+        result_bpm = aggregated.bpm if aggregated else None
         result_json: dict = {
             "segments_analyzed": segments_analyzed,
             "pipeline_version": settings.essentia_lowlevel_pipeline_version,
@@ -195,21 +220,46 @@ class PipelineFeatureAggregationService:
         if result_bpm is not None:
             result_json["bpm"] = result_bpm
 
-        self._items.mark_success(item_id, result_json=result_json)
+        self._mark_item_success_in_session(session, item, result_json=result_json)
         return True
 
-    def _collect_classifier_outputs(
+    def _mark_item_success_in_session(
+        self, session: Session, item: JobItem, *, result_json: dict
+    ) -> None:
+        now = datetime.now(tz=UTC).replace(tzinfo=None)
+        self._items._items.update_fields(
+            session,
+            item.id,
+            status="success",
+            result_json=json.dumps(result_json),
+            finished_at=now,
+            locked_by=None,
+            locked_at=None,
+            error_code=None,
+            error_message=None,
+        )
+
+    def _mark_item_skipped_in_session(
+        self, session: Session, item: JobItem, *, reason: str
+    ) -> None:
+        now = datetime.now(tz=UTC).replace(tzinfo=None)
+        self._items._items.update_fields(
+            session,
+            item.id,
+            status="skipped",
+            error_message=reason[:2000],
+            finished_at=now,
+            locked_by=None,
+            locked_at=None,
+        )
+
+    def _classifier_outputs_from_tf_segments(
         self,
-        session: Session,
-        *,
-        job_id: str,
-        track_id: int,
+        tf_segment_payloads: list[tuple[int | None, dict]],
     ) -> tuple[list[dict], set[str]]:
         segment_outputs: list[dict] = []
         models_missing: set[str] = set()
-        for _segment_id, payload in self._collect_tensorflow_segment_outputs(
-            session, job_id=job_id, track_id=track_id
-        ):
+        for _segment_id, payload in tf_segment_payloads:
             outputs = payload.get("classifier_outputs")
             if isinstance(outputs, dict):
                 segment_outputs.append(outputs)
@@ -218,21 +268,16 @@ class PipelineFeatureAggregationService:
                 models_missing.update(str(m) for m in missing)
         return segment_outputs, models_missing
 
-    def _collect_embedding_outputs(
+    def _embedding_outputs_from_tf_segments(
         self,
-        session: Session,
-        *,
-        job_id: str,
-        track_id: int,
+        tf_segment_payloads: list[tuple[int | None, dict]],
     ) -> tuple[dict[str, list[list[float]]], list[list], set[str], list[str]]:
         vectors_by_key: dict[str, list[list[float]]] = {}
         genre_segments: list[list] = []
         genre_error_codes: list[str] = []
         models_missing: set[str] = set()
 
-        for _segment_id, payload in self._collect_tensorflow_segment_outputs(
-            session, job_id=job_id, track_id=track_id
-        ):
+        for _segment_id, payload in tf_segment_payloads:
             embedding_outputs = payload.get("embedding_outputs")
             if isinstance(embedding_outputs, dict):
                 for model_key, out in embedding_outputs.items():

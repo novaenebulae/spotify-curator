@@ -87,6 +87,15 @@ class Settings(BaseSettings):
     analysis_pipeline_mode: str = "streaming"
     analysis_pipeline_tick_interval_seconds: int = 45
     analysis_pipeline_tick_enabled: bool = True
+    analysis_pipeline_tick_in_core_api: bool = True
+    analysis_pipeline_agg_batch_size: int = 25
+    analysis_pipeline_cleanup_batch_size: int = 25
+    analysis_pipeline_refresh_batch_size: int = 200
+    analysis_pipeline_tick_progress_every_n: int = 5
+    analysis_pipeline_agg_priority_backlog: int = 100
+    analysis_pipeline_agg_priority_batches: int = 2
+    database_pool_size: int = 5
+    database_max_overflow: int = 10
     audio_cleanup_wait_for_all_consumers: bool = True
     essentia_lowlevel_item_lock_timeout_seconds: int = 900
     essentia_lowlevel_image: str = "ghcr.io/mtg/essentia"

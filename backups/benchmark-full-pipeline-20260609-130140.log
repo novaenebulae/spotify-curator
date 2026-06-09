@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "/lambda/nfs/persistent-storage/spotify-curator/scripts/measure_full_pipeline_benchmark.py", line 15, in <module>
+    from datetime import UTC, datetime
+ImportError: cannot import name 'UTC' from 'datetime' (/usr/lib/python3.10/datetime.py)

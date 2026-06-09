@@ -26,7 +26,7 @@ async def _pipeline_tick_loop() -> None:
     from app.audio.pipeline.ticker import AnalysisPipelineTicker
 
     ticker = AnalysisPipelineTicker()
-    interval = max(15, settings.analysis_pipeline_tick_interval_seconds)
+    interval = max(5, settings.analysis_pipeline_tick_interval_seconds)
     while True:
         try:
             await asyncio.to_thread(ticker.tick_running_jobs)
@@ -46,9 +46,15 @@ async def lifespan(_app: FastAPI):
         reconciled = jobs_svc.reconcile_orphaned_jobs()
         if reconciled:
             logger.info("Reconciled orphaned jobs: %s", reconciled)
-        stale_items = jobs_svc.reconcile_orphaned_job_items()
-        if stale_items:
-            logger.info("Released stale job item locks: %d", stale_items)
+        try:
+            stale_items = jobs_svc.reconcile_orphaned_job_items()
+            if stale_items:
+                logger.info("Released stale job item locks: %d", stale_items)
+        except Exception:
+            logger.warning(
+                "Stale job item reconcile skipped (database busy); workers/ticker will retry",
+                exc_info=True,
+            )
         from app.jobs.items.service import JobItemService
 
         stale_pending = JobItemService().cancel_pending_for_terminal_parent_jobs()
@@ -56,10 +62,17 @@ async def lifespan(_app: FastAPI):
             logger.info(
                 "Cancelled pending items for terminal parent jobs: %d", stale_pending
             )
-        pipeline_finished = JobItemService().reconcile_audio_analysis_pipeline_jobs()
-        if pipeline_finished:
-            logger.info(
-                "Reconciled audio analysis pipeline jobs: %s", pipeline_finished
+        try:
+            pipeline_finished = JobItemService().reconcile_audio_analysis_pipeline_jobs()
+            if pipeline_finished:
+                logger.info(
+                    "Reconciled audio analysis pipeline jobs: %s", pipeline_finished
+                )
+        except Exception:
+            logger.warning(
+                "Pipeline job reconcile skipped at startup (database busy); "
+                "pipeline-ticker-worker will continue",
+                exc_info=True,
             )
     except Exception:
         logger.exception("Database migration failed during startup")
@@ -70,10 +83,15 @@ async def lifespan(_app: FastAPI):
         settings.core_port,
         settings.api_v1_prefix,
     )
-    if settings.analysis_pipeline_tick_enabled:
+    if settings.analysis_pipeline_tick_enabled and settings.analysis_pipeline_tick_in_core_api:
         tick_task = asyncio.create_task(_pipeline_tick_loop())
         logger.info(
-            "Analysis pipeline ticker started (interval=%ss)",
+            "Analysis pipeline ticker started in core-api (interval=%ss)",
+            settings.analysis_pipeline_tick_interval_seconds,
+        )
+    elif settings.analysis_pipeline_tick_enabled:
+        logger.info(
+            "Analysis pipeline ticker delegated to pipeline-ticker-worker (interval=%ss)",
             settings.analysis_pipeline_tick_interval_seconds,
         )
     yield

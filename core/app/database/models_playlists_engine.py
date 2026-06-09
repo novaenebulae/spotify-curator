@@ -61,7 +61,9 @@ class SyncJob(Base):
     __tablename__ = "sync_jobs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    job_id: Mapped[int | None] = mapped_column(ForeignKey("jobs.id"), nullable=True, index=True)
+    job_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("jobs.id"), nullable=True, index=True
+    )
     generated_playlist_id: Mapped[int] = mapped_column(
         ForeignKey("generated_playlists.id"), nullable=False, index=True
     )

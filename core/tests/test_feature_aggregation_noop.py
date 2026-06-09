@@ -76,7 +76,14 @@ def test_aggregation_noop_marks_skipped_not_pending_forever(tmp_path, monkeypatc
         )
         session.commit()
 
-    assert PipelineFeatureAggregationService(items=items)._run_aggregation_item(agg_id) is True
+    with Session(engine) as session:
+        assert (
+            PipelineFeatureAggregationService(items=items)._run_aggregation_item(
+                session, agg_id
+            )
+            is True
+        )
+        session.commit()
 
     row = next(i for i in items.list_items(job_id) if i["id"] == agg_id)
     assert row["status"] == "skipped"

@@ -1,0 +1,34 @@
+=== post-agg-fix ===
+job=7d5cdb9ea98d4807bfa6068ce2408bd9 status=running type=audio_analysis_pipeline
+sqlite=/home/ubuntu/spotify-curator-runtime/data/spotify_curator.sqlite
+duration=300s interval=30s
+start_utc=2026-06-09T13:41:35.431407+00:00
+
+--- status at start (agg/cleanup) ---
+      agg: blocked=4510 pending=501 skipped=21 success=84
+  cleanup: blocked=5011 pending=93 success=12
+t=    0s  dl= 591  ll= 549  tf= 587  agg=  84  cleanup=  12  tf_q=  0 agg_q=477 cl_q= 83  VRAM 18527/23028 MiB, GPU 0%
+t=   31s  dl= 595  ll= 554  tf= 596  agg=  89  cleanup=  16  tf_q=  0 agg_q=476 cl_q= 81  VRAM 18527/23028 MiB, GPU 0%
+t=   61s  dl= 600  ll= 560  tf= 601  agg=  89  cleanup=  20  tf_q=  0 agg_q=484 cl_q= 80  VRAM 18527/23028 MiB, GPU 0%
+t=   92s  dl= 604  ll= 567  tf= 607  agg=  89  cleanup=  22  tf_q=  0 agg_q=490 cl_q= 78  VRAM 18527/23028 MiB, GPU 0%
+t=  123s  dl= 612  ll= 571  tf= 611  agg=  89  cleanup=  24  tf_q=  0 agg_q=493 cl_q= 76  VRAM 18527/23028 MiB, GPU 0%
+t=  153s  dl= 614  ll= 575  tf= 614  agg=  89  cleanup=  26  tf_q=  0 agg_q=497 cl_q= 73  VRAM 18527/23028 MiB, GPU 0%
+t=  184s  dl= 621  ll= 580  tf= 620  agg=  89  cleanup=  28  tf_q=  0 agg_q=503 cl_q= 72  VRAM 18527/23028 MiB, GPU 0%
+t=  215s  dl= 629  ll= 586  tf= 627  agg=  89  cleanup=  29  tf_q=  0 agg_q=510 cl_q= 71  VRAM 18527/23028 MiB, GPU 0%
+t=  245s  dl= 633  ll= 594  tf= 633  agg=  89  cleanup=  34  tf_q=  0 agg_q=517 cl_q= 67  VRAM 18527/23028 MiB, GPU 0%
+t=  276s  dl= 639  ll= 598  tf= 639  agg=  89  cleanup=  37  tf_q=  0 agg_q=521 cl_q= 64  VRAM 18527/23028 MiB, GPU 0%
+
+--- rates (post-agg-fix, window 276s) ---
+       dl: +  48  =>  10.4/min
+       ll: +  49  =>  10.7/min
+       tf: +  52  =>  11.3/min
+      agg: +   5  =>   1.1/min
+  cleanup: +  25  =>   5.4/min
+
+--- backlogs at end ---
+  tf_ready_pending=0  agg_ready_pending=521  cleanup_ready_pending=64
+
+--- status at end (agg/cleanup) ---
+      agg: blocked=4458 pending=548 skipped=21 success=89
+  cleanup: blocked=5006 pending=73 success=37
+end_utc=2026-06-09T13:46:11.938007+00:00 VRAM 18527/23028 MiB, GPU 0%

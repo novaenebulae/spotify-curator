@@ -7,6 +7,7 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 
 from app.database.url import resolve_database_url
+from app.settings.config import settings
 
 _engine: Engine | None = None
 
@@ -31,14 +32,14 @@ def _sqlite_journal_mode() -> str:
 def _sqlite_connect_args(database_url: str) -> dict[str, Any]:
     if not database_url.startswith("sqlite"):
         return {}
-    return {"check_same_thread": False, "timeout": 30}
+    return {"check_same_thread": False, "timeout": 60}
 
 
 def _configure_sqlite_connection(dbapi_connection: Any) -> None:
     journal_mode = _sqlite_journal_mode()
     cursor = dbapi_connection.cursor()
     cursor.execute(f"PRAGMA journal_mode={journal_mode}")
-    cursor.execute("PRAGMA busy_timeout=30000")
+    cursor.execute("PRAGMA busy_timeout=60000")
     cursor.execute("PRAGMA synchronous=NORMAL")
     cursor.close()
 
@@ -50,7 +51,15 @@ def get_engine() -> Engine:
 
     database_url = resolve_database_url()
     connect_args = _sqlite_connect_args(database_url)
-    _engine = create_engine(database_url, future=True, connect_args=connect_args)
+    engine_kwargs: dict[str, Any] = {
+        "future": True,
+        "connect_args": connect_args,
+    }
+    if database_url.startswith("postgresql") or database_url.startswith("postgres"):
+        engine_kwargs["pool_size"] = settings.database_pool_size
+        engine_kwargs["max_overflow"] = settings.database_max_overflow
+        engine_kwargs["pool_pre_ping"] = True
+    _engine = create_engine(database_url, **engine_kwargs)
 
     from app.observability.sql_perf import register_sql_perf_listeners
 

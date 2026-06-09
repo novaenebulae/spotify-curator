@@ -12,6 +12,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
+from app.database.migration_bool_defaults import false, true
+
 revision: str = "0001_initial"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
@@ -24,7 +26,7 @@ def upgrade() -> None:
         sa.Column("id", sa.String(length=36), primary_key=True),
         sa.Column("key", sa.String(length=200), nullable=False, unique=True),
         sa.Column("value_json", sa.Text(), nullable=False, server_default="{}"),
-        sa.Column("is_sensitive", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("is_sensitive", sa.Boolean(), nullable=False, server_default=false()),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
     )
@@ -39,7 +41,7 @@ def upgrade() -> None:
         sa.Column("exit_code", sa.Integer(), nullable=True),
         sa.Column("stdout", sa.Text(), nullable=True),
         sa.Column("stderr", sa.Text(), nullable=True),
-        sa.Column("success", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("success", sa.Boolean(), nullable=False, server_default=false()),
         sa.Column("created_at", sa.DateTime(), nullable=False),
     )
     op.create_table(
@@ -75,7 +77,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(length=500), nullable=False, server_default=""),
         sa.Column("normalized_title", sa.String(length=500), nullable=False, server_default=""),
         sa.Column("duration_ms", sa.Integer(), nullable=False, server_default="0"),
-        sa.Column("explicit", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("explicit", sa.Boolean(), nullable=False, server_default=false()),
         sa.Column("popularity", sa.Integer(), nullable=True),
         sa.Column("preview_url", sa.String(length=2000), nullable=True),
         sa.Column("external_url", sa.String(length=2000), nullable=True),
@@ -173,7 +175,7 @@ def upgrade() -> None:
             primary_key=True,
         ),
         sa.Column("added_at", sa.DateTime(), nullable=True),
-        sa.Column("is_current", sa.Boolean(), nullable=False, server_default=sa.text("1")),
+        sa.Column("is_current", sa.Boolean(), nullable=False, server_default=true()),
         sa.Column("first_seen_at", sa.DateTime(), nullable=True),
         sa.Column("last_seen_at", sa.DateTime(), nullable=True),
         sa.Column("raw_json", sa.String(length=100000), nullable=False, server_default="{}"),
@@ -218,8 +220,8 @@ def upgrade() -> None:
             nullable=False,
             server_default="",
         ),
-        sa.Column("is_current", sa.Boolean(), nullable=False, server_default=sa.text("1")),
-        sa.Column("is_local", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("is_current", sa.Boolean(), nullable=False, server_default=true()),
+        sa.Column("is_local", sa.Boolean(), nullable=False, server_default=false()),
         sa.Column("null_reason", sa.String(length=64), nullable=True),
         sa.Column("first_seen_at", sa.DateTime(), nullable=True),
         sa.Column("last_seen_at", sa.DateTime(), nullable=True),

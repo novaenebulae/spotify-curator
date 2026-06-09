@@ -12,6 +12,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
+from app.database.migration_bool_defaults import true
+
 revision: str = "0008_phase5_playlist_engine"
 down_revision: str | None = "0007_track_previews_hybrid"
 branch_labels: str | Sequence[str] | None = None
@@ -27,7 +29,7 @@ def upgrade() -> None:
         sa.Column("rule_json", sa.Text(), nullable=False),
         sa.Column("rule_yaml", sa.Text(), nullable=True),
         sa.Column("version", sa.Integer(), nullable=False, server_default="1"),
-        sa.Column("enabled", sa.Boolean(), nullable=False, server_default="1"),
+        sa.Column("enabled", sa.Boolean(), nullable=False, server_default=true()),
         sa.Column("created_at", sa.DateTime(), nullable=True),
         sa.Column("updated_at", sa.DateTime(), nullable=True),
         sa.PrimaryKeyConstraint("id"),
@@ -84,11 +86,11 @@ def upgrade() -> None:
     op.create_table(
         "sync_jobs",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("job_id", sa.Integer(), nullable=True),
+        sa.Column("job_id", sa.String(length=64), nullable=True),
         sa.Column("generated_playlist_id", sa.Integer(), nullable=False),
         sa.Column("target_spotify_playlist_id", sa.String(length=64), nullable=True),
         sa.Column("sync_mode", sa.String(length=32), nullable=False, server_default="replace"),
-        sa.Column("dry_run", sa.Boolean(), nullable=False, server_default="1"),
+        sa.Column("dry_run", sa.Boolean(), nullable=False, server_default=true()),
         sa.Column("status", sa.String(length=32), nullable=False, server_default="previewed"),
         sa.Column("diff_json", sa.Text(), nullable=True),
         sa.Column("created_at", sa.DateTime(), nullable=True),
@@ -113,6 +115,12 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index("ix_sync_logs_sync_job_id", "sync_logs", ["sync_job_id"])
+
+    bind = op.get_bind()
+    if bind.dialect.name == "postgresql":
+        op.execute(
+            sa.text("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(64)")
+        )
 
 
 def downgrade() -> None:

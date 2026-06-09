@@ -12,6 +12,9 @@ import sqlalchemy as sa
 
 from alembic import op
 
+from app.database.migration_bool_defaults import false
+from app.database.migration_sql import sql_now
+
 revision: str = "0006_phase4_audio_local"
 down_revision: str | None = "0005_phase3_features"
 branch_labels: str | Sequence[str] | None = None
@@ -106,7 +109,7 @@ def upgrade() -> None:
         sa.Column("status", sa.String(length=32), nullable=False, server_default="pending"),
         sa.Column("attempt_count", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("max_attempts", sa.Integer(), nullable=False, server_default="3"),
-        sa.Column("rate_limited", sa.Boolean(), nullable=False, server_default=sa.text("0")),
+        sa.Column("rate_limited", sa.Boolean(), nullable=False, server_default=false()),
         sa.Column("last_error", sa.Text(), nullable=True),
         sa.Column("result_json", sa.Text(), nullable=False, server_default="{}"),
         sa.Column("next_retry_at", sa.DateTime(), nullable=True),
@@ -187,15 +190,20 @@ def upgrade() -> None:
     )
 
     conn = op.get_bind()
-    conn.execute(
-        sa.text(
-            """
+    now_sql = sql_now()
+    if conn.dialect.name == "postgresql":
+        update_sql = f"""
             UPDATE feature_sources
-            SET is_active = 1, requires_audio = 1, updated_at = datetime('now')
+            SET is_active = true, requires_audio = true, updated_at = {now_sql}
             WHERE name = 'essentia_lowlevel'
             """
-        )
-    )
+    else:
+        update_sql = f"""
+            UPDATE feature_sources
+            SET is_active = 1, requires_audio = 1, updated_at = {now_sql}
+            WHERE name = 'essentia_lowlevel'
+            """
+    conn.execute(sa.text(update_sql))
 
 
 def downgrade() -> None:
@@ -237,11 +245,13 @@ def downgrade() -> None:
     op.drop_table("job_items")
 
     conn = op.get_bind()
+    now_sql = sql_now()
+    active_val = "false" if conn.dialect.name == "postgresql" else "0"
     conn.execute(
         sa.text(
-            """
+            f"""
             UPDATE feature_sources
-            SET is_active = 0, updated_at = datetime('now')
+            SET is_active = {active_val}, updated_at = {now_sql}
             WHERE name = 'essentia_lowlevel'
             """
         )
